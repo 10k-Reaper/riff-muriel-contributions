@@ -28,6 +28,8 @@ jobs:
             flag: --win
           - os: ubuntu-latest
             flag: --linux
+          - os: macos-latest
+            flag: --mac
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
