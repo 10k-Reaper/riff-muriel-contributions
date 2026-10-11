@@ -2263,6 +2263,7 @@ body.is-window-resizing .platform-switch-container {
   height: 40px;
   display: inline-flex;
   align-items: center;
+  gap: 8px;
 }
 .btn-outline-pill:hover {
   background: var(--md-sys-color-surface-container-highest);
@@ -3133,6 +3134,11 @@ body.is-window-resizing .platform-switch-container {
   font-weight: 600;
   color: var(--md-sys-color-on-surface);
   margin: 0;
+}
+
+#download-modal.batch-mode #download-trim-section,
+#download-modal.batch-mode #download-effects-section {
+  display: none;
 }
 
 .download-track-preview {

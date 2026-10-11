@@ -8,7 +8,7 @@ const { spawn } = require("child_process");
 const { StringDecoder } = require("string_decoder");
 
 const PORT = 38472;
-const { CACHE_DIR, CUSTOM_LYRICS_DIR, LYRICS_DIR, THUMBNAILS_DIR, METADATA_PATH, LIBRARY_DIR, LIBRARY_PATH, ytDlpCommand } = require('./platform');
+const { CACHE_DIR, CUSTOM_LYRICS_DIR, LYRICS_DIR, THUMBNAILS_DIR, METADATA_PATH, LIBRARY_DIR, LIBRARY_PATH, ytDlpCommand, resolveDownloadDir } = require('./platform');
 
 if (!fs.existsSync(CACHE_DIR)) fs.mkdirSync(CACHE_DIR, { recursive: true });
 if (!fs.existsSync(CUSTOM_LYRICS_DIR)) fs.mkdirSync(CUSTOM_LYRICS_DIR, { recursive: true });
@@ -1023,6 +1023,18 @@ async function handleStreamInfo(req, res, trackUrl, trackId, platform = 'youtube
     return res.end(JSON.stringify(data));
   }
 
+  const downloadedName = await findDownloadedFile(title, artist);
+  if (downloadedName) {
+    const data = {
+      success: true,
+      isLocal: true,
+      isDownload: true,
+      streamUrl: `http://127.0.0.1:${PORT}/api/downloaded-track?name=${encodeURIComponent(downloadedName)}`
+    };
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    return res.end(JSON.stringify(data));
+  }
+
   if (streamUrlCache.has(cleanId)) {
     const cached = streamUrlCache.get(cleanId);
     if (Date.now() - cached.timestamp < 7200000) {
@@ -1289,6 +1301,53 @@ async function handleLibraryFile(req, res, trackId) {
   }
 }
 
+async function handleDownloadedTrack(req, res, name) {
+  const safeName = path.basename(String(name || ''));
+  const ext = path.extname(safeName).toLowerCase();
+  const dir = getDownloadsDir();
+  const filePath = path.join(dir, safeName);
+
+  if (!safeName || !AUDIO_EXTENSIONS.has(ext) || path.dirname(filePath) !== dir) {
+    res.writeHead(404);
+    return res.end('File not found in downloads');
+  }
+
+  try {
+    const stat = await fs.promises.stat(filePath);
+    const fileSize = stat.size;
+    const range = req.headers.range;
+
+    const contentType = LIBRARY_MIME_TYPES[ext] || 'audio/mpeg';
+
+    if (range) {
+      const parts = range.replace(/bytes=/, "").split("-");
+      const start = parseInt(parts[0], 10);
+      const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+      const chunksize = (end - start) + 1;
+      const file = fs.createReadStream(filePath, { start, end });
+      const head = {
+        'Content-Range': `bytes ${start}-${end}/${fileSize}`,
+        'Accept-Ranges': 'bytes',
+        'Content-Length': chunksize,
+        'Content-Type': contentType,
+      };
+      res.writeHead(206, head);
+      file.pipe(res);
+    } else {
+      const head = {
+        'Content-Length': fileSize,
+        'Content-Type': contentType,
+        'Accept-Ranges': 'bytes'
+      };
+      res.writeHead(200, head);
+      fs.createReadStream(filePath).pipe(res);
+    }
+  } catch (e) {
+    res.writeHead(404);
+    res.end('File not found in downloads');
+  }
+}
+
 function isPrivateHost(hostname) {
   const host = (hostname || '').toLowerCase().replace(/^\[|\]$/g, '');
   if (!host) return true;
@@ -1350,10 +1409,16 @@ function handleAudioProxy(req, res, targetUrl) {
   }
 }
 
-let DOWNLOADS_DIR;
-try { DOWNLOADS_DIR = require('electron').app.getPath('downloads'); } catch (e) { DOWNLOADS_DIR = path.join(os.homedir(), 'Downloads'); }
-if (!fs.existsSync(DOWNLOADS_DIR)) {
-  try { fs.mkdirSync(DOWNLOADS_DIR, { recursive: true }); } catch (e) {}
+function defaultDownloadsDir() {
+  try { return require('electron').app.getPath('downloads'); } catch (e) { return path.join(os.homedir(), 'Downloads'); }
+}
+
+function getDownloadsDir() {
+  const dir = resolveDownloadDir() || defaultDownloadsDir();
+  if (!fs.existsSync(dir)) {
+    try { fs.mkdirSync(dir, { recursive: true }); } catch (e) {}
+  }
+  return dir;
 }
 
 function sanitizeFilename(str) {
@@ -1363,19 +1428,53 @@ function sanitizeFilename(str) {
   .trim();
 }
 
+const AUDIO_EXTENSIONS = new Set(['.mp3', '.m4a', '.flac', '.opus', '.wav', '.ogg', '.oga', '.aac', '.webm', '.weba']);
+
+let downloadsIndex = null;
+let downloadsIndexBuiltAt = 0;
+const DOWNLOADS_INDEX_TTL = 15000;
+
+async function buildDownloadsIndex() {
+  const dir = getDownloadsDir();
+  const map = new Map();
+  try {
+    const entries = await fs.promises.readdir(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (!entry.isFile()) continue;
+      const ext = path.extname(entry.name).toLowerCase();
+      if (!AUDIO_EXTENSIONS.has(ext)) continue;
+      const base = entry.name.slice(0, entry.name.length - ext.length).toLowerCase();
+      if (base) map.set(base, entry.name);
+    }
+  } catch (e) {}
+  downloadsIndex = map;
+  downloadsIndexBuiltAt = Date.now();
+  return map;
+}
+
+async function findDownloadedFile(title, artist) {
+  if (!title && !artist) return null;
+  if (!downloadsIndex || Date.now() - downloadsIndexBuiltAt > DOWNLOADS_INDEX_TTL) {
+    await buildDownloadsIndex();
+  }
+  const key = `${sanitizeFilename(artist || 'unknown artist')} - ${sanitizeFilename(title || 'untitled')}`.toLowerCase();
+  return downloadsIndex.get(key) || null;
+}
+
 async function handleDownload(req, res, trackUrl, title, artist, format = 'mp3', quality = '0') {
   if (!trackUrl && (!title || !artist)) {
     res.writeHead(400, { 'Content-Type': 'application/json' });
     return res.end(JSON.stringify({ success: false, error: 'missing track information' }));
   }
 
+  const downloadsDir = getDownloadsDir();
   const cleanTitle = sanitizeFilename(title || 'untitled');
   const cleanArtist = sanitizeFilename(artist || 'unknown artist');
   const validFormats = ['mp3', 'm4a', 'flac', 'opus', 'wav'];
   const ext = validFormats.includes(format.toLowerCase()) ? format.toLowerCase() : 'mp3';
   const outFilename = `${cleanArtist} - ${cleanTitle}.${ext}`;
-  const outPath = path.join(DOWNLOADS_DIR, outFilename);
-  const tempTemplate = path.join(DOWNLOADS_DIR, `${cleanArtist} - ${cleanTitle}.%(ext)s`);
+  const outPath = path.join(downloadsDir, outFilename);
+  const tempTemplate = path.join(downloadsDir, `${cleanArtist} - ${cleanTitle}.%(ext)s`);
 
   let targetUrl = trackUrl;
   if (!targetUrl || targetUrl.includes('deezer.com')) {
@@ -1398,12 +1497,13 @@ async function handleDownload(req, res, trackUrl, title, artist, format = 'mp3',
 
   try {
     await executeYtDlp(args, 60000);
+    downloadsIndex = null;
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({
       success: true,
       filename: outFilename,
       path: outPath,
-      directory: DOWNLOADS_DIR
+      directory: downloadsDir
     }));
   } catch (err) {
     try {
@@ -1418,12 +1518,13 @@ async function handleDownload(req, res, trackUrl, title, artist, format = 'mp3',
         targetUrl
       ];
       await executeYtDlp(fallbackArgs, 60000);
+      downloadsIndex = null;
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({
         success: true,
         filename: outFilename,
         path: outPath,
-        directory: DOWNLOADS_DIR
+        directory: downloadsDir
       }));
     } catch (e2) {
       res.writeHead(500, { 'Content-Type': 'application/json' });
@@ -1965,6 +2066,11 @@ const server = http.createServer(async (req, res) => {
   if (parsedUrl.pathname === '/api/local-track') {
     const trackId = parsedUrl.query.id || '';
     return handleLocalTrack(req, res, trackId);
+  }
+
+  if (parsedUrl.pathname === '/api/downloaded-track') {
+    const name = parsedUrl.query.name || '';
+    return handleDownloadedTrack(req, res, name);
   }
 
   if (parsedUrl.pathname === '/api/library-add' && req.method === 'POST') {
