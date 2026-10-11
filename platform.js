@@ -6,6 +6,8 @@ const IS_WIN = process.platform === 'win32';
 
 const DATA_DIR = IS_WIN
   ? path.join(process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local'), 'Riff')
+  : process.platform === 'darwin'
+  ? path.join(os.homedir(), 'Library', 'Application Support', 'Riff')
   : path.join(os.homedir(), '.cache', 'devsize');
 
 const CACHE_DIR = path.join(DATA_DIR, 'tracks');
@@ -16,6 +18,24 @@ const METADATA_PATH = path.join(DATA_DIR, 'metadata.json');
 const LIBRARY_DIR = path.join(DATA_DIR, 'library');
 const LIBRARY_PATH = path.join(DATA_DIR, 'library.json');
 const BIN_DIR = path.join(DATA_DIR, 'bin');
+const TUTORIAL_MARKER = IS_WIN ? 'C:\\Riff\\.rifftutorial' : path.join(os.homedir(), '.rifftutorial');
+const TUTORIAL_MARKER_FALLBACK = path.join(DATA_DIR, '.rifftutorial');
+const STARTUP_PATH = path.join(DATA_DIR, 'startup.json');
+function readStartupConfig() { try { return JSON.parse(fs.readFileSync(STARTUP_PATH, 'utf8')) || {}; } catch (e) { return {}; } }
+function writeStartupConfig(patch) {
+  try {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+    fs.writeFileSync(STARTUP_PATH, JSON.stringify({ ...readStartupConfig(), ...patch }));
+    return true;
+  } catch (e) { return false; }
+}
+function tutorialDone() { return fs.existsSync(TUTORIAL_MARKER) || fs.existsSync(TUTORIAL_MARKER_FALLBACK); }
+function markTutorialDone() {
+  for (const file of [TUTORIAL_MARKER, TUTORIAL_MARKER_FALLBACK]) {
+    try { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, '1'); return true; } catch (e) {}
+  }
+  return false;
+}
 
 function isExecutableFile(p) {
   try {
@@ -29,8 +49,9 @@ function isExecutableFile(p) {
 function findInPath(name, env = process.env, platform = process.platform) {
   const win = platform === 'win32';
   const dirs = (env.PATH || env.Path || '').split(win ? ';' : ':').filter(Boolean);
+  const extra = platform === 'darwin' ? ['/opt/homebrew/bin', '/usr/local/bin'] : [];
   const exts = win ? ['.exe', '.cmd', '.bat', ''] : [''];
-  for (const dir of dirs) {
+  for (const dir of dirs.concat(extra)) {
     for (const ext of exts) {
       const candidate = path.join(dir, name + ext);
       if (isExecutableFile(candidate)) return candidate;
@@ -77,6 +98,8 @@ function clearBinaryCache() {
 module.exports = {
   clearBinaryCache,
   IS_WIN, DATA_DIR, BIN_DIR, CACHE_DIR, CUSTOM_LYRICS_DIR, LYRICS_DIR, THUMBNAILS_DIR, METADATA_PATH,
-  LIBRARY_DIR, LIBRARY_PATH,
-  findInPath, resolveBinary, ytDlpCommand
+  LIBRARY_DIR, LIBRARY_PATH, STARTUP_PATH,
+  findInPath, resolveBinary, ytDlpCommand,
+  tutorialDone, markTutorialDone,
+  readStartupConfig, writeStartupConfig
 };

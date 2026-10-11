@@ -42,7 +42,7 @@ function initUpdater(getWindow) {
   autoUpdater.autoDownload = false;
   autoUpdater.autoInstallOnAppQuit = false;
 
-  const canInstall = process.platform !== 'linux' || !!process.env.APPIMAGE;
+  const canInstall = process.platform === 'win32' || (process.platform === 'linux' && !!process.env.APPIMAGE);
   const send = (channel, payload) => {
     const win = getWindow();
     if (win && !win.isDestroyed()) win.webContents.send(channel, payload);

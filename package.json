@@ -1,6 +1,6 @@
 {
   "name": "riff",
-  "version": "41.0.0",
+  "version": "42.0.0",
   "main": "main.js",
   "bin": {
     "riff": "./cli.js"
@@ -81,6 +81,29 @@
       ],
       "icon": "assets/icon.png",
       "category": "AudioVideo"
+    },
+    "mac": {
+      "category": "public.app-category.music",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ],
+      "identity": null,
+      "hardenedRuntime": false,
+      "gatekeeperAssess": false,
+      "artifactName": "${productName}-${version}-mac-${arch}.${ext}"
     },
     "publish": [
       {
