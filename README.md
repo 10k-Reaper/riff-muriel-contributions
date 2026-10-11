@@ -198,18 +198,11 @@ Run `brew install yt-dlp ffmpeg` (Riff finds Homebrew installs automatically).
 npm install
 npm run dist
 ```
+### Contribution
 
-## Project structure
+Please run tests for your PR if it works first, if it looks good, and search any bugs possible.
 
-Some of the main parts of the project are organized around the player, library, and UI.
-
-The banner used in this README is located at:
-
-```text
-rootscripts/riff/banner.png
-```
-
-More detailed information about the source structure and build process can be added as the project grows.
+If it contains bugs/several critical issues/crashes and not tested, please do not post a PR as it's useless
 
 ## Notes
 
