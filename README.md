@@ -4,7 +4,7 @@
 
 # Riff
 
-Riff is a free forever, best and freshly updating desktop music player for Windows and Linux. It is made for playing music, managing a music library, and downloading tracks for offline listening.
+Riff is a free forever, best and freshly updating desktop music player for Windows, Linux, and macOS. It is made for playing music, managing a music library, and downloading tracks for offline listening.
 
 The interface uses Material Design 3 (You), but the player is kept fairly simple and focused on the music itself.
 
@@ -136,6 +136,37 @@ npm run build
 ```
 
 The exact build output depends on the current project configuration.
+
+## macOS
+
+Support for macOS is experimental (built in CI, not tested on every Mac).
+
+### Download
+
+* `Riff-<version>-mac-arm64.dmg` for Apple Silicon (M1 and newer)
+* `Riff-<version>-mac-x64.dmg` for Intel
+
+Open the dmg, drag Riff to Applications.
+
+### First launch
+
+The app is not signed. Right-click Riff in Applications, choose Open, and confirm. If macOS says the app is "damaged": run `xattr -cr /Applications/Riff.app` in Terminal and open it again.
+
+### Tools
+
+Run `brew install yt-dlp ffmpeg` (Riff finds Homebrew installs automatically).
+
+### Notes
+
+* No automatic updates on macOS (download the new dmg from Releases).
+* Data is stored in `~/Library/Application Support/Riff`.
+
+### Build from source
+
+```bash
+npm install
+npm run dist
+```
 
 ## Project structure
 

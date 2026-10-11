@@ -599,6 +599,7 @@ async function downloadTrackToDisk(trackUrl, trackId, platform, meta = {}) {
   const tempPath = path.join(CACHE_DIR, `${cleanId}.temp.opus`);
 
   const args = [
+    '--no-config',
     '--no-playlist',
     '--no-check-certificates',
     '--no-warnings',
@@ -609,7 +610,7 @@ async function downloadTrackToDisk(trackUrl, trackId, platform, meta = {}) {
   ];
 
   if (platform === 'youtube') {
-    args.push('--extractor-args', 'youtube:player_client=android_creator,android,web');
+    args.push('--extractor-args', 'youtube:player_client=android');
   }
 
   args.push(trackUrl);
@@ -654,21 +655,29 @@ async function downloadTrackToDisk(trackUrl, trackId, platform, meta = {}) {
 }
 
 async function prefetchTrack(trackUrl, trackId, platform) {
-  const cleanId = cleanTrackId(trackId);
-  if (prefetchingSet.size > 2) return;
-  if (await findCachedFile(cleanId) || streamUrlCache.has(cleanId) || prefetchingSet.has(trackUrl)) return;
-  prefetchingSet.add(trackUrl);
+  let cleanId = cleanTrackId(trackId);
+  if (!cleanId && trackUrl && trackUrl.includes('v=')) {
+    cleanId = cleanTrackId(trackUrl.split('v=')[1].split('&')[0]);
+  }
+  if (!cleanId || prefetchingSet.size > 2) return;
+  if (await findCachedFile(cleanId) || streamUrlCache.has(cleanId) || prefetchingSet.has(cleanId)) return;
+  prefetchingSet.add(cleanId);
 
   try {
+    if (platform === 'youtube' && (!trackUrl || !trackUrl.startsWith('http')) && cleanId) {
+      trackUrl = `https://www.youtube.com/watch?v=${cleanId}`;
+    }
     const args = [
+      '--no-config',
       '-g',
       '--no-warnings',
       '--no-playlist',
-      '--no-check-certificates'
+      '--no-check-certificates',
+      '-f',
+      'ba/b'
     ];
     if (platform === 'youtube') {
-      args.push('--extractor-args', 'youtube:player_client=android_creator,android,web');
-      args.push('-f', 'bestaudio/ba/b');
+      args.push('--extractor-args', 'youtube:player_client=android');
     }
     args.push(trackUrl);
 
@@ -686,12 +695,92 @@ async function prefetchTrack(trackUrl, trackId, platform) {
         proxyUrl: `http://127.0.0.1:${PORT}/api/audio-proxy?url=${encodeURIComponent(streamUrl)}`
       };
       streamUrlCache.set(cleanId, { timestamp: Date.now(), data });
-      downloadTrackToDisk(trackUrl, cleanId, platform);
     }
   } catch (e) {
   } finally {
-    prefetchingSet.delete(trackUrl);
+    prefetchingSet.delete(cleanId);
   }
+}
+
+const YTM_SONGS_PARAMS = 'EgWKAQIIAWoMEA4QChADEAQQCRAF';
+const YTM_CLIENT_VERSION = '1.20250101.01.00';
+
+function ytmSearchRequest(query) {
+  return new Promise((resolve, reject) => {
+    const body = JSON.stringify({
+      context: { client: { clientName: 'WEB_REMIX', clientVersion: YTM_CLIENT_VERSION, hl: 'en', gl: 'US' } },
+      query,
+      params: YTM_SONGS_PARAMS
+    });
+    const req = https.request({
+      hostname: 'music.youtube.com',
+      path: '/youtubei/v1/search?prettyPrint=false',
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(body),
+        'Origin': 'https://music.youtube.com',
+        'Referer': 'https://music.youtube.com/',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36'
+      }
+    }, (res) => {
+      let data = '';
+      res.setEncoding('utf8');
+      res.on('data', (chunk) => { data += chunk; });
+      res.on('end', () => {
+        if (res.statusCode !== 200) return reject(new Error(`ytmusic status ${res.statusCode}`));
+        try { resolve(JSON.parse(data)); } catch (e) { reject(e); }
+      });
+    });
+    req.setTimeout(8000, () => req.destroy(new Error('ytmusic timeout')));
+    req.on('error', reject);
+    req.write(body);
+    req.end();
+  });
+}
+
+function parseYtmDuration(text) {
+  if (!text || !/^\d+(:\d{1,2}){1,2}$/.test(text.trim())) return 0;
+  return text.trim().split(':').map(Number).reduce((acc, n) => acc * 60 + n, 0);
+}
+
+function parseYtmSongs(json) {
+  const out = [];
+  const tabs = (json && json.contents && json.contents.tabbedSearchResultsRenderer && json.contents.tabbedSearchResultsRenderer.tabs) || [];
+  const sections = (tabs[0] && tabs[0].tabRenderer && tabs[0].tabRenderer.content && tabs[0].tabRenderer.content.sectionListRenderer && tabs[0].tabRenderer.content.sectionListRenderer.contents) || [];
+  for (const section of sections) {
+    const items = (section && section.musicShelfRenderer && section.musicShelfRenderer.contents) || [];
+    for (const wrap of items) {
+      const r = wrap && wrap.musicResponsiveListItemRenderer;
+      if (!r) continue;
+      const cols = r.flexColumns || [];
+      const runsOf = (i) => (cols[i] && cols[i].musicResponsiveListItemFlexColumnRenderer && cols[i].musicResponsiveListItemFlexColumnRenderer.text && cols[i].musicResponsiveListItemFlexColumnRenderer.text.runs) || [];
+      const overlay = r.overlay && r.overlay.musicItemThumbnailOverlayRenderer && r.overlay.musicItemThumbnailOverlayRenderer.content && r.overlay.musicItemThumbnailOverlayRenderer.content.musicPlayButtonRenderer;
+      const videoId = (r.playlistItemData && r.playlistItemData.videoId) || (overlay && overlay.playNavigationEndpoint && overlay.playNavigationEndpoint.watchEndpoint && overlay.playNavigationEndpoint.watchEndpoint.videoId);
+      if (!videoId || !/^[\w-]{11}$/.test(videoId)) continue;
+
+      const title = runsOf(0).map((x) => x.text).join('').trim();
+      const segments = [];
+      let cur = [];
+      for (const run of runsOf(1)) {
+        if (run.text === ' • ') { segments.push(cur.join('').trim()); cur = []; } else cur.push(run.text);
+      }
+      segments.push(cur.join('').trim());
+      const clean = segments.filter((s) => s && !/^(song|video)$/i.test(s));
+      let duration = 0;
+      if (clean.length && parseYtmDuration(clean[clean.length - 1])) duration = parseYtmDuration(clean.pop());
+      const artist = (clean[0] || '').replace(/\s*-\s*Topic$/i, '').trim();
+      const album = clean[1] || '';
+
+      const thumbs = (r.thumbnail && r.thumbnail.musicThumbnailRenderer && r.thumbnail.musicThumbnailRenderer.thumbnail && r.thumbnail.musicThumbnailRenderer.thumbnail.thumbnails) || [];
+      let thumbnail = thumbs.length ? thumbs[thumbs.length - 1].url : `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
+      thumbnail = thumbnail.replace(/=w\d+-h\d+[^&]*$/, '=w544-h544');
+
+      if (!title || (duration && duration < 30)) continue;
+      out.push({ id: videoId, title, artist: artist || 'Unknown Artist', album, duration, thumbnail });
+    }
+  }
+  return out;
 }
 
 async function handleSearch(req, res, query, platform = 'youtube', limit = 20) {
@@ -709,10 +798,10 @@ async function handleSearch(req, res, query, platform = 'youtube', limit = 20) {
         searchCache.set(cacheKey, result);
 
         setTimeout(() => {
-          for (let i = 0; i < Math.min(4, directTracks.length); i++) {
-            prefetchTrack(directTracks[i].url, directTracks[i].id, 'youtube').catch(() => {});
+          if (directTracks[0] && directTracks[0].url) {
+            prefetchTrack(directTracks[0].url, directTracks[0].id, 'youtube').catch(() => {});
           }
-        }, 50);
+        }, 100);
 
         res.writeHead(200, { 'Content-Type': 'application/json' });
         return res.end(JSON.stringify(result));
@@ -722,10 +811,29 @@ async function handleSearch(req, res, query, platform = 'youtube', limit = 20) {
 
   if (platform === 'ytmusic') {
     try {
+      const json = await ytmSearchRequest(query);
+      const songs = parseYtmSongs(json).slice(0, limit);
+      if (songs.length > 0) {
+        const entries = await Promise.all(songs.map(async (s) => {
+          ytArtistCache.set(s.id, s.artist);
+          const isCached = await findCachedFile(s.id);
+          return { id: s.id, title: s.title, artist: s.artist, duration: s.duration, thumbnail: s.thumbnail, url: `https://www.youtube.com/watch?v=${s.id}`, platform: 'youtube', isCached: !!isCached };
+        }));
+        const result = { success: true, tracks: entries };
+        searchCache.set(cacheKey, result);
+        setTimeout(() => {
+          if (entries[0] && entries[0].url) prefetchTrack(entries[0].url, entries[0].id, 'youtube').catch(() => {});
+        }, 60);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify(result));
+      }
+    } catch (e) {}
+
+    try {
       const args = ['--flat-playlist', '--playlist-end', String(limit), '-J', `https://music.youtube.com/search?q=${encodeURIComponent(query)}#songs`];
       const raw = await executeYtDlp(args, 25000);
       const data = JSON.parse(raw);
-      const rawEntries = (data.entries || []).slice(0, limit);
+      const rawEntries = (data.entries || []).filter((item) => item && /^[\w-]{11}$/.test(String(item.id || '')) && item.live_status !== 'is_live' && !(item.duration && (item.duration < 30 || item.duration > 1200)) && !/\b(advert(isement)?|sponsored|ad)\b|реклама/i.test(item.title || '')).slice(0, limit);
 
       function extractArtist(item) {
         let a = '';
@@ -738,7 +846,7 @@ async function handleSearch(req, res, query, platform = 'youtube', limit = 20) {
       }
 
       const toFetch = [];
-      for (let i = 0; i < Math.min(10, rawEntries.length); i++) {
+      for (let i = 0; i < Math.min(20, rawEntries.length); i++) {
         const item = rawEntries[i];
         const flatA = extractArtist(item);
         if (flatA) {
@@ -785,11 +893,18 @@ async function handleSearch(req, res, query, platform = 'youtube', limit = 20) {
         } else if (item.thumbnail) {
           thumbnail = item.thumbnail;
         }
-        const artistVal = item._artist || ytArtistCache.get(item.id) || extractArtist(item) || 'Unknown Artist';
+        let titleVal = item.title || 'untitled';
+        let artistVal = item._artist || ytArtistCache.get(item.id) || extractArtist(item) || '';
+        if (!artistVal && titleVal.includes(' - ')) {
+          const parts = titleVal.split(' - ');
+          artistVal = parts[0].trim();
+          titleVal = parts.slice(1).join(' - ').trim() || titleVal;
+        }
+        if (!artistVal) artistVal = 'Unknown Artist';
         const isCached = await findCachedFile(item.id);
         return {
           id: String(item.id),
-          title: item.title || 'untitled',
+          title: titleVal,
           artist: artistVal,
           duration: item.duration || 0,
           thumbnail: thumbnail,
@@ -891,7 +1006,10 @@ async function handleVibeRecommendations(req, res, payload) {
 }
 
 async function handleStreamInfo(req, res, trackUrl, trackId, platform = 'youtube', title = '', artist = '', duration = 0, thumbnail = '') {
-  const cleanId = cleanTrackId(trackId);
+  let cleanId = cleanTrackId(trackId);
+  if (!cleanId && trackUrl && trackUrl.includes('v=')) {
+    cleanId = cleanTrackId(trackUrl.split('v=')[1].split('&')[0]);
+  }
   const meta = { title, artist, duration, thumbnail };
 
   const cachedFile = await findCachedFile(cleanId);
@@ -909,17 +1027,21 @@ async function handleStreamInfo(req, res, trackUrl, trackId, platform = 'youtube
     const cached = streamUrlCache.get(cleanId);
     if (Date.now() - cached.timestamp < 7200000) {
       res.writeHead(200, { 'Content-Type': 'application/json' });
-      downloadTrackToDisk(trackUrl, cleanId, platform, meta);
+      setTimeout(() => downloadTrackToDisk(trackUrl, cleanId, platform, meta), 10000);
       return res.end(JSON.stringify(cached.data));
     }
+  }
+
+  if (platform === 'youtube' && (!trackUrl || !trackUrl.startsWith('http')) && cleanId) {
+    trackUrl = `https://www.youtube.com/watch?v=${cleanId}`;
   }
 
   let streamUrl = null;
 
   try {
-    const args = ['-g', '--no-warnings', '--no-playlist', '--no-check-certificates', '-f', 'bestaudio/ba/b'];
+    const args = ['--no-config', '-g', '--no-warnings', '--no-playlist', '--no-check-certificates', '-f', 'ba/b'];
     if (platform === 'youtube') {
-      args.push('--extractor-args', 'youtube:player_client=android_creator,android,web');
+      args.push('--extractor-args', 'youtube:player_client=android');
     }
     args.push(trackUrl);
     const raw = await executeYtDlp(args, 18000);
@@ -930,7 +1052,7 @@ async function handleStreamInfo(req, res, trackUrl, trackId, platform = 'youtube
   if (!streamUrl && (title || artist || trackUrl)) {
     try {
       const q = `${artist} ${title}`.trim() || trackUrl;
-      const scArgs = ['-g', '--no-warnings', '--no-playlist', '--no-check-certificates', `scsearch1:${q}`];
+      const scArgs = ['--no-config', '-g', '--no-warnings', '--no-playlist', '--no-check-certificates', '-f', 'ba/b', `scsearch1:${q}`];
       const scRaw = await executeYtDlp(scArgs, 15000);
       const scLines = scRaw.trim().split('\n').map(l => l.trim()).filter(l => l.startsWith('http'));
       if (scLines.length > 0) streamUrl = scLines[0];
@@ -952,7 +1074,7 @@ async function handleStreamInfo(req, res, trackUrl, trackId, platform = 'youtube
   };
 
   streamUrlCache.set(cleanId, { timestamp: Date.now(), data });
-  downloadTrackToDisk(trackUrl, cleanId, platform, meta);
+  setTimeout(() => downloadTrackToDisk(trackUrl, cleanId, platform, meta), 10000);
 
   res.writeHead(200, { 'Content-Type': 'application/json' });
   res.end(JSON.stringify(data));

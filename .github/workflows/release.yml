@@ -29,7 +29,7 @@ jobs:
           - os: ubuntu-latest
             flag: --linux
           - os: macos-latest
-            flag: --mac
+            flag: --mac dmg zip --x64 --arm64
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -45,4 +45,5 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
         run: npx electron-builder ${{ matrix.flag }} --publish always

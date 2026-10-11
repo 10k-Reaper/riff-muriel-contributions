@@ -4,7 +4,8 @@ const path = require('path');
 const { pathToFileURL } = require('url');
 const { spawn } = require('child_process');
 const crypto = require('crypto');
-const { LIBRARY_DIR } = require('./platform');
+const { LIBRARY_DIR, tutorialDone, markTutorialDone, readStartupConfig, writeStartupConfig } = require('./platform');
+const { getLauncherInfo, installLauncher } = require('./launcher');
 
 const enabledFeatures = [];
 if (process.platform === 'linux') {
@@ -12,9 +13,6 @@ if (process.platform === 'linux') {
   app.commandLine.appendSwitch('ozone-platform-hint', 'auto');
   app.commandLine.appendSwitch('disable-features', 'Vulkan');
 
-  app.commandLine.appendSwitch('ignore-gpu-blocklist');
-  app.commandLine.appendSwitch('enable-gpu-rasterization');
-  app.commandLine.appendSwitch('enable-zero-copy');
   if (process.env.RIFF_SKIP_GPU_BUFFER_FLAGS !== '1') {
     app.commandLine.appendSwitch('disable-gpu-memory-buffer-video-frames');
     app.commandLine.appendSwitch('disable-gpu-memory-buffer-compositor-resources');
@@ -23,8 +21,6 @@ if (process.platform === 'linux') {
 
 if (process.platform === 'win32') {
   enabledFeatures.push('HardwareMediaKeyHandling');
-  app.commandLine.appendSwitch('ignore-gpu-blocklist');
-  app.commandLine.appendSwitch('enable-gpu-rasterization');
   app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion');
 }
 
@@ -35,6 +31,10 @@ if (enabledFeatures.length > 0) {
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 app.commandLine.appendSwitch('disable-renderer-backgrounding');
 app.commandLine.appendSwitch('disable-background-timer-throttling');
+app.commandLine.appendSwitch('disable-backgrounding-occluded-windows');
+app.commandLine.appendSwitch('ignore-gpu-blocklist');
+app.commandLine.appendSwitch('enable-gpu-rasterization');
+app.commandLine.appendSwitch('enable-zero-copy');
 
 const extraFlags = (process.env.RIFF_FLAGS || '').split(';').map((s) => s.trim()).filter(Boolean);
 for (const flag of extraFlags) {
@@ -69,9 +69,12 @@ function runGUI() {
   const discordRPC = require('./discord-rpc');
 
   let mainWindow = null;
+  const allowMulti = !!readStartupConfig().multiInstance;
   const gotLock = app.requestSingleInstanceLock();
-  if (!gotLock) { app.quit(); return; }
+  if (!gotLock && !allowMulti) { app.quit(); return; }
+  if (!gotLock && allowMulti) app.setPath('userData', `${app.getPath('userData')}-instance-${process.pid}`);
   app.on('second-instance', () => {
+    if (allowMulti) return;
     if (mainWindow && !mainWindow.isDestroyed()) {
       if (mainWindow.isMinimized()) mainWindow.restore();
       mainWindow.show();
@@ -169,6 +172,7 @@ function runGUI() {
 
   async function createWindow() {
     serverPort = await startServer(PORT);
+    const firstRun = !tutorialDone();
     const initialBounds = getResponsiveWindowBounds();
     const savedState = readWindowState();
 
@@ -182,7 +186,7 @@ function runGUI() {
       height: initialBounds.height,
       minWidth: 360,
                                    minHeight: 500,
-                                   backgroundColor: '#000000',
+                                   backgroundColor: firstRun ? '#8d5ef2' : '#000000',
                                    title: 'Riff',
                                    icon: path.join(__dirname, 'assets', 'icon.png'),
                                    frame: false,
@@ -208,7 +212,20 @@ function runGUI() {
       mainWindow.show();
     });
 
-    mainWindow.loadFile(path.join(__dirname, 'index.html'));
+    mainWindow.loadFile(path.join(__dirname, firstRun ? 'welcome.html' : 'index.html'));
+    if (firstRun) {
+      ipcMain.removeAllListeners('welcome-finish');
+      ipcMain.once('welcome-finish', (e, detail) => {
+        markTutorialDone();
+        if (detail && detail.launcher) installLauncher();
+        if (!mainWindow || mainWindow.isDestroyed()) return;
+        const result = detail && !detail.skipped ? detail : null;
+        mainWindow.setBackgroundColor('#000000');
+        mainWindow.webContents.once('did-finish-load', () => { if (result) mainWindow.webContents.send('welcome-result', result); });
+        mainWindow.loadFile(path.join(__dirname, 'index.html'));
+        require('./updater').initUpdater(() => mainWindow);
+      });
+    }
 
     mainWindow.webContents.setWindowOpenHandler(({ url }) => {
       shell.openExternal(url);
@@ -278,6 +295,8 @@ function runGUI() {
 
       ipcMain.handle('get-server-port', () => serverPort);
       ipcMain.handle('get-gpu-compositing', () => { try { return String(app.getGPUFeatureStatus().gpu_compositing || ''); } catch (e) { return ''; } });
+      ipcMain.handle('launcher-info', () => getLauncherInfo());
+      require('./themes').register(() => mainWindow);
 
       ipcMain.on('discord-rpc-update', (event, trackInfo) => {
         discordRPC.updatePresence(trackInfo);
@@ -382,6 +401,9 @@ function runGUI() {
       ipcMain.on('set-tray-on-close', (e, v) => {
         trayOnClose = !!v;
       });
+
+      ipcMain.handle('get-multi-instance', () => !!readStartupConfig().multiInstance);
+      ipcMain.on('set-multi-instance', (e, value) => { writeStartupConfig({ multiInstance: !!value }); });
 
       const MEDIA_KEYS = { MediaPlayPause: 'toggle', MediaNextTrack: 'next', MediaPreviousTrack: 'prev', MediaStop: 'stop' };
       let mediaKeysWanted = true;
@@ -489,7 +511,7 @@ function runGUI() {
       app.whenReady().then(() => {
         setupTray();
         createWindow();
-        require('./updater').initUpdater(() => mainWindow);
+        if (tutorialDone()) require('./updater').initUpdater(() => mainWindow);
         app.on('activate', () => {
           if (BrowserWindow.getAllWindows().length === 0) createWindow();
         });
