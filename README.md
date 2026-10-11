@@ -28,8 +28,8 @@ macOS support is still in beta and some functions may not work.
 
 ! When you install the .dmg, you'll get this error:
 
-<p align="center">
-  <img src="readmeerror.png" alt="macos" width="50%">
+<p align="left">
+  <img src="readmeerror.png" alt="macos" width="30%">
 </p>
 
 To fix it, write this command in the terminal
