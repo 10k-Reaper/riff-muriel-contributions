@@ -22,7 +22,7 @@ Riff can download audio from:
 
 Downloaded tracks can be added to the local library and played without an internet connection
 
-### macOS warning
+# macOS warning
 
 macOS support is still in beta and some functions may not work.
 
