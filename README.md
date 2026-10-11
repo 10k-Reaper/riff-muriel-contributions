@@ -2,13 +2,26 @@
   <img src="banner.png" alt="Riff Banner" width="100%">
 </p>
 
-# Riff
+<h1 align="center">Riff</h1>
 
-Riff is a free forever, best and freshly updating desktop music player for Windows, Linux, and macOS. It is made for playing music, managing a music library, and downloading tracks for offline listening.
+<p align="center">
+  <a href="https://github.com/rootscripts/riff/commits/main">
+    <img src="https://img.shields.io/github/last-commit/rootscripts/riff?style=for-the-badge&labelColor=16191C&color=94C9FF" alt="Last Commit">
+  </a>
+  <a href="https://github.com/rootscripts/riff/stargazers">
+    <img src="https://img.shields.io/github/stars/rootscripts/riff?style=for-the-badge&labelColor=16191C&color=CAD3F5" alt="Stars">
+  </a>
+  <a href="https://github.com/rootscripts/riff">
+    <img src="https://img.shields.io/github/repo-size/rootscripts/riff?style=for-the-badge&labelColor=16191C&color=D0B4EB" alt="Repo Size">
+  </a>
+  <a href="https://github.com/rootscripts/riff/blob/main/LICENSE">
+    <img src="https://img.shields.io/github/license/rootscripts/riff?style=for-the-badge&labelColor=16191C&color=8EEDD8" alt="License">
+  </a>
+</p>
 
-The interface uses Material Design 3 (You), but the player is kept fairly simple and focused on the music itself.
-
-Riff can get tracks from YouTube and SoundCloud, store them locally, and add them to your library. It also includes best audio editor, lyrics word-by-word support, Discord RPC, media keys, and playlists.
+<p align="center">
+  <b>Riff</b> is a free forever, best and freshly updating desktop music player for Windows, Linux, and macOS. It is made for playing music, managing a music library, and downloading tracks for offline listening.
+</p>
 
 ## Features
 
