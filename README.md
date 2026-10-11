@@ -22,6 +22,24 @@ Riff can download audio from:
 
 Downloaded tracks can be added to the local library and played without an internet connection
 
+### macOS warning
+
+macOS support is still in beta and some functions may not work.
+
+! When you install the .dmg, you'll get this error:
+
+<p align="center">
+  <img src="readmeerror.png" alt="macos" width="50%">
+</p>
+
+To fix it, write this command in the terminal
+
+`xattr -d -r com.apple.quarantine /Applications/Riff.dmg`
+
+(replace Riff.dmg with actual dmg name)
+
+Then run the app again.
+
 ### Local music library
 
 Your music files stay on your computer.
