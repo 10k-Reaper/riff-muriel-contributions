@@ -2037,6 +2037,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   function updateNowPlayingUI(track) {
+    window.dispatchEvent(new CustomEvent('muriel:track', { detail: track }));
     if (el.playbarTitle) el.playbarTitle.textContent = track.title || 'Untitled';
     if (el.playbarTitle) el.playbarTitle.dataset.origTitle = track.title || '';
     if (el.playbarArtist) el.playbarArtist.textContent = track.artist || 'Unknown artist';
@@ -4128,6 +4129,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   function updateQueueBadge() {
+    window.dispatchEvent(new Event('muriel:queue'));
     if (el.queueCount) { el.queueCount.textContent = state.queue.length; el.queueCount.style.display = state.queue.length ? 'inline-block' : 'none'; }
   }
 
@@ -9381,6 +9383,52 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
     }).catch(() => {});
   }
+
+  // ---- Core API for the iPhone interface (mobile/ui), which draws its own screens on this engine ----
+  const savePlaylists = () => { localStorage.setItem('devsize_playlists', JSON.stringify(state.playlists)); renderPlaylistsList(); window.dispatchEvent(new Event('muriel:library')); };
+  window.MurielCore = {
+    state,
+    audio: el.nativeAudio,
+    base: () => `http://127.0.0.1:${state.serverPort}`,
+    thumb: (t) => getTrackThumbUrl(t),
+    playTrack: (track, list, index) => playTrack(track, list || null, typeof index === 'number' ? index : -1),
+    togglePlay: () => togglePlayPause(),
+    next: () => playNext(),
+    prev: () => playPrev(),
+    seek: (sec) => { if (isFinite(sec)) el.nativeAudio.currentTime = Math.max(0, sec); },
+    toggleShuffle: () => { if (el.btnShuffle) el.btnShuffle.click(); return state.isShuffle; },
+    toggleRepeat: () => { if (el.btnRepeat) el.btnRepeat.click(); return state.isRepeat; },
+    isFavorite: (t) => state.favorites.some((f) => isSameTrack(f, t)),
+    toggleFavorite: (t) => { toggleFavoriteTrack(t); window.dispatchEvent(new Event('muriel:library')); return state.favorites.some((f) => isSameTrack(f, t)); },
+    createPlaylist(name, tracks = []) {
+      if (!name || !name.trim()) return null;
+      const pl = { id: 'pl_' + Date.now(), name: name.trim(), tracks: tracks.slice() };
+      state.playlists.push(pl);
+      savePlaylists();
+      return pl;
+    },
+    renamePlaylist(id, name) { const pl = state.playlists.find((p) => p.id === id); if (pl && name && name.trim()) { pl.name = name.trim(); savePlaylists(); } },
+    deletePlaylist(id) { state.playlists = state.playlists.filter((p) => p.id !== id); savePlaylists(); },
+    addToPlaylist(id, track) {
+      const pl = state.playlists.find((p) => p.id === id);
+      if (!pl || pl.tracks.some((t) => isSameTrack(t, track))) return false;
+      pl.tracks.push(track);
+      savePlaylists();
+      return true;
+    },
+    removeFromPlaylist(id, track) { const pl = state.playlists.find((p) => p.id === id); if (pl) { pl.tracks = pl.tracks.filter((t) => !isSameTrack(t, track)); savePlaylists(); } },
+    playNextInQueue(track) {
+      const at = Math.max(0, state.queueIndex + 1);
+      state.queue.splice(at, 0, track);
+      updateQueueBadge();
+      window.dispatchEvent(new Event('muriel:queue'));
+    },
+    addToQueue(track) { state.queue.push(track); updateQueueBadge(); window.dispatchEvent(new Event('muriel:queue')); },
+    isSameTrack: (a, b) => isSameTrack(a, b),
+    formatDuration: (s) => formatDuration(s),
+    toast: (msg, kind) => showToast(msg, kind),
+  };
+  window.dispatchEvent(new Event('muriel:ready'));
 });
 
 document.addEventListener('DOMContentLoaded', () => {
