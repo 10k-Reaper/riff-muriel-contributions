@@ -55,8 +55,47 @@ async function ytMusicSearch(query, limit) {
   }));
 }
 
-// iPhones play AAC natively, so prefer the m4a stream (itag 140) from the iOS client.
+// ---- YouTube audio ----
+// Primary: the visionOS client's audio-only HLS (itag 234, ~128 kbps AAC). Its segments download
+// without a proof-of-origin token, unlike direct googlevideo files, which now 403 after the first MB
+// for most clients. Same approach yt-dlp uses. Needs a visitor id or YouTube asks to "sign in".
+const VOS_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 15_7_3) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15';
+let visitorId = null;
+async function getVisitorId(force) {
+  if (visitorId && !force) return visitorId;
+  const html = await (await globalThis.__murielFetch('https://www.youtube.com/', { headers: { 'User-Agent': VOS_UA, 'Accept-Language': 'en-US' } })).text();
+  visitorId = (html.match(/"VISITOR_DATA":"([^"]+)"/) || [])[1] || null;
+  return visitorId;
+}
+
+async function youtubeHlsAudio(id) {
+  for (const force of [false, true]) {
+    const visitor = await getVisitorId(force);
+    const body = {
+      context: { client: { clientName: 'VISIONOS', clientVersion: '1.02', deviceMake: 'Apple', deviceModel: 'RealityDevice17,1', userAgent: VOS_UA, osName: 'visionOS', osVersion: '26.5.23O471', hl: 'en', timeZone: 'UTC', utcOffsetMinutes: 0, visitorData: visitor || undefined } },
+      videoId: id, contentCheckOk: true, racyCheckOk: true,
+    };
+    const headers = { 'User-Agent': VOS_UA, 'Content-Type': 'application/json', 'X-Youtube-Client-Name': '101', 'X-Youtube-Client-Version': '1.02', Origin: 'https://www.youtube.com' };
+    if (visitor) headers['X-Goog-Visitor-Id'] = visitor;
+    const j = await (await globalThis.__murielFetch('https://www.youtube.com/youtubei/v1/player?prettyPrint=false', { method: 'POST', headers, body: JSON.stringify(body) })).json();
+    const master = j.streamingData && j.streamingData.hlsManifestUrl;
+    if (!master) {
+      if (j.playabilityStatus && j.playabilityStatus.status === 'LOGIN_REQUIRED' && !force) continue; // stale visitor id
+      throw new Error((j.playabilityStatus && j.playabilityStatus.reason) || 'no HLS stream');
+    }
+    const m3u = await (await globalThis.__murielFetch(master, { headers: { 'User-Agent': VOS_UA } })).text();
+    const pick = (itag) => (m3u.match(new RegExp(`#EXT-X-MEDIA:[^\\n]*URI="([^"]+/itag/${itag}/[^"]*)"`)) || [])[1];
+    const playlist = pick(234) || pick(233);
+    if (!playlist) throw new Error('no audio rendition');
+    const d = j.videoDetails || {};
+    return { kind: 'hls', url: playlist, headers: { 'User-Agent': VOS_UA }, ext: 'aac', artist: (d.author || '').replace(/\s*-\s*Topic$/i, ''), title: d.title, duration: Number(d.lengthSeconds) || 0 };
+  }
+  throw new Error('YouTube refused the request');
+}
+
+// Fallback: direct m4a (itag 140). Works for videos YouTube doesn't gate yet.
 async function youtubeAudio(id) {
+  try { return await youtubeHlsAudio(id); } catch (e) { console.warn('[muriel] HLS route failed, trying direct', e.message); }
   const y = await yt();
   let lastErr = null;
   for (const client of ['IOS', 'MWEB', 'TV']) {

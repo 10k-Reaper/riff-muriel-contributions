@@ -201,3 +201,8 @@ html.is-mobile .results-count { font-size: 13px !important; }
 html.is-mobile .suggestion-chips { flex-wrap: nowrap !important; overflow-x: auto !important; scrollbar-width: none !important; margin: 0 -16px !important; padding: 0 16px !important; }
 html.is-mobile .suggestion-chips::-webkit-scrollbar { display: none; }
 html.is-mobile .suggestion-chips .chip-btn { flex: 0 0 auto !important; }
+
+/* the sheet lives inside .app-layout's stacking context, so lift the whole layer above the header while it's open */
+html.is-mobile body.np-open .app-layout { z-index: 3400 !important; }
+html.is-mobile body.np-open .titlebar,
+html.is-mobile body.np-open .top-nav { visibility: hidden !important; }

@@ -83,7 +83,7 @@ function cleanTrackId(id) {
 
 async function findCachedFile(trackId) {
   const cleanId = cleanTrackId(trackId);
-  const extensions = ['.opus', '.webm', '.m4a', '.mp3'];
+  const extensions = ['.opus', '.webm', '.m4a', '.mp3', '.aac'];
   for (const ext of extensions) {
     const filePath = path.join(CACHE_DIR, `${cleanId}${ext}`);
     try {
@@ -1250,7 +1250,8 @@ async function handleLocalTrack(req, res, trackId) {
       '.opus': 'audio/ogg; codecs=opus',
       '.webm': 'audio/webm',
       '.m4a': 'audio/mp4',
-      '.mp3': 'audio/mpeg'
+      '.mp3': 'audio/mpeg',
+      '.aac': 'audio/aac'
     };
     const contentType = mimeTypes[ext] || 'audio/mpeg';
 
@@ -2248,7 +2249,7 @@ const server = http.createServer(async (req, res) => {
     let totalBytes = 0;
     try {
       const files = await fs.promises.readdir(CACHE_DIR);
-      const audioExtRegex = /\.(opus|webm|m4a|mp3)$/i;
+      const audioExtRegex = /\.(opus|webm|m4a|mp3|aac)$/i;
       for (const file of files) {
         if (audioExtRegex.test(file) && !file.includes('.temp.')) {
           const cleanId = file.replace(audioExtRegex, '');
@@ -2317,7 +2318,7 @@ const server = http.createServer(async (req, res) => {
   if (parsedUrl.pathname === '/api/clear-offline-library' && req.method === 'POST') {
     try {
       const files = await fs.promises.readdir(CACHE_DIR);
-      const audioExtRegex = /\.(opus|webm|m4a|mp3)$/i;
+      const audioExtRegex = /\.(opus|webm|m4a|mp3|aac)$/i;
       for (const file of files) {
         if (audioExtRegex.test(file)) {
           try { await fs.promises.unlink(path.join(CACHE_DIR, file)); } catch (e) {}

@@ -4,6 +4,7 @@ const { EventEmitter } = require('events');
 const fs = require('./fs');
 const store = require('./store');
 const ex = require('../extract');
+const { segmentsToAac } = require('../ts2aac');
 
 function fakeProcess(work) {
   const p = new EventEmitter();
@@ -42,13 +43,38 @@ async function searchJson(target, limit) {
   return JSON.stringify({ entries });
 }
 
+// Fetches every segment of an HLS media playlist (4 at a time) and joins them into one .aac file.
+async function downloadHls(playlistUrl, headers) {
+  const m3u = await (await globalThis.__murielFetch(playlistUrl, { headers })).text();
+  const urls = m3u.split('\n').map((l) => l.trim()).filter((l) => l && !l.startsWith('#')).map((l) => new URL(l, playlistUrl).href);
+  const parts = new Array(urls.length);
+  let next = 0;
+  const worker = async () => {
+    while (next < urls.length) {
+      const i = next++;
+      const r = await globalThis.__murielFetch(urls[i], { headers });
+      if (!r.ok) throw new Error(`segment ${i} failed: ${r.status}`);
+      parts[i] = new Uint8Array(await r.arrayBuffer());
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(4, urls.length) }, worker));
+  return segmentsToAac(parts);
+}
+
 async function download(args, target) {
   const audio = await ex.resolveAudio(target);
   if (audio.ext === 'm3u8') throw new Error('this track is only available as a stream');
   let out = opt(args, '-o');
   // yt-dlp templates: the user-facing download keeps the real container (no ffmpeg on iOS to convert)
   out = out.includes('%(ext)s') ? out.replace('%(ext)s', audio.ext) : out;
-  const size = await store.download(audio.url, out, audio.headers || { 'User-Agent': 'Mozilla/5.0' });
+  let size;
+  if (audio.kind === 'hls') {
+    const bytes = await downloadHls(audio.url, audio.headers);
+    await store.writeBytes(out, bytes);
+    size = bytes.length;
+  } else {
+    size = await store.download(audio.url, out, audio.headers || { 'User-Agent': 'Mozilla/5.0' });
+  }
   fs._register(out, size);
   return '';
 }
