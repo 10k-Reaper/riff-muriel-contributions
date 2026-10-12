@@ -6175,7 +6175,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   function updateCustomBg() {
     const bgUrl = localStorage.getItem('muriel_bg_url') || '';
     const opacityVal = parseInt(localStorage.getItem('muriel_bg_opacity') ?? '100', 10);
-    const blurVal = parseInt(localStorage.getItem('muriel_bg_blur') ?? '0', 10);
+    let blurVal = parseInt(localStorage.getItem('muriel_bg_blur') ?? '0', 10);
     const isVideo = /\.(mp4|webm)($|\?)/i.test(bgUrl);
     document.body.classList.toggle('has-video-bg', isVideo && !!bgUrl);
 
@@ -6188,6 +6188,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (!customBg) return;
 
     if (!bgUrl) {
+      document.body.classList.remove('glass-lite');
       customBg.innerHTML = '';
       customBg.style.display = 'none';
       if (btnRemoveCustomBg) btnRemoveCustomBg.disabled = true;
@@ -6228,6 +6229,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         customBg.appendChild(img);
       }
     }
+
+    // Glass over a moving background would re-blur every panel on every frame (~170 MB GPU).
+    // "glass-lite" instead blurs the background once and leaves the panels plain see-through.
+    const animatedBg = /\.(gif|mp4|webm)($|\?)/i.test(bgUrl);
+    const glassLite = animatedBg && getAdv('glass_blur', false);
+    document.body.classList.toggle('glass-lite', glassLite);
+    if (glassLite) blurVal = Math.max(blurVal, parseInt(localStorage.getItem('muriel_glass_blur') || '16', 10) || 16);
 
     const media = customBg.firstElementChild;
     if (media) {
@@ -6563,6 +6571,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (valGlassBlur) valGlassBlur.textContent = `${px}px`;
     const strengthRow = document.getElementById('setting-glass-strength');
     if (strengthRow) strengthRow.classList.toggle('is-disabled', !on);
+    updateCustomBg();
   }
   if (sliderGlassBlur) sliderGlassBlur.addEventListener('input', () => {
     localStorage.setItem('muriel_glass_blur', sliderGlassBlur.value);

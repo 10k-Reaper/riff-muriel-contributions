@@ -6031,3 +6031,9 @@ body.is-playing .logo-bars .b5 { animation: eqA 0.95s ease-in-out infinite -0.35
 /* Karaoke backdrop: the cover-art fallback was blurred + 50% brightness + a 55-75% black overlay = black */
 .tv-bg.fallback { filter: blur(48px) saturate(1.5) brightness(0.9) !important; transform: scale(1.3) !important; }
 .tv-bg.fallback::after { background: linear-gradient(rgba(0, 0, 0, 0.18), rgba(0, 0, 0, 0.45)) !important; }
+
+/* Animated background + glass: background is blurred once instead (see updateCustomBg) */
+body.glass.glass-lite :is(.sidebar, .main-content, #right-panel, .playbar, .search-box) {
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
