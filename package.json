@@ -56,6 +56,12 @@
       "!.github/**",
       "!dist/**",
       "!bin/**",
+      "!mobile/**",
+      "!www/**",
+      "!ios/**",
+      "!capacitor.config.json",
+      "!.claude/**",
+      "!vendor/**",
       "!*.md",
       "!strip_comments.js",
       "!package-lock.json"
