@@ -6001,3 +6001,23 @@ body.glass:not(.perf) :is(.sidebar, .main-content, #right-panel, .playbar, .sear
 body.glass:not(.perf) :is(.sidebar, .main-content, #right-panel, .playbar) {
   border: 1px solid color-mix(in srgb, var(--md-sys-color-on-surface-solid, #fff) 8%, transparent);
 }
+
+/* ---- Muriel logo: equalizer bars that spell an M at rest ---- */
+.logo-bars rect { transform-box: fill-box; transform-origin: 50% 100%; transition: transform 420ms cubic-bezier(0.2, 0, 0, 1); }
+@keyframes eqA { 0%, 100% { transform: scaleY(1); } 30% { transform: scaleY(0.45); } 60% { transform: scaleY(0.8); } 80% { transform: scaleY(0.6); } }
+@keyframes eqB { 0%, 100% { transform: scaleY(1); } 25% { transform: scaleY(1.3); } 55% { transform: scaleY(0.55); } 75% { transform: scaleY(1.15); } }
+@keyframes eqC { 0%, 100% { transform: scaleY(1); } 35% { transform: scaleY(1.9); } 65% { transform: scaleY(1.2); } 85% { transform: scaleY(2.1); } }
+.logo-bars.dancing .b1 { animation: eqA 1.10s ease-in-out infinite; }
+.logo-bars.dancing .b2 { animation: eqB 0.90s ease-in-out infinite -0.2s; }
+.logo-bars.dancing .b3 { animation: eqC 1.25s ease-in-out infinite -0.5s; }
+.logo-bars.dancing .b4 { animation: eqB 1.00s ease-in-out infinite -0.7s; }
+.logo-bars.dancing .b5 { animation: eqA 0.95s ease-in-out infinite -0.35s; }
+.logo-bars { width: 16px; height: 16px; fill: var(--md-sys-color-primary); flex-shrink: 0; overflow: visible; }
+body.is-playing .logo-bars rect { animation-play-state: running; }
+body.is-playing .logo-bars .b1 { animation: eqA 1.10s ease-in-out infinite; }
+body.is-playing .logo-bars .b2 { animation: eqB 0.90s ease-in-out infinite -0.2s; }
+body.is-playing .logo-bars .b3 { animation: eqC 1.25s ease-in-out infinite -0.5s; }
+body.is-playing .logo-bars .b4 { animation: eqB 1.00s ease-in-out infinite -0.7s; }
+body.is-playing .logo-bars .b5 { animation: eqA 0.95s ease-in-out infinite -0.35s; }
+:is(body.perf, body.hidden-window) .logo-bars rect { animation: none !important; }
+@media (prefers-reduced-motion: reduce) { .logo-bars rect { animation: none !important; } }
