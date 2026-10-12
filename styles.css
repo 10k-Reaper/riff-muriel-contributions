@@ -6037,3 +6037,26 @@ body.glass.glass-lite :is(.sidebar, .main-content, #right-panel, .playbar, .sear
   -webkit-backdrop-filter: none !important;
   backdrop-filter: none !important;
 }
+
+/* ---- For you (recommendations) ---- */
+.fy-section { animation: m3FadeUp 350ms cubic-bezier(0.2, 0, 0, 1) both; }
+.fy-genres { flex-wrap: wrap; }
+.fy-row { display: flex; gap: 14px; overflow-x: auto; padding-bottom: 6px; scrollbar-width: none; scroll-snap-type: x proximity; }
+.fy-row::-webkit-scrollbar { display: none; }
+.fy-card, .fy-artist {
+  flex: 0 0 auto; display: flex; flex-direction: column; gap: 6px; text-align: left;
+  background: none; border: none; padding: 0; color: inherit; cursor: pointer; scroll-snap-align: start;
+  transition: transform .15s cubic-bezier(0.2, 0, 0, 1);
+}
+.fy-card:active, .fy-artist:active { transform: scale(0.96); }
+.fy-card { width: 148px; }
+.fy-card img {
+  width: 148px; height: 148px; object-fit: cover; border-radius: var(--md-shape-corner-l);
+  background: var(--md-sys-color-surface-container);
+}
+.fy-title, .fy-artist-name { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fy-title { font-size: calc(13px * var(--font-scale, 1)); font-weight: 600; color: var(--md-sys-color-on-surface); }
+.fy-artist-name { font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-on-surface-variant); margin-top: -4px; }
+.fy-artist { width: 108px; align-items: center; text-align: center; }
+.fy-artist img { width: 108px; height: 108px; border-radius: 50%; object-fit: cover; background: var(--md-sys-color-surface-container); }
+.fy-artist span { width: 100%; font-size: calc(12px * var(--font-scale, 1)); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--md-sys-color-on-surface); }

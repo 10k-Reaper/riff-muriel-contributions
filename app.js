@@ -4825,6 +4825,7 @@ document.addEventListener('DOMContentLoaded', async () => {
           if (viewName === 'discover') {
             if (el.viewDiscover) el.viewDiscover.classList.add('active');
             if (el.navDiscover) el.navDiscover.classList.add('active');
+            loadForYou();
           } else if (viewName === 'favorites') {
             if (el.viewFavorites) el.viewFavorites.classList.add('active');
             if (el.navFavorites) el.navFavorites.classList.add('active');
@@ -8246,10 +8247,72 @@ document.addEventListener('DOMContentLoaded', async () => {
     requestAnimationFrame(animate);
   }
 
+  // "For you": genres, similar artists and picks from /api/discover (iTunes genres + Deezer related/charts)
+  let forYouSig = '';
+  async function loadForYou(force) {
+    const box = document.getElementById('section-for-you');
+    if (!box || !state.serverPort) return;
+    const sig = `${state.history.length}:${state.favorites.length}:${state.history[0] ? state.history[0].id : ''}`;
+    if (!force && sig === forYouSig) return;
+    forYouSig = sig;
+    let data = null;
+    try {
+      const res = await fetch(`http://127.0.0.1:${state.serverPort}/api/discover`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ history: state.history.slice(0, 60), favorites: state.favorites.slice(0, 60) }),
+      });
+      data = await res.json();
+    } catch (e) {}
+    if (!data || !data.success) return;
+    box.innerHTML = '';
+    const section = (title) => {
+      const block = document.createElement('div');
+      block.className = 'section-block fy-section';
+      block.innerHTML = `<div class="section-header-inline"><h3 class="section-title">${escapeHtml(title)}</h3></div>`;
+      box.appendChild(block);
+      return block;
+    };
+    if (data.genres && data.genres.length) {
+      const chips = document.createElement('div');
+      chips.className = 'suggestion-chips fy-genres';
+      data.genres.slice(0, 6).forEach((g) => {
+        const c = document.createElement('button');
+        c.className = 'chip-btn';
+        c.textContent = g;
+        c.addEventListener('click', () => { if (el.searchInput) el.searchInput.value = `${g} music`; performSearch(`${g} music`); });
+        chips.appendChild(c);
+      });
+      section('Your genres').appendChild(chips);
+    }
+    for (const sec of data.sections || []) {
+      const row = document.createElement('div');
+      row.className = 'fy-row';
+      if (sec.type === 'artists') {
+        sec.items.forEach((a) => {
+          const b = document.createElement('button');
+          b.className = 'fy-artist';
+          b.innerHTML = `<img src="${escapeHtml(a.picture || '')}" alt="" loading="lazy" decoding="async"><span>${escapeHtml(a.name)}</span>`;
+          b.addEventListener('click', () => openArtistProfile(a.name));
+          row.appendChild(b);
+        });
+      } else {
+        sec.tracks.forEach((t, i) => {
+          const b = document.createElement('button');
+          b.className = 'fy-card';
+          b.innerHTML = `<img src="${escapeHtml(listThumb(t.thumbnail) || '')}" alt="" loading="lazy" decoding="async"><span class="fy-title">${escapeHtml(t.title)}</span><span class="fy-artist-name">${escapeHtml(t.artist)}</span>`;
+          b.addEventListener('click', () => playTrack(t, sec.tracks, i));
+          row.appendChild(b);
+        });
+      }
+      section(sec.title).appendChild(row);
+    }
+  }
+
   async function loadHomePage() {
     const quickRow = document.getElementById('home-quick-play-row');
     if (quickRow) {
       quickRow.innerHTML = '';
+      loadForYou();
       const recent = state.history.slice(0, 6);
       if (recent.length === 0) {
         quickRow.innerHTML = '<span style="font-size:calc(12px * var(--font-scale, 1));color:var(--md-sys-color-outline)">Play some tracks to see them here</span>';

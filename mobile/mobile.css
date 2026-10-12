@@ -206,3 +206,40 @@ html.is-mobile .suggestion-chips .chip-btn { flex: 0 0 auto !important; }
 html.is-mobile body.np-open .app-layout { z-index: 3400 !important; }
 html.is-mobile body.np-open .titlebar,
 html.is-mobile body.np-open .top-nav { visibility: hidden !important; }
+/* a desktop small-window rule hides the drawer; on the phone it is the playlists sheet */
+html.is-mobile #rail-drawer:not(.hidden) { display: flex !important; flex-direction: column !important; overflow-y: auto !important; padding: 16px !important; background: var(--md-sys-color-surface-container-solid, #1E1F22) !important; box-shadow: 0 -8px 30px rgba(0,0,0,.45) !important; }
+html.is-mobile #rail-drawer:not(.hidden) {
+  position: fixed !important; width: auto !important; left: 8px !important; right: 8px !important; top: auto !important;
+  bottom: calc(var(--tabbar-h) + var(--safe-bottom) + 8px) !important;
+  min-height: 45vh !important; max-height: 70vh !important; border-radius: 24px !important; transform: none !important;
+}
+html.is-mobile #rail-drawer .playlists-list { flex: 1 1 auto; overflow-y: auto; }
+html.is-mobile #rail-drawer:not(.hidden) {
+  width: calc(100vw - 16px) !important; max-width: none !important; min-width: 0 !important;
+  bottom: calc(var(--tabbar-h) + var(--mini-h) + var(--safe-bottom) + 14px) !important;
+  min-height: 40vh !important; max-height: 60vh !important;
+}
+html.is-mobile #rail-drawer .playlists-list:empty::after {
+  content: 'No playlists yet. Tap + to make one, or use + on any song.';
+  display: block; padding: 24px 8px; text-align: center; color: var(--md-sys-color-on-surface-variant); font-size: 14px; line-height: 1.5;
+}
+
+/* ---------- settings at phone width: no overlapping labels or switches ---------- */
+/* the middle hint ("100%", "Default") is positioned at its tick and collides with the edge labels */
+html.is-mobile .setting-hints > span:not(:first-child):not(:last-child),
+html.is-mobile .slider-tick-labels > span:not(:first-child):not(:last-child) { display: none !important; }
+html.is-mobile .setting-hints { position: static !important; }
+/* text column shrinks, the switch/button keeps its size and gets breathing room */
+html.is-mobile .setting-item-top { gap: 12px !important; align-items: center !important; }
+html.is-mobile .setting-item-top > div:first-child,
+html.is-mobile .setting-item-top > .setting-name:first-child { flex: 1 1 auto !important; min-width: 0 !important; }
+html.is-mobile .setting-item-top > .effect-switch-btn,
+html.is-mobile .setting-item-top > button,
+html.is-mobile .setting-item-top > .theme-mode-toggle { flex: 0 0 auto !important; margin-left: auto !important; }
+html.is-mobile .setting-item-top > div:last-child:not(:first-child) { flex: 0 0 auto !important; }
+/* use the width */
+html.is-mobile #view-settings { padding: 0 !important; }
+html.is-mobile .settings-content, html.is-mobile .settings-section, html.is-mobile .m3-group { padding-left: 0 !important; padding-right: 0 !important; margin-left: 0 !important; margin-right: 0 !important; }
+html.is-mobile .setting-item { padding: 14px 14px !important; }
+html.is-mobile .theme-mode-toggle { flex-wrap: wrap !important; }
+html.is-mobile .slider-ticks i.major:not(:first-child):not(:last-child) > span { display: none !important; }
