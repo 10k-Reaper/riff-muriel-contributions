@@ -2018,6 +2018,22 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.addEventListener('load', markImgLoaded, true);
   document.addEventListener('error', markImgLoaded, true);
 
+  // Colours the drawer with a soft glow from the cover's own palette (cheap stand-in for the old blurred banner).
+  function tintNowPlaying(src) {
+    const panel = el.rightPanel;
+    if (!panel) return;
+    if (!src) {
+      panel.style.removeProperty('--np-c1');
+      panel.style.removeProperty('--np-c2');
+      return;
+    }
+    analyzeCover(src).then(a => {
+      if (!state.currentTrack || getTrackThumbUrl(state.currentTrack) !== src) return;
+      panel.style.setProperty('--np-c1', a.accent);
+      panel.style.setProperty('--np-c2', a.accent2 || a.accent);
+    });
+  }
+
   function updateNowPlayingUI(track) {
     if (el.playbarTitle) el.playbarTitle.textContent = track.title || 'Untitled';
     if (el.playbarTitle) el.playbarTitle.dataset.origTitle = track.title || '';
@@ -2072,6 +2088,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (el.btnPlaybarMore) el.btnPlaybarMore.style.display = track.platform === 'local' ? 'none' : '';
 
     updateRightPanelBanner(thumb);
+    tintNowPlaying(thumb);
     updateFavoriteIcon();
     applyVisualEffects();
     highlightPlayingRow();
@@ -2884,6 +2901,20 @@ document.addEventListener('DOMContentLoaded', async () => {
         tvBg.style.backgroundImage = banner.style.backgroundImage;
         hasBanner = true;
       }
+    }
+
+    // no banner (they're gone in Muriel): use the custom background if there is one, else the cover
+    const customBg = localStorage.getItem('muriel_bg_url') || '';
+    if (!hasBanner && customBg) {
+      if (/\.(mp4|webm)($|\?)/i.test(customBg)) {
+        const v = document.createElement('video');
+        Object.assign(v, { src: customBg, muted: true, loop: true, autoplay: true, playsInline: true });
+        v.play().catch(() => {});
+        tvBg.appendChild(v);
+      } else {
+        tvBg.style.backgroundImage = `url("${customBg}")`;
+      }
+      hasBanner = true;
     }
 
     if (!hasBanner) {

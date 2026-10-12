@@ -5924,6 +5924,9 @@ body.perf .art-in { animation: none; }
 
 /* ---- Muriel layout: compact rail + slide-over drawer ---- */
 
+@property --np-c1 { syntax: '<color>'; inherits: true; initial-value: transparent; }
+@property --np-c2 { syntax: '<color>'; inherits: true; initial-value: transparent; }
+
 /* Rail: slimmer */
 .sidebar { width: 64px !important; border-radius: 22px !important; padding: 12px 0 !important; gap: 12px !important; }
 
@@ -5939,11 +5942,14 @@ body.perf .art-in { animation: none; }
   gap: 16px !important;
   z-index: 60;
   overflow: hidden !important;
-  background: var(--md-sys-color-surface-container-low) !important;
+  background:
+    radial-gradient(130% 65% at 50% 0%, color-mix(in srgb, var(--np-c1) 42%, transparent), transparent 72%),
+    radial-gradient(90% 55% at 100% 100%, color-mix(in srgb, var(--np-c2) 26%, transparent), transparent 70%),
+    var(--md-sys-color-surface-container-low) !important;
   box-shadow: 0 18px 48px rgba(0, 0, 0, 0.45);
   transform: none;
   opacity: 1;
-  transition: transform 320ms cubic-bezier(0.2, 0, 0, 1), opacity 220ms ease, visibility 0s linear 0s !important;
+  transition: transform 320ms cubic-bezier(0.2, 0, 0, 1), opacity 220ms ease, visibility 0s linear 0s, --np-c1 900ms ease, --np-c2 900ms ease !important;
 }
 #right-panel.hidden {
   transform: translateX(calc(100% + 32px)) !important;
@@ -5966,7 +5972,7 @@ body.perf .art-in { animation: none; }
 .drawer-pane.hidden { display: none !important; }
 #drawer-now { overflow: hidden; }
 #drawer-queue { overflow-y: auto; display: block; }
-#drawer-queue .drawer-queue-head { position: sticky; top: 0; z-index: 2; padding-bottom: 8px; background: var(--md-sys-color-surface-container-low); }
+#drawer-queue .drawer-queue-head { padding-bottom: 8px; }
 .drawer-queue-head { display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
 .drawer-queue-title { font-weight: 700; font-size: calc(14px * var(--font-scale, 1)); }
 #drawer-queue .tracks-list { margin: 0 -8px; }
@@ -6021,3 +6027,7 @@ body.is-playing .logo-bars .b4 { animation: eqB 1.00s ease-in-out infinite -0.7s
 body.is-playing .logo-bars .b5 { animation: eqA 0.95s ease-in-out infinite -0.35s; }
 :is(body.perf, body.hidden-window) .logo-bars rect { animation: none !important; }
 @media (prefers-reduced-motion: reduce) { .logo-bars rect { animation: none !important; } }
+
+/* Karaoke backdrop: the cover-art fallback was blurred + 50% brightness + a 55-75% black overlay = black */
+.tv-bg.fallback { filter: blur(48px) saturate(1.5) brightness(0.9) !important; transform: scale(1.3) !important; }
+.tv-bg.fallback::after { background: linear-gradient(rgba(0, 0, 0, 0.18), rgba(0, 0, 0, 0.45)) !important; }
