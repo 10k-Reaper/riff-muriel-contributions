@@ -1,5 +1,6 @@
 import UIKit
 import AVFoundation
+import WebKit
 import Capacitor
 
 @UIApplicationMain
@@ -43,6 +44,22 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         let config = UISceneConfiguration(name: "Default Configuration",
                                           sessionRole: connectingSceneSession.role)
         config.delegateClass = SceneDelegate.self
+        return config
+    }
+}
+
+
+// Muriel's web view. WebKit has a (private) preference that mutes a page's audio while the page
+// is hidden: playback keeps "running" and shows on the lock screen, but nothing is audible once the
+// app is backgrounded or the phone is locked. Turn it off, if this iOS version has it.
+class MurielBridgeViewController: CAPBridgeViewController {
+    override open func webViewConfiguration(for instanceConfiguration: InstanceConfiguration) -> WKWebViewConfiguration {
+        let config = super.webViewConfiguration(for: instanceConfiguration)
+        config.allowsInlineMediaPlayback = true
+        config.mediaTypesRequiringUserActionForPlayback = []
+        if config.preferences.responds(to: NSSelectorFromString("_setRequiresPageVisibilityToPlayAudio:")) {
+            config.preferences.setValue(false, forKey: "requiresPageVisibilityToPlayAudio")
+        }
         return config
     }
 }
