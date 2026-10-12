@@ -1945,6 +1945,108 @@ async function handleTranslate(req, res, lines, to = 'en') {
   res.end(JSON.stringify({ success: true, translations: allTranslations }));
 }
 
+
+// ---- Discover: genre + similar-artist recommendations from listening history ----
+// iTunes gives each artist's genre, Deezer gives related artists, their top tracks and per-genre charts.
+// Deezer tracks are played by YouTube search (searchQuery), same as the artist pages.
+const ITUNES_TO_DEEZER_GENRE = {
+  'pop': 132, 'hip-hop/rap': 116, 'rap': 116, 'rock': 152, 'dance': 113, 'r&b/soul': 165, 'alternative': 85,
+  'electronic': 106, 'metal': 464, 'hard rock': 464, 'singer/songwriter': 466, 'folk': 466, 'reggae': 144, 'jazz': 129,
+  'country': 84, 'classical': 98, 'soundtrack': 173, 'latin': 197, 'k-pop': 16, 'j-pop': 16, 'blues': 153, 'soul': 169,
+  'house': 113, 'techno': 106, 'indie pop': 85, 'german pop': 459, 'german hip hop': 116,
+};
+const discoverCache = new Map();
+
+function httpsJson(target, timeout = 5000) {
+  return new Promise((resolve) => {
+    https.get(target, { headers: { 'User-Agent': 'Mozilla/5.0' }, timeout }, (r) => {
+      let d = '';
+      r.on('data', (c) => { d += c; });
+      r.on('end', () => { try { resolve(JSON.parse(d)); } catch (e) { resolve(null); } });
+    }).on('error', () => resolve(null)).on('timeout', function () { this.destroy(); resolve(null); });
+  });
+}
+
+function deezerTrackToTrack(t) {
+  const artist = (t.artist && t.artist.name) || '';
+  return {
+    id: `dz_${t.id}`, title: t.title_short || t.title || 'untitled', artist, duration: t.duration || 0,
+    thumbnail: (t.album && (t.album.cover_big || t.album.cover_medium)) || '',
+    url: `https://www.youtube.com/results?search_query=${encodeURIComponent(`${artist} - ${t.title} official audio`)}`,
+    searchQuery: `${artist} - ${t.title} official audio`, platform: 'youtube', isCached: false,
+  };
+}
+
+async function buildDiscover(historyTracks, favoriteTracks) {
+  const counts = new Map();
+  const add = (t, w) => {
+    const name = String((t && t.artist) || '').replace(/\s*-\s*Topic$/i, '').split(/,|&| feat\.| ft\./i)[0].trim();
+    if (!name || /unknown artist/i.test(name)) return;
+    const k = name.toLowerCase();
+    counts.set(k, { name: (counts.get(k) || {}).name || name, score: ((counts.get(k) || {}).score || 0) + w });
+  };
+  favoriteTracks.forEach((t) => add(t, 3));
+  historyTracks.slice(0, 60).forEach((t, i) => add(t, 1 + (60 - i) / 60));
+  const topArtists = [...counts.values()].sort((a, b) => b.score - a.score).slice(0, 5);
+  const known = new Set([...counts.keys()]);
+
+  const key = topArtists.map((a) => a.name.toLowerCase()).join('|') || 'none';
+  const hit = discoverCache.get(key);
+  if (hit && Date.now() - hit.at < 10 * 60 * 1000) return hit.data;
+
+  const sections = [];
+  if (!topArtists.length) {
+    const [chart, artists] = await Promise.all([httpsJson('https://api.deezer.com/chart/0/tracks?limit=20'), httpsJson('https://api.deezer.com/chart/0/artists?limit=12')]);
+    if (artists && artists.data) sections.push({ type: 'artists', title: 'Popular artists', items: artists.data.map((a) => ({ name: a.name, picture: a.picture_big || a.picture_medium })) });
+    if (chart && chart.data) sections.push({ type: 'tracks', title: 'Top songs right now', tracks: chart.data.map(deezerTrackToTrack) });
+    const data = { genres: [], sections };
+    discoverCache.set(key, { at: Date.now(), data });
+    return data;
+  }
+
+  const lookups = await Promise.all(topArtists.map(async (a) => {
+    const [it, dz] = await Promise.all([
+      httpsJson(`https://itunes.apple.com/search?term=${encodeURIComponent(a.name)}&entity=musicArtist&limit=1`),
+      httpsJson(`https://api.deezer.com/search/artist?q=${encodeURIComponent(a.name)}&limit=1`),
+    ]);
+    return { ...a, genre: it && it.results && it.results[0] && it.results[0].primaryGenreName, dz: dz && dz.data && dz.data[0] };
+  }));
+
+  const genreScore = new Map();
+  lookups.forEach((l) => { if (l.genre) genreScore.set(l.genre, (genreScore.get(l.genre) || 0) + l.score); });
+  const genres = [...genreScore.entries()].sort((a, b) => b[1] - a[1]).map(([g]) => g);
+
+  const related = new Map();
+  await Promise.all(lookups.slice(0, 3).filter((l) => l.dz).map(async (l) => {
+    const r = await httpsJson(`https://api.deezer.com/artist/${l.dz.id}/related?limit=10`);
+    (r && r.data || []).forEach((a) => {
+      const k = a.name.toLowerCase();
+      if (known.has(k) || related.has(k)) return;
+      related.set(k, { name: a.name, picture: a.picture_big || a.picture_medium, id: a.id, because: l.name });
+    });
+  }));
+  const similar = [...related.values()].slice(0, 14);
+  if (similar.length) sections.push({ type: 'artists', title: `Because you listen to ${lookups[0].name}`, items: similar });
+
+  const picks = [];
+  await Promise.all(similar.slice(0, 8).map(async (a) => {
+    const top = await httpsJson(`https://api.deezer.com/artist/${a.id}/top?limit=2`);
+    (top && top.data || []).forEach((t) => picks.push(deezerTrackToTrack(t)));
+  }));
+  if (picks.length) sections.push({ type: 'tracks', title: 'New for you', tracks: picks.sort(() => Math.random() - 0.5).slice(0, 14) });
+
+  for (const g of genres.slice(0, 2)) {
+    const gid = ITUNES_TO_DEEZER_GENRE[g.toLowerCase()];
+    if (!gid) continue;
+    const chart = await httpsJson(`https://api.deezer.com/chart/${gid}/tracks?limit=15`);
+    if (chart && chart.data && chart.data.length) sections.push({ type: 'tracks', title: `Top ${g}`, genre: g, tracks: chart.data.map(deezerTrackToTrack) });
+  }
+
+  const data = { genres, topArtists: lookups.map((l) => ({ name: l.name, genre: l.genre || '', picture: l.dz ? (l.dz.picture_big || l.dz.picture_medium) : '' })), sections };
+  discoverCache.set(key, { at: Date.now(), data });
+  return data;
+}
+
 const server = http.createServer(async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Headers', '*');
@@ -2047,6 +2149,23 @@ const server = http.createServer(async (req, res) => {
     req.on('end', () => {
       const payload = safeJsonParse(body, {});
       handleVibeRecommendations(req, res, payload);
+    });
+    return;
+  }
+
+  if (parsedUrl.pathname === '/api/discover' && req.method === 'POST') {
+    let body = '';
+    req.on('data', chunk => body += chunk);
+    req.on('end', async () => {
+      const payload = safeJsonParse(body, {});
+      try {
+        const data = await buildDiscover(Array.isArray(payload.history) ? payload.history : [], Array.isArray(payload.favorites) ? payload.favorites : []);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: true, ...data }));
+      } catch (e) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: false, error: e.message }));
+      }
     });
     return;
   }

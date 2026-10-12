@@ -1695,13 +1695,15 @@ document.addEventListener('DOMContentLoaded', async () => {
   let lastFrameTime = 0;
   function startVisualizers() {
     const analyserNode = audioEngine.getAnalyserNode();
-    if (!analyserNode || !state.isWindowVisible) return;
+    // the loop also drives the clock, scrubber and synced lyrics, so it runs even without an
+    // analyser (iPhone plays without Web Audio); the visualizer then just reads silence
+    if (!state.isWindowVisible) return;
     if (animationFrameId) cancelAnimationFrame(animationFrameId);
 
     const miniCanvas = el.visualizerCanvas;
     const miniCtx = miniCanvas ? miniCanvas.getContext('2d') : null;
 
-    const bufferLength = analyserNode.frequencyBinCount;
+    const bufferLength = analyserNode ? analyserNode.frequencyBinCount : 64;
     const freqData = new Uint8Array(bufferLength);
     const timeData = new Uint8Array(bufferLength);
 
