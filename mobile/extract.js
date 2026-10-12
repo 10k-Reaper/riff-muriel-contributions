@@ -1,7 +1,7 @@
 // In-app replacement for the parts of yt-dlp Muriel uses: YouTube/YouTube Music search,
 // SoundCloud search, and resolving a track page to a direct audio URL.
 // All network calls go through globalThis.__murielFetch (native HTTP in the app, dev proxy in a browser).
-const { Innertube, Platform } = require('youtubei.js/web');
+const { Innertube, Platform, Constants } = require('youtubei.js/web');
 
 const DESKTOP_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36';
 
@@ -66,7 +66,9 @@ async function youtubeAudio(id) {
       const pick = formats.filter((f) => /mp4/.test(f.mime_type)).sort((a, b) => b.bitrate - a.bitrate)[0] || formats.sort((a, b) => b.bitrate - a.bitrate)[0];
       if (!pick) throw new Error('no audio format');
       const url = pick.url || await pick.decipher(y.session.player);
-      return { url, ext: /mp4/.test(pick.mime_type) ? 'm4a' : 'webm', artist: text(info.basic_info.author).replace(/\s*-\s*Topic$/i, ''), title: info.basic_info.title, duration: info.basic_info.duration };
+      // googlevideo ties the URL to the client that asked for it; download with the same User-Agent
+      const ua = (Constants.CLIENTS[client] && Constants.CLIENTS[client].USER_AGENT) || 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148';
+      return { url, headers: { 'User-Agent': ua }, ext: /mp4/.test(pick.mime_type) ? 'm4a' : 'webm', artist: text(info.basic_info.author).replace(/\s*-\s*Topic$/i, ''), title: info.basic_info.title, duration: info.basic_info.duration };
     } catch (e) { lastErr = e; }
   }
   throw lastErr || new Error('could not extract audio stream');

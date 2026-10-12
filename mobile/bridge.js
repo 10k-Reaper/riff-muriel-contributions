@@ -15,13 +15,15 @@ const mimeOf = (p) => MIME[(p.match(/\.[a-z0-9]+$/i) || [''])[0].toLowerCase()];
 // In the app, CapacitorHttp has already replaced window.fetch with native networking.
 // In a desktop browser (dev harness) requests go through the dev server's /__proxy.
 const pageFetch = window.fetch.bind(window);
+const plainHeaders = (h) => (h instanceof Headers ? Object.fromEntries(h.entries()) : { ...(h || {}) });
 async function toPlain(input, init = {}) {
   if (typeof Request !== 'undefined' && input instanceof Request) {
-    const body = ['GET', 'HEAD'].includes(input.method) ? undefined : await input.clone().text();
-    return [input.url, { method: input.method, headers: Object.fromEntries(input.headers.entries()), body, signal: init.signal || input.signal }];
+    // A Request silently drops "forbidden" headers like User-Agent; youtubei.js passes the real
+    // ones (its client User-Agent included) in `init`, so those win.
+    const body = init.body !== undefined ? init.body : ['GET', 'HEAD'].includes(input.method) ? undefined : await input.clone().text();
+    return [input.url, { method: init.method || input.method, headers: { ...plainHeaders(input.headers), ...plainHeaders(init.headers) }, body, signal: init.signal || input.signal }];
   }
-  const headers = init.headers instanceof Headers ? Object.fromEntries(init.headers.entries()) : { ...(init.headers || {}) };
-  return [String(input), { ...init, headers }];
+  return [String(input), { ...init, headers: plainHeaders(init.headers) }];
 }
 globalThis.__murielFetch = async (input, init) => {
   const [url, opts] = await toPlain(input, init);

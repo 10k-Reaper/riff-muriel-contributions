@@ -1,1 +1,203 @@
-/* mobile layout: filled in next */
+/* ---- Muriel iOS layout ----
+   Top: logo + search. Bottom: tab bar (the desktop rail, turned sideways) with a mini player above it.
+   Tapping the mini player opens the now-playing sheet (the desktop drawer, full screen) and the
+   player bar expands into full transport controls at the bottom of that sheet. */
+
+html.is-mobile {
+  --tabbar-h: 56px;
+  --mini-h: 64px;
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --chrome-bottom: calc(var(--tabbar-h) + var(--mini-h) + var(--safe-bottom) + 12px);
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+}
+html.is-mobile body { overscroll-behavior: none; touch-action: manipulation; }
+
+/* ---------- top bar ---------- */
+html.is-mobile .titlebar {
+  height: auto !important;
+  padding: calc(var(--safe-top) + 8px) 16px 8px !important;
+  -webkit-app-region: no-drag;
+}
+html.is-mobile .titlebar-controls,
+html.is-mobile #btn-mini-player { display: none !important; }
+html.is-mobile .top-nav {
+  position: static !important;
+  transform: none !important;
+  width: 100% !important;
+  display: flex !important;
+  gap: 8px !important;
+  margin: 8px 0 0 !important;
+  padding: 0 16px !important;
+}
+html.is-mobile .search-box-wrapper { flex: 1 1 auto !important; min-width: 0 !important; width: auto !important; max-width: none !important; }
+html.is-mobile .search-box { width: 100% !important; height: 42px !important; }
+
+/* ---------- main area ---------- */
+html.is-mobile .app-layout {
+  padding: 0 !important;
+  margin: 0 !important;
+  gap: 0 !important;
+  height: auto !important;
+  max-height: none !important;
+  position: fixed !important;
+  inset: calc(var(--safe-top) + 108px) 0 var(--chrome-bottom) 0 !important;
+}
+html.is-mobile .main-content {
+  border-radius: 0 !important;
+  padding: 12px 16px 24px !important;
+  background: transparent !important;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* ---------- tab bar (the rail) ---------- */
+html.is-mobile .sidebar {
+  position: fixed !important;
+  left: 0; right: 0; bottom: 0;
+  width: auto !important;
+  height: calc(var(--tabbar-h) + var(--safe-bottom)) !important;
+  padding: 0 4px var(--safe-bottom) !important;
+  border-radius: 0 !important;
+  flex-direction: row !important;
+  justify-content: space-around !important;
+  align-items: center !important;
+  gap: 0 !important;
+  z-index: 3200 !important;
+  background: var(--md-sys-color-surface-container-solid, #1E1F22) !important;
+  border-top: 1px solid color-mix(in srgb, var(--md-sys-color-on-surface-solid, #fff) 8%, transparent);
+}
+html.is-mobile .sidebar-nav { flex-direction: row !important; justify-content: space-around !important; width: auto !important; flex: 1 1 auto; gap: 0 !important; }
+html.is-mobile .rail-action-group { flex-direction: row !important; gap: 0 !important; }
+html.is-mobile .nav-active-indicator,
+html.is-mobile .rail-divider,
+html.is-mobile #btn-toggle-presets-drawer { display: none !important; }
+html.is-mobile .nav-item,
+html.is-mobile .rail-icon-btn { width: 52px !important; height: 44px !important; border-radius: 22px !important; }
+html.is-mobile .nav-item.active { background: var(--md-sys-color-secondary-container) !important; color: var(--md-sys-color-on-secondary-container) !important; }
+
+/* playlists drawer: a bottom sheet instead of a fly-out from the rail */
+html.is-mobile .rail-drawer {
+  position: fixed !important;
+  left: 8px !important; right: 8px !important; top: auto !important;
+  bottom: calc(var(--tabbar-h) + var(--safe-bottom) + 8px) !important;
+  width: auto !important;
+  max-height: 60vh !important;
+  border-radius: 24px !important;
+  z-index: 3300 !important;
+}
+
+/* ---------- mini player ---------- */
+html.is-mobile .playbar {
+  position: fixed !important;
+  left: 8px !important; right: 8px !important;
+  bottom: calc(var(--tabbar-h) + var(--safe-bottom) + 6px) !important;
+  top: auto !important;
+  height: var(--mini-h) !important;
+  padding: 0 8px 0 8px !important;
+  border-radius: 18px !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 4px !important;
+  z-index: 3100 !important;
+  width: auto !important;
+  transition: none !important;
+}
+html.is-mobile .playbar-left { flex: 1 1 auto !important; min-width: 0 !important; gap: 10px !important; width: auto !important; }
+html.is-mobile .playbar-left .track-meta { max-width: none !important; flex: 1 1 auto !important; }
+html.is-mobile .playbar-left > .btn-icon-pill,
+html.is-mobile .playbar-right,
+html.is-mobile #btn-shuffle, html.is-mobile #btn-repeat, html.is-mobile #btn-prev,
+html.is-mobile .playbar-center .scrubber-bar-wrapper { display: none !important; }
+html.is-mobile .playbar-center { flex: 0 0 auto !important; width: auto !important; max-width: none !important; }
+html.is-mobile .playback-controls { gap: 2px !important; }
+html.is-mobile .btn-play-pause { width: 44px !important; height: 44px !important; }
+/* thin progress line along the bottom of the mini player */
+html.is-mobile .playbar::after {
+  content: '';
+  position: absolute;
+  left: 14px; right: 14px; bottom: 3px;
+  height: 2px; border-radius: 1px;
+  background: linear-gradient(90deg, var(--md-sys-color-primary) calc(var(--mini-progress, 0) * 100%), color-mix(in srgb, var(--md-sys-color-on-surface-solid, #fff) 12%, transparent) 0);
+}
+
+/* ---------- now-playing sheet ---------- */
+html.is-mobile #right-panel {
+  position: fixed !important;
+  inset: 0 !important;
+  width: auto !important;
+  max-width: none !important;
+  border-radius: 0 !important;
+  padding: calc(var(--safe-top) + 10px) 20px calc(var(--safe-bottom) + 170px) !important;
+  z-index: 3400 !important;
+  box-shadow: none !important;
+}
+html.is-mobile #right-panel.hidden { transform: translateY(100%) !important; opacity: 1 !important; }
+html.is-mobile #right-panel::before {
+  content: '';
+  position: absolute; top: calc(var(--safe-top) + 4px); left: 50%;
+  width: 40px; height: 5px; margin-left: -20px; border-radius: 3px;
+  background: color-mix(in srgb, var(--md-sys-color-on-surface-solid, #fff) 30%, transparent);
+}
+html.is-mobile .cover-container,
+html.is-mobile .right-panel-cover,
+html.is-mobile .right-panel-cover-fallback { width: min(72vw, 300px) !important; height: min(72vw, 300px) !important; }
+
+/* with the sheet open the player bar becomes full controls docked at its bottom */
+html.is-mobile body.np-open .playbar {
+  z-index: 3500 !important;
+  left: 0 !important; right: 0 !important; bottom: 0 !important;
+  height: auto !important;
+  border-radius: 0 !important;
+  padding: 10px 20px calc(var(--safe-bottom) + 14px) !important;
+  flex-direction: column !important;
+  align-items: stretch !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  border: none !important;
+  backdrop-filter: none !important;
+}
+html.is-mobile body.np-open .playbar::after,
+html.is-mobile body.np-open .playbar-left { display: none !important; }
+html.is-mobile body.np-open .playbar-center { width: 100% !important; display: flex !important; flex-direction: column-reverse !important; gap: 10px !important; }
+html.is-mobile body.np-open .playbar-center .scrubber-bar-wrapper { display: flex !important; width: 100% !important; }
+html.is-mobile body.np-open #btn-shuffle, html.is-mobile body.np-open #btn-repeat, html.is-mobile body.np-open #btn-prev { display: inline-flex !important; }
+html.is-mobile body.np-open .playback-controls { justify-content: space-between !important; width: 100% !important; }
+html.is-mobile body.np-open .btn-play-pause { width: 64px !important; height: 64px !important; }
+html.is-mobile body.np-open .playbar-right { display: flex !important; justify-content: space-around !important; width: 100% !important; }
+html.is-mobile body.np-open .volume-control-group,
+html.is-mobile body.np-open .visualizer-container,
+html.is-mobile body.np-open #btn-toggle-lyrics-panel { display: none !important; }
+
+/* ---------- views, settings and dialogs at phone width ---------- */
+html.is-mobile .settings-layout { flex-direction: column !important; gap: 12px !important; }
+html.is-mobile .settings-nav {
+  position: static !important;
+  flex: 0 0 auto !important;
+  flex-direction: row !important;
+  overflow-x: auto !important;
+  max-height: none !important;
+  width: 100% !important;
+  gap: 6px !important;
+}
+html.is-mobile .settings-nav-btn { flex: 0 0 auto !important; white-space: nowrap !important; }
+html.is-mobile .settings-card,
+html.is-mobile .modal-backdrop > * { max-width: calc(100vw - 24px) !important; }
+html.is-mobile .track-row { padding: 8px 6px !important; gap: 12px !important; }
+html.is-mobile .track-row-index { display: none !important; }
+html.is-mobile .chips-row, html.is-mobile .genre-chips { overflow-x: auto !important; flex-wrap: nowrap !important; }
+
+/* hover-only controls are unreachable by touch; keep row actions visible */
+html.is-mobile .track-row .track-row-actions { opacity: 1 !important; }
+
+/* ---------- touch-sized details ---------- */
+html.is-mobile .rail-action-group { display: flex !important; }
+html.is-mobile .track-row .btn-row-art,
+html.is-mobile .track-row .track-row-duration { display: none !important; }
+html.is-mobile .track-row .btn-icon-pill { width: 36px !important; height: 36px !important; }
+html.is-mobile .results-header { flex-wrap: wrap !important; gap: 4px 8px !important; align-items: baseline !important; }
+html.is-mobile .results-title { font-size: 22px !important; line-height: 1.2 !important; flex: 1 1 100% !important; }
+html.is-mobile .results-count { font-size: 13px !important; }
+html.is-mobile .suggestion-chips { flex-wrap: nowrap !important; overflow-x: auto !important; scrollbar-width: none !important; margin: 0 -16px !important; padding: 0 16px !important; }
+html.is-mobile .suggestion-chips::-webkit-scrollbar { display: none; }
+html.is-mobile .suggestion-chips .chip-btn { flex: 0 0 auto !important; }

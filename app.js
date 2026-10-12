@@ -7196,7 +7196,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (window.electronAPI && window.electronAPI.onWelcomeResult) window.electronAPI.onWelcomeResult((d) => applyWelcomeResult(d));
 
   function checkCompactLayout() {
-    const isMini = window.innerWidth <= 520;
+    // the tiny desktop mini-player window; phones get their own layout instead
+    const isMini = window.innerWidth <= 520 && !(window.electronAPI && window.electronAPI.isMobile);
     document.body.classList.toggle('mini', isMini);
   }
   window.addEventListener('resize', checkCompactLayout);

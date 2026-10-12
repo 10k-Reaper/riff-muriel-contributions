@@ -18,8 +18,12 @@ createServer(async (req, res) => {
       const r = await fetch(u.searchParams.get('url'), { method: req.method, headers, body: chunks.length ? Buffer.concat(chunks) : undefined, redirect: 'follow' });
       const h = {};
       r.headers.forEach((v, k) => { if (!/^(content-encoding|content-length|transfer-encoding|connection|set-cookie)$/i.test(k)) h[k] = v; });
+      const buf = Buffer.from(await r.arrayBuffer());
+      if (r.status >= 400) console.log(`[proxy] ${r.status} ${req.method} ${u.searchParams.get('url').slice(0, 90)}
+  sent: ${JSON.stringify(headers).slice(0, 300)}
+  got: ${buf.toString('utf8', 0, 400)}`);
       res.writeHead(r.status, h);
-      res.end(Buffer.from(await r.arrayBuffer()));
+      res.end(buf);
     } catch (e) { res.writeHead(502); res.end(String(e)); }
     return;
   }

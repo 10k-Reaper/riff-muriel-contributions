@@ -48,7 +48,7 @@ async function download(args, target) {
   let out = opt(args, '-o');
   // yt-dlp templates: the user-facing download keeps the real container (no ffmpeg on iOS to convert)
   out = out.includes('%(ext)s') ? out.replace('%(ext)s', audio.ext) : out;
-  const size = await store.download(audio.url, out, { 'User-Agent': 'Mozilla/5.0' });
+  const size = await store.download(audio.url, out, audio.headers || { 'User-Agent': 'Mozilla/5.0' });
   fs._register(out, size);
   return '';
 }
