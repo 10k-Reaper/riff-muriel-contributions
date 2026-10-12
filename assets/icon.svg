@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#7C4DFF"/>
+      <stop offset="1" stop-color="#E94BA8"/>
+    </linearGradient>
+    <linearGradient id="shine" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.22"/>
+      <stop offset="0.5" stop-color="#FFFFFF" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <rect x="64" y="64" width="896" height="896" rx="224" fill="url(#bg)"/>
+  <rect x="64" y="64" width="896" height="896" rx="224" fill="url(#shine)"/>
+  <!-- equalizer bars whose tops trace an M -->
+  <g fill="#FFFFFF">
+    <rect x="192" y="244" width="96" height="536" rx="48"/>
+    <rect x="328" y="384" width="96" height="396" rx="48" opacity="0.92"/>
+    <rect x="464" y="516" width="96" height="264" rx="48" opacity="0.85"/>
+    <rect x="600" y="384" width="96" height="396" rx="48" opacity="0.92"/>
+    <rect x="736" y="244" width="96" height="536" rx="48"/>
+  </g>
+</svg>
