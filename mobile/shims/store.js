@@ -4,7 +4,8 @@ const { Filesystem, Directory, Encoding } = require('@capacitor/filesystem');
 const { Capacitor } = require('@capacitor/core');
 
 const ROOT = 'Muriel';
-const DIR = Directory.Documents;
+// iOS: Documents (shown in the Files app). Android: app-private storage; public Documents needs permissions.
+const DIR = Capacitor.getPlatform() === 'android' ? Directory.Data : Directory.Documents;
 
 const toReal = (vpath) => ROOT + vpath.replace(/^\/data/, '');
 const toVirtual = (rpath) => '/data' + rpath.slice(ROOT.length);
