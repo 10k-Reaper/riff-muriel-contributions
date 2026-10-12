@@ -13,7 +13,7 @@ if (process.platform === 'linux') {
   app.commandLine.appendSwitch('ozone-platform-hint', 'auto');
   app.commandLine.appendSwitch('disable-features', 'Vulkan');
 
-  if (process.env.RIFF_SKIP_GPU_BUFFER_FLAGS !== '1') {
+  if (process.env.MURIEL_SKIP_GPU_BUFFER_FLAGS !== '1') {
     app.commandLine.appendSwitch('disable-gpu-memory-buffer-video-frames');
     app.commandLine.appendSwitch('disable-gpu-memory-buffer-compositor-resources');
   }
@@ -36,14 +36,16 @@ app.commandLine.appendSwitch('ignore-gpu-blocklist');
 app.commandLine.appendSwitch('enable-gpu-rasterization');
 app.commandLine.appendSwitch('enable-zero-copy');
 
-const extraFlags = (process.env.RIFF_FLAGS || '').split(';').map((s) => s.trim()).filter(Boolean);
+if (readStartupConfig().hwAccel === false) app.disableHardwareAcceleration();
+
+const extraFlags = (process.env.MURIEL_FLAGS || '').split(';').map((s) => s.trim()).filter(Boolean);
 for (const flag of extraFlags) {
   const eq = flag.indexOf('=');
   if (eq > 0) app.commandLine.appendSwitch(flag.slice(0, eq), flag.slice(eq + 1));
   else app.commandLine.appendSwitch(flag);
 }
 
-if (process.env.RIFF_DEBUG === '1') {
+if (process.env.MURIEL_DEBUG === '1') {
   app.whenReady().then(async () => {
     console.log('[gpu] features', JSON.stringify(app.getGPUFeatureStatus()));
     try {
@@ -66,15 +68,11 @@ if (process.argv.includes('lyrics') || process.argv.includes('--lyrics')) {
 
 function runGUI() {
   const { startServer, PORT } = require('./server');
-  const discordRPC = require('./discord-rpc');
 
   let mainWindow = null;
-  const allowMulti = !!readStartupConfig().multiInstance;
   const gotLock = app.requestSingleInstanceLock();
-  if (!gotLock && !allowMulti) { app.quit(); return; }
-  if (!gotLock && allowMulti) app.setPath('userData', `${app.getPath('userData')}-instance-${process.pid}`);
+  if (!gotLock) { app.quit(); return; }
   app.on('second-instance', () => {
-    if (allowMulti) return;
     if (mainWindow && !mainWindow.isDestroyed()) {
       if (mainWindow.isMinimized()) mainWindow.restore();
       mainWindow.show();
@@ -187,7 +185,7 @@ function runGUI() {
       minWidth: 360,
                                    minHeight: 500,
                                    backgroundColor: firstRun ? '#8d5ef2' : '#000000',
-                                   title: 'Riff',
+                                   title: 'Muriel',
                                    icon: path.join(__dirname, 'assets', 'icon.png'),
                                    frame: false,
                                    titleBarStyle: 'hidden',
@@ -223,7 +221,6 @@ function runGUI() {
         mainWindow.setBackgroundColor('#000000');
         mainWindow.webContents.once('did-finish-load', () => { if (result) mainWindow.webContents.send('welcome-result', result); });
         mainWindow.loadFile(path.join(__dirname, 'index.html'));
-        require('./updater').initUpdater(() => mainWindow);
       });
     }
 
@@ -269,12 +266,9 @@ function runGUI() {
       }
     });
 
-    discordRPC.initRPC();
   }
 
   ipcMain.removeHandler('get-server-port');
-  ipcMain.removeHandler('discord-rpc-get-enabled');
-  ipcMain.removeHandler('discord-rpc-get-connected');
   ipcMain.removeHandler('pick-media');
   ipcMain.removeHandler('import-audio-files');
 
@@ -296,22 +290,7 @@ function runGUI() {
       ipcMain.handle('get-server-port', () => serverPort);
       ipcMain.handle('get-gpu-compositing', () => { try { return String(app.getGPUFeatureStatus().gpu_compositing || ''); } catch (e) { return ''; } });
       ipcMain.handle('launcher-info', () => getLauncherInfo());
-      require('./themes').register(() => mainWindow);
-
-      ipcMain.on('discord-rpc-update', (event, trackInfo) => {
-        discordRPC.updatePresence(trackInfo);
-      });
-
-      ipcMain.on('discord-rpc-clear', () => {
-        discordRPC.clearPresence();
-      });
-
-      ipcMain.on('discord-rpc-set-enabled', (event, enabled) => {
-        discordRPC.setEnabled(enabled);
-      });
-
-      ipcMain.handle('discord-rpc-get-enabled', () => discordRPC.getEnabled());
-      ipcMain.handle('discord-rpc-get-connected', () => discordRPC.getConnected());
+      ipcMain.handle('get-app-version', () => app.getVersion());
 
       ipcMain.handle('get-cache-size', async () => {
         const fs = require('fs');
@@ -511,14 +490,14 @@ function runGUI() {
         trayOnClose = !!v;
       });
 
-      ipcMain.handle('get-multi-instance', () => !!readStartupConfig().multiInstance);
-      ipcMain.on('set-multi-instance', (e, value) => { writeStartupConfig({ multiInstance: !!value }); });
+      ipcMain.handle('get-hw-accel', () => readStartupConfig().hwAccel !== false);
+      ipcMain.on('set-hw-accel', (e, value) => { writeStartupConfig({ hwAccel: !!value }); });
 
       const MEDIA_KEYS = { MediaPlayPause: 'toggle', MediaNextTrack: 'next', MediaPreviousTrack: 'prev', MediaStop: 'stop' };
       let mediaKeysWanted = true;
       let mediaKeysActive = false;
       const sendMedia = (cmd) => {
-        if (process.env.RIFF_DEBUG === '1') console.log('[media] globalShortcut', cmd);
+        if (process.env.MURIEL_DEBUG === '1') console.log('[media] globalShortcut', cmd);
         if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('media-command', cmd);
       };
       function unregisterMediaKeys() {
@@ -574,7 +553,7 @@ function runGUI() {
           let trayIcon = nativeImage.createFromPath(iconPath);
           trayIcon = trayIcon.resize({ width: 22, height: 22 });
           tray = new Tray(trayIcon);
-          tray.setToolTip('Riff');
+          tray.setToolTip('Muriel');
           const contextMenu = Menu.buildFromTemplate([
             {
               label: 'Show/Hide',
@@ -620,14 +599,12 @@ function runGUI() {
       app.whenReady().then(() => {
         setupTray();
         createWindow();
-        if (tutorialDone()) require('./updater').initUpdater(() => mainWindow);
         app.on('activate', () => {
           if (BrowserWindow.getAllWindows().length === 0) createWindow();
         });
       });
 
       app.on('window-all-closed', () => {
-        discordRPC.destroyRPC();
         if (process.platform !== 'darwin') app.quit();
       });
 }

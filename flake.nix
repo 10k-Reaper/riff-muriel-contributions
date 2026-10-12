@@ -1,5 +1,5 @@
 {
-  description = "Riff - a desktop audio player (Electron)";
+  description = "Muriel - a desktop audio player (Electron)";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -8,9 +8,9 @@
 
   outputs = { self, nixpkgs, flake-utils, ... }:
     let
-      mkRiff = pkgs:
+      mkMuriel = pkgs:
         pkgs.buildNpmPackage rec {
-          pname = "riff";
+          pname = "muriel";
           version = "42.0.0";
           src = self;
 
@@ -24,16 +24,16 @@
 
           installPhase =
             let
-              appDir = "$out/share/riff";
+              appDir = "$out/share/muriel";
               runtimeDeps = pkgs.lib.makeBinPath [ pkgs.yt-dlp pkgs.ffmpeg ];
               desktop = pkgs.makeDesktopItem {
-                name = "Riff";
-                desktopName = "Riff";
+                name = "Muriel";
+                desktopName = "Muriel";
                 genericName = "Audio Player";
-                exec = "riff";
-                icon = "riff";
+                exec = "muriel";
+                icon = "muriel";
                 categories = [ "AudioVideo" "Audio" "Player" ];
-                startupWMClass = "riff";
+                startupWMClass = "muriel";
               };
             in
             ''
@@ -43,7 +43,7 @@
               for f in *; do cp -r "$f" ${appDir}/; done
 
               mkdir -p $out/bin
-              makeWrapper ${pkgs.electron}/bin/electron $out/bin/riff \
+              makeWrapper ${pkgs.electron}/bin/electron $out/bin/muriel \
                 --add-flags ${appDir} \
                 --prefix PATH : ${runtimeDeps}
 
@@ -51,16 +51,16 @@
               cp ${desktop}/share/applications/*.desktop $out/share/applications/
 
               mkdir -p $out/share/icons/hicolor/256x256/apps
-              cp ${appDir}/assets/icon.png $out/share/icons/hicolor/256x256/apps/riff.png
+              cp ${appDir}/assets/icon.png $out/share/icons/hicolor/256x256/apps/muriel.png
 
               runHook postInstall
             '';
 
           meta = with pkgs.lib; {
-            description = "Riff - audio player made for humans";
-            homepage = "https://github.com/rootscripts/riff";
+            description = "Muriel - audio player made for humans";
+            homepage = "https://github.com/cloverscripts/riff-muriel";
             license = licenses.mit;
-            mainProgram = "riff";
+            mainProgram = "muriel";
             platforms = platforms.linux ++ platforms.darwin;
           };
         };
@@ -71,8 +71,8 @@
       in
       {
         packages = {
-          default = mkRiff pkgs;
-          riff = mkRiff pkgs;
+          default = mkMuriel pkgs;
+          muriel = mkMuriel pkgs;
         };
 
         devShells.default = pkgs.mkShell {
@@ -84,14 +84,14 @@
           ];
 
           shellHook = ''
-            echo "Riff dev shell. Install deps and run with:"
+            echo "Muriel dev shell. Install deps and run with:"
             echo "  npm install && npm start"
           '';
         };
       })
     // {
       overlays.default = final: prev: {
-        riff = mkRiff final;
+        muriel = mkMuriel final;
       };
     };
 }

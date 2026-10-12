@@ -1399,6 +1399,11 @@ body.is-window-resizing .platform-switch-container {
 .track-row:nth-child(6) { animation-delay: 150ms; }
 .track-row:nth-child(7) { animation-delay: 180ms; }
 .track-row:nth-child(8) { animation-delay: 210ms; }
+.track-row:nth-child(9) { animation-delay: 240ms; }
+.track-row:nth-child(10) { animation-delay: 270ms; }
+.track-row:nth-child(11) { animation-delay: 300ms; }
+.track-row:nth-child(12) { animation-delay: 330ms; }
+.track-row:nth-child(n+13) { animation: none; }
 .track-row:hover {
   background: var(--md-sys-color-surface-container);
   transition: background-color var(--transition-hover), transform 0.12s cubic-bezier(0.2, 0, 0, 1);
@@ -3490,7 +3495,7 @@ body.is-window-resizing .platform-switch-container {
   pointer-events: none;
 }
 
-.riff-toast {
+.muriel-toast {
   pointer-events: auto;
   min-width: 240px;
   max-width: 480px;
@@ -3507,14 +3512,14 @@ body.is-window-resizing .platform-switch-container {
   --liquid-target-radius: 9999px;
 }
 
-.riff-toast .toast-icon {
+.muriel-toast .toast-icon {
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
 }
 
-.riff-toast .toast-text {
+.muriel-toast .toast-text {
   flex: 1;
   color: var(--md-sys-color-on-surface);
   font-size: 14px;
@@ -3525,40 +3530,40 @@ body.is-window-resizing .platform-switch-container {
   text-overflow: ellipsis;
 }
 
-.riff-toast.liquid-open > * {
+.muriel-toast.liquid-open > * {
   opacity: 1 !important;
   transform: translateY(0) !important;
 }
 
-.riff-toast.info {
+.muriel-toast.info {
   background: var(--md-sys-color-surface-container-highest);
   color: var(--md-sys-color-on-surface);
 }
-.riff-toast.info .toast-icon {
+.muriel-toast.info .toast-icon {
   color: var(--md-sys-color-primary);
 }
 
-.riff-toast.success {
+.muriel-toast.success {
   background: var(--md-sys-color-surface-container-highest);
   color: var(--md-sys-color-on-surface);
 }
-.riff-toast.success .toast-icon {
+.muriel-toast.success .toast-icon {
   color: #388e3c;
 }
 
-.riff-toast.warning {
+.muriel-toast.warning {
   background: var(--md-sys-color-surface-container-highest);
   color: var(--md-sys-color-on-surface);
 }
-.riff-toast.warning .toast-icon {
+.muriel-toast.warning .toast-icon {
   color: #f57c00;
 }
 
-.riff-toast.error {
+.muriel-toast.error {
   background: var(--md-sys-color-error-container);
   color: var(--md-sys-color-on-error-container);
 }
-.riff-toast.error .toast-icon {
+.muriel-toast.error .toast-icon {
   color: var(--md-sys-color-error);
 }
 
@@ -3628,7 +3633,7 @@ body.is-window-resizing .platform-switch-container {
   padding: 4px;
   gap: 4px;
 }
-.theme-mode-btn {
+.theme-mode-btn, .fps-cap-btn {
   background: transparent;
   border: none;
   color: var(--md-sys-color-on-surface-variant);
@@ -3637,7 +3642,7 @@ body.is-window-resizing .platform-switch-container {
   font-size: calc(12px * var(--font-scale, 1));
   font-weight: 500;
 }
-.theme-mode-btn.active {
+.theme-mode-btn.active, .fps-cap-btn.active {
   background: var(--md-sys-color-secondary-container);
   color: var(--md-sys-color-on-secondary-container);
   font-weight: 700;
@@ -5848,3 +5853,151 @@ body.has-video-bg :is(.lyrics-header-actions, .right-panel .lyrics-header-action
 .css-editor-host { flex: 1; min-height: 0; }
 
 
+
+
+/* ---- Muriel: smoothness pass ---- */
+
+.artwork-wrapper { position: relative; }
+
+.art-ghost {
+  animation: artGhostOut 380ms cubic-bezier(0.3, 0, 0.8, 0.15) forwards;
+  will-change: opacity, transform, filter;
+}
+.art-in {
+  animation: artIn 520ms cubic-bezier(0.05, 0.7, 0.1, 1) both;
+}
+@keyframes artGhostOut {
+  to { opacity: 0; transform: scale(0.92); filter: blur(6px); }
+}
+@keyframes artIn {
+  from { opacity: 0; transform: scale(1.06); filter: blur(10px); }
+  to { opacity: 1; transform: none; filter: none; }
+}
+
+.right-panel-banner .banner-image.banner-leaving {
+  animation: bannerLeave 700ms cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+@keyframes bannerLeave {
+  to { opacity: 0; }
+}
+
+::view-transition { pointer-events: none; }
+html.theme-vt::view-transition-old(root),
+html.theme-vt::view-transition-new(root) {
+  animation-duration: 560ms;
+  animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+:is(.track-row-thumb, .my-wave-track-cover, .quick-play-pill-img) {
+  transition: opacity 280ms cubic-bezier(0.2, 0, 0, 1);
+}
+:is(.track-row-thumb, .my-wave-track-cover, .quick-play-pill-img):not(.is-loaded) {
+  opacity: 0;
+}
+
+.track-row.playing {
+  transition: background-color 260ms cubic-bezier(0.2, 0, 0, 1), transform 0.12s cubic-bezier(0.2, 0, 0, 1);
+}
+
+.main-content,
+.right-panel,
+.settings-nav {
+  overscroll-behavior: contain;
+}
+
+/* long libraries: skip layout/paint for off-screen rows */
+.track-row:nth-child(n+25) {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 64px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .art-ghost { display: none; }
+  .art-in, .banner-leaving { animation: none; }
+}
+body.perf .art-ghost { display: none; }
+
+/* Blur effects off: drop every blur, they each force an offscreen GPU surface */
+body.no-blur *, body.no-blur *::before, body.no-blur *::after { backdrop-filter: none !important; }
+body.no-blur :is(.banner-image, .banner-video, .lyric-line, .art-ghost, .art-in) { filter: none !important; }
+body.perf .art-in { animation: none; }
+
+/* ---- Muriel layout: compact rail + slide-over drawer ---- */
+
+/* Rail: slimmer */
+.sidebar { width: 64px !important; border-radius: 22px !important; padding: 12px 0 !important; gap: 12px !important; }
+
+/* Drawer: overlays the content instead of taking a column */
+.app-layout { position: relative; }
+#right-panel {
+  position: absolute !important;
+  top: 0; right: 16px; bottom: 0;
+  width: 380px !important;
+  min-width: 0 !important;
+  max-width: calc(100% - 120px) !important;
+  padding: 16px 20px 20px !important;
+  gap: 16px !important;
+  z-index: 60;
+  overflow: hidden !important;
+  background: var(--md-sys-color-surface-container-low) !important;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.45);
+  transform: none;
+  opacity: 1;
+  transition: transform 320ms cubic-bezier(0.2, 0, 0, 1), opacity 220ms ease, visibility 0s linear 0s !important;
+}
+#right-panel.hidden {
+  transform: translateX(calc(100% + 32px)) !important;
+  opacity: 0 !important;
+  visibility: hidden;
+  pointer-events: none !important;
+  transition: transform 260ms cubic-bezier(0.3, 0, 0.8, 0.15), opacity 200ms ease, visibility 0s linear 260ms !important;
+}
+.drawer-tabs { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+.drawer-tab {
+  background: transparent; border: none; border-radius: var(--md-shape-corner-full);
+  padding: 7px 14px; color: var(--md-sys-color-on-surface-variant);
+  font-size: calc(13px * var(--font-scale, 1)); font-weight: 500;
+  transition: background-color 160ms ease, color 160ms ease;
+}
+.drawer-tab:hover { background: var(--md-sys-color-surface-container-high); }
+.drawer-tab.active { background: var(--md-sys-color-secondary-container); color: var(--md-sys-color-on-secondary-container); font-weight: 700; }
+.drawer-tabs #btn-close-right-panel { margin-left: auto; }
+.drawer-pane { display: flex; flex-direction: column; gap: 16px; min-height: 0; flex: 1; }
+.drawer-pane.hidden { display: none !important; }
+#drawer-now { overflow: hidden; }
+#drawer-queue { overflow-y: auto; display: block; }
+#drawer-queue .drawer-queue-head { position: sticky; top: 0; z-index: 2; padding-bottom: 8px; background: var(--md-sys-color-surface-container-low); }
+.drawer-queue-head { display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
+.drawer-queue-title { font-weight: 700; font-size: calc(14px * var(--font-scale, 1)); }
+#drawer-queue .tracks-list { margin: 0 -8px; }
+#drawer-queue .track-row { padding: 8px 10px; gap: 12px; }
+#drawer-queue .track-row-index { display: none; }
+#drawer-queue .track-row-thumb { width: 40px; height: 40px; }
+
+/* Player bar: give the track title room */
+.playbar { grid-template-columns: minmax(280px, 1fr) minmax(320px, 600px) minmax(280px, 1fr) !important; }
+#btn-toggle-queue { position: relative; }
+.playbar-left .track-meta { flex: 0 1 auto !important; max-width: 220px; }
+.playbar-badge {
+  display: none;
+  position: absolute; top: -2px; right: -2px;
+  font-size: 9px; font-weight: 700; line-height: 1.4;
+  padding: 0 5px; min-width: 15px; text-align: center;
+  background: var(--md-sys-color-primary); color: var(--md-sys-color-on-primary);
+  border-radius: var(--md-shape-corner-full);
+  pointer-events: none;
+}
+
+/* Custom background: never animate or decode while nobody can see it */
+body.perf #custom-bg { display: none !important; }
+body.hidden-window #custom-bg img { display: none !important; }
+
+/* Glass UI: frost the see-through panels. Beats the "Blur effects off" rule on purpose,
+   since this is its own opt-in; performance mode still turns it off. */
+body.glass:not(.perf) :is(.sidebar, .main-content, #right-panel, .playbar, .search-box) {
+  -webkit-backdrop-filter: blur(var(--glass-blur, 16px)) saturate(1.25) !important;
+  backdrop-filter: blur(var(--glass-blur, 16px)) saturate(1.25) !important;
+}
+body.glass:not(.perf) :is(.sidebar, .main-content, #right-panel, .playbar) {
+  border: 1px solid color-mix(in srgb, var(--md-sys-color-on-surface-solid, #fff) 8%, transparent);
+}

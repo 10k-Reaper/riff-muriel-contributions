@@ -1,6 +1,8 @@
 
 document.addEventListener('DOMContentLoaded', async () => {
-  try { localStorage.removeItem('riff_stats'); } catch (e) {}
+  try { localStorage.removeItem('muriel_stats'); } catch (e) {}
+
+  const THUMB_FALLBACK = "if(this.dataset.full&&this.src!==this.dataset.full){this.src=this.dataset.full}else{this.style.visibility='hidden'}";
 
   function escapeHtml(value) {
     return String(value == null ? '' : value)
@@ -119,7 +121,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     const toast = document.createElement('div');
-    toast.className = `riff-toast ${type} liquid-content-stagger`;
+    toast.className = `muriel-toast ${type} liquid-content-stagger`;
 
     let iconSvg = '';
     if (type === 'error') {
@@ -279,11 +281,11 @@ document.addEventListener('DOMContentLoaded', async () => {
   const rawCustomPresets = safeArray('devsize_custom_presets');
   const normalizedCustomPresets = rawCustomPresets.map(normalizePreset).filter(Boolean);
 
-  const savedVolumeRaw = parseFloat(localStorage.getItem('riff_volume'));
+  const savedVolumeRaw = parseFloat(localStorage.getItem('muriel_volume'));
   const savedVolume = Number.isFinite(savedVolumeRaw) ? Math.max(0, Math.min(1, savedVolumeRaw)) : 0.85;
 
   const state = {
-    platform: localStorage.getItem('riff_platform') || 'youtube',
+    platform: localStorage.getItem('muriel_platform') || 'youtube',
     currentView: 'discover',
     previousView: 'discover',
     currentPlaylistId: null,
@@ -297,25 +299,26 @@ document.addEventListener('DOMContentLoaded', async () => {
     currentTrackContext: null,
     currentTrackIndexInContext: -1,
     isPlaying: false,
-    isMuted: localStorage.getItem('riff_muted') === '1',
+    isMuted: localStorage.getItem('muriel_muted') === '1',
     volume: savedVolume,
-    isRepeat: localStorage.getItem('riff_repeat') === '1',
-    isShuffle: localStorage.getItem('riff_shuffle') === '1',
+    isRepeat: localStorage.getItem('muriel_repeat') === '1',
+    isShuffle: localStorage.getItem('muriel_shuffle') === '1',
     isAutoRemix: false,
     myWaveActive: false,
-    isRightPanelOpen: true,
+    isRightPanelOpen: false,
+    drawerTab: 'now',
     lyricsMode: 'line',
     uiScale: savedScale,
     activePresetId: 'p_default',
-    themeMode: localStorage.getItem('riff_theme_mode') || 'dark',
-    paletteStyle: localStorage.getItem('riff_palette_style') || 'classic',
-    meshBrightness: parseInt(localStorage.getItem('riff_mesh_brightness') || '100', 10),
-    themeAccent: localStorage.getItem('riff_theme_accent') || '#6750A4',
-    themeIntensity: parseInt(localStorage.getItem('riff_theme_intensity') || '0'),
-    themeBrightness: parseInt(localStorage.getItem('riff_theme_brightness') || '50'),
-    trEnabled: localStorage.getItem('riff_tr_enabled') === 'true',
-    trLang: localStorage.getItem('riff_tr_lang') || 'en',
-    trAuto: localStorage.getItem('riff_tr_auto') === 'true',
+    themeMode: localStorage.getItem('muriel_theme_mode') || 'dark',
+    paletteStyle: localStorage.getItem('muriel_palette_style') || 'classic',
+    meshBrightness: parseInt(localStorage.getItem('muriel_mesh_brightness') || '100', 10),
+    themeAccent: localStorage.getItem('muriel_theme_accent') || '#6750A4',
+    themeIntensity: parseInt(localStorage.getItem('muriel_theme_intensity') || '0'),
+    themeBrightness: parseInt(localStorage.getItem('muriel_theme_brightness') || '50'),
+    trEnabled: localStorage.getItem('muriel_tr_enabled') === 'true',
+    trLang: localStorage.getItem('muriel_tr_lang') || 'en',
+    trAuto: localStorage.getItem('muriel_tr_auto') === 'true',
     trActive: false,
     currentTranslations: null,
     isTvKaraokeOpen: false,
@@ -352,7 +355,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                           currentAbortController: null,
                           presetToRenameId: null,
                           serverPort: 38472,
-                          discordRpcEnabled: safeJson('devsize_discord_rpc', true),
                           lastBroadcastStateKey: null,
                           syncTimeout: null,
                           scrubberDragTargetTime: undefined
@@ -367,28 +369,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   checkToolsStatus(true);
-
-  if (window.electronAPI && window.electronAPI.discordRpcSetEnabled) {
-    window.electronAPI.discordRpcSetEnabled(state.discordRpcEnabled);
-  }
-
-  function sendDiscordRpcUpdate(track, isPlaying) {
-    if (!window.electronAPI || !window.electronAPI.discordRpcUpdate) return;
-    if (!track || !isPlaying) {
-      if (window.electronAPI.discordRpcClear) window.electronAPI.discordRpcClear();
-      return;
-    }
-    const origThumb = (track.thumbnail && !track.thumbnail.startsWith('file://')) ? track.thumbnail : '';
-    window.electronAPI.discordRpcUpdate({
-      title: track.title || 'Unknown Track',
-      artist: track.artist || 'Unknown Artist',
-      duration: track.duration || 0,
-      thumbnail: origThumb,
-      url: track.url || '',
-      platform: track.platform || state.platform,
-      startTimestamp: Math.floor(Date.now() / 1000)
-    });
-  }
 
   function sendStateToServer(currentWordText = '', wordIndex = -1, lineIndex = -1) {
     if (!state.currentTrack) return;
@@ -491,13 +471,13 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   function getAdv(name, defaultVal = true) {
-    const val = localStorage.getItem(`riff_adv_${name}`);
+    const val = localStorage.getItem(`muriel_adv_${name}`);
     if (val === null) return defaultVal;
     return val === 'true';
   }
 
   function setAdv(name, boolVal) {
-    localStorage.setItem(`riff_adv_${name}`, boolVal ? 'true' : 'false');
+    localStorage.setItem(`muriel_adv_${name}`, boolVal ? 'true' : 'false');
   }
 
   function applyReducedMotionSetting() {
@@ -1060,6 +1040,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     refreshCachedThemeColors();
   }
 
+  // Auto-theme palettes touch dozens of CSS vars at once; a root view transition
+  // crossfades the whole old/new palette instead of snapping.
+  function smoothThemeSwap(fn) {
+    if (!document.startViewTransition || document.hidden || document.body.classList.contains('perf') || matchMedia('(prefers-reduced-motion: reduce)').matches) return fn();
+    const root = document.documentElement;
+    root.classList.add('theme-vt');
+    const vt = document.startViewTransition(fn);
+    vt.finished.finally(() => root.classList.remove('theme-vt'));
+  }
+
   function updateThemeFromState() {
     if (state.themeMode === 'auto') {
       const coverThumb = (state.currentTrack && (typeof getTrackThumbUrl === 'function' ? getTrackThumbUrl(state.currentTrack) : state.currentTrack.thumbnail)) || '';
@@ -1077,7 +1067,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             derivedBrightness = Math.min(75, Math.max(55, Math.round(55 + normLum * 20)));
           }
 
-          applyTheme(analysis.accent, derivedMode, derivedIntensity, derivedBrightness, analysis.accent2, true);
+          smoothThemeSwap(() => applyTheme(analysis.accent, derivedMode, derivedIntensity, derivedBrightness, analysis.accent2, true));
         });
       } else {
         applyTheme(state.themeAccent, 'dark', state.themeIntensity, state.themeBrightness, null, true);
@@ -1357,13 +1347,13 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (el.sliderScale) el.sliderScale.value = state.uiScale;
   if (el.valScale) el.valScale.textContent = `${state.uiScale}%`;
 
-  const savedFontScale = localStorage.getItem('riff_font_scale') || '100';
+  const savedFontScale = localStorage.getItem('muriel_font_scale') || '100';
   const fontVal = parseInt(savedFontScale, 10) || 100;
   if (el.sliderFontScale) el.sliderFontScale.value = fontVal.toString();
   if (el.valFontScale) el.valFontScale.textContent = `${fontVal}%`;
   document.documentElement.style.setProperty('--font-scale', ((fontVal / 100) * 1.25).toString());
 
-  const savedRadius = localStorage.getItem('riff_corner_radius') || '16';
+  const savedRadius = localStorage.getItem('muriel_corner_radius') || '16';
   if (el.sliderCornerRadius) el.sliderCornerRadius.value = savedRadius;
   if (el.valCornerRadius) el.valCornerRadius.textContent = savedRadius === '16' ? 'Default' : `${savedRadius}px`;
   document.documentElement.style.setProperty('--md-shape-corner-l', `${savedRadius}px`);
@@ -1371,10 +1361,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   applyReducedMotionSetting();
 
-  const savedBannerBlur = parseInt(localStorage.getItem('riff_banner_blur') || '3', 10);
-  const savedBannerOpacity = parseInt(localStorage.getItem('riff_banner_opacity') || '100', 10);
-  const savedBannerFade = parseInt(localStorage.getItem('riff_banner_fade') || '38', 10);
-  const savedBannerFit = localStorage.getItem('riff_banner_fit') || 'zoom';
+  const savedBannerBlur = parseInt(localStorage.getItem('muriel_banner_blur') || '3', 10);
+  const savedBannerOpacity = parseInt(localStorage.getItem('muriel_banner_opacity') || '100', 10);
+  const savedBannerFade = parseInt(localStorage.getItem('muriel_banner_fade') || '38', 10);
+  const savedBannerFit = localStorage.getItem('muriel_banner_fit') || 'zoom';
 
   document.documentElement.style.setProperty('--banner-blur', `${savedBannerBlur}px`);
   document.documentElement.style.setProperty('--banner-opacity', `${savedBannerOpacity / 100}`);
@@ -1383,8 +1373,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   applyBannerFit(savedBannerFit);
 
   function applyUiOpacity() {
-    const rawUi = parseInt(localStorage.getItem('riff_ui_alpha') || '100', 10);
-    const rawText = parseInt(localStorage.getItem('riff_text_alpha') || '100', 10);
+    const rawUi = parseInt(localStorage.getItem('muriel_ui_alpha') || '100', 10);
+    const rawText = parseInt(localStorage.getItem('muriel_text_alpha') || '100', 10);
     const uiAlpha = Math.max(20, Math.min(100, isNaN(rawUi) ? 100 : rawUi));
     const textAlpha = Math.max(1, Math.min(100, isNaN(rawText) ? 100 : rawText));
 
@@ -1603,7 +1593,6 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (updateArr(state.queue)) renderQueueView();
 
       sendStateToServer();
-      sendDiscordRpcUpdate(state.currentTrack, state.isPlaying);
       updateMediaSession();
 
       if (el.renameTrackModal) closeModal(el.renameTrackModal);
@@ -1611,7 +1600,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   }
 
-  const audioEngine = new window.RiffAudioEngine();
+  const audioEngine = new window.MurielAudioEngine();
   let hlsInstance = null;
   let animationFrameId = null;
 
@@ -1720,7 +1709,8 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (!state.isWindowVisible) return;
       animationFrameId = requestAnimationFrame(renderLoop);
 
-      if (document.body.classList.contains('perf') && timestamp - lastFrameTime < 33) return;
+      const fpsCap = document.body.classList.contains('perf') ? 30 : (parseInt(localStorage.getItem('muriel_fps_cap') || '0', 10) || 0);
+      if (fpsCap && timestamp - lastFrameTime < 1000 / fpsCap - 1) return;
       lastFrameTime = timestamp;
 
       if (!state.isPlaying && !isDraggingScrubber) {
@@ -1892,6 +1882,13 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (animationFrameId) cancelAnimationFrame(animationFrameId);
       document.body.classList.add('app-paused');
       document.body.classList.add('hidden-window');
+      if (getAdv('trim_bg', true)) {
+        clearTimeout(handleVisibilityChange.trimTimer);
+        // wait a bit so quick alt-tabs don't throw away decoded images we're about to redraw
+        handleVisibilityChange.trimTimer = setTimeout(() => {
+          if (!state.isWindowVisible && window.electronAPI && window.electronAPI.trimMemory) window.electronAPI.trimMemory();
+        }, 10000);
+      }
     } else {
       document.body.classList.remove('app-paused');
       document.body.classList.remove('hidden-window');
@@ -1982,6 +1979,45 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   }
 
+  // Crossfades cover art: the old image is cloned into a ghost that fades/shrinks out
+  // while the new one blurs in underneath. The new src is decoded first so it never pops.
+  function swapArtwork(img, src) {
+    const artSwapTokens = swapArtwork.tokens || (swapArtwork.tokens = new WeakMap());
+    const token = {};
+    artSwapTokens.set(img, token);
+    const shown = img.style.display === 'block' && img.complete && img.naturalWidth > 0;
+    if (!shown || img.getAttribute('src') === src || document.body.classList.contains('perf') || matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      img.src = src;
+      img.style.display = 'block';
+      return;
+    }
+    const pre = new Image();
+    pre.src = src;
+    const commit = () => {
+      if (artSwapTokens.get(img) !== token) return;
+      img.parentElement.querySelectorAll('.art-ghost').forEach(g => g.remove());
+      const ghost = img.cloneNode(false);
+      ghost.removeAttribute('id');
+      ghost.classList.remove('art-in');
+      ghost.classList.add('art-ghost');
+      ghost.style.cssText = `position:absolute;left:${img.offsetLeft}px;top:${img.offsetTop}px;width:${img.offsetWidth}px;height:${img.offsetHeight}px;display:block;margin:0;pointer-events:none;`;
+      img.after(ghost);
+      ghost.addEventListener('animationend', () => ghost.remove(), { once: true });
+      setTimeout(() => ghost.remove(), 900);
+      img.src = src;
+      img.style.display = 'block';
+      img.classList.remove('art-in');
+      void img.offsetWidth;
+      img.classList.add('art-in');
+    };
+    pre.decode().then(commit, commit);
+  }
+
+  const FADE_IMG_SEL = '.track-row-thumb, .my-wave-track-cover, .quick-play-pill-img';
+  const markImgLoaded = (e) => { const t = e.target; if (t.tagName === 'IMG' && t.matches(FADE_IMG_SEL)) t.classList.add('is-loaded'); };
+  document.addEventListener('load', markImgLoaded, true);
+  document.addEventListener('error', markImgLoaded, true);
+
   function updateNowPlayingUI(track) {
     if (el.playbarTitle) el.playbarTitle.textContent = track.title || 'Untitled';
     if (el.playbarTitle) el.playbarTitle.dataset.origTitle = track.title || '';
@@ -1990,8 +2026,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const thumb = getTrackThumbUrl(track);
     if (thumb) {
       if (el.playbarArtwork) {
-        el.playbarArtwork.src = thumb;
-        el.playbarArtwork.style.display = 'block';
+        swapArtwork(el.playbarArtwork, thumb);
         el.playbarArtwork.onerror = () => {
           if (state.currentTrack && getTrackArt(state.currentTrack).cover) {
             setTrackArt(state.currentTrack, { cover: undefined });
@@ -2008,8 +2043,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
       if (el.artworkFallback) el.artworkFallback.style.display = 'none';
       if (el.rightPanelCover) {
-        el.rightPanelCover.src = thumb;
-        el.rightPanelCover.style.display = 'block';
+        swapArtwork(el.rightPanelCover, thumb);
         el.rightPanelCover.onerror = () => {
           if (state.currentTrack && getTrackArt(state.currentTrack).cover) {
             setTrackArt(state.currentTrack, { cover: undefined });
@@ -2058,8 +2092,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     const bannerImg = banner.querySelector('.banner-image') || banner;
     const trackArt = state.currentTrack ? getTrackArt(state.currentTrack) : {};
     const trackBanner = trackArt.banner || null;
-    const globalMedia = localStorage.getItem('riff_banner_media');
+    const globalMedia = localStorage.getItem('muriel_banner_media');
     const mediaToUse = trackBanner || globalMedia || thumbUrl;
+    banner._pendingMedia = mediaToUse;
 
     if (!mediaToUse) {
       banner.classList.add('fading-out');
@@ -2112,13 +2147,26 @@ document.addEventListener('DOMContentLoaded', async () => {
     const img = new Image();
     img.src = mediaToUse;
     img.onload = () => {
-      banner.classList.add('fading-out');
-      setTimeout(() => {
-        bannerImg.style.backgroundImage = `url("${mediaToUse}")`;
-        banner.classList.remove('fading-out');
+      if (banner._pendingMedia !== mediaToUse) return;
+      const nextBg = `url("${mediaToUse}")`;
+      const cur = banner.querySelector('.banner-image');
+      const curBg = cur ? cur.style.backgroundImage : '';
+      if (cur && curBg === nextBg) {
         banner.style.opacity = '1';
-        if (state.isTvKaraokeOpen) syncTvBanner();
-      }, 150);
+      } else if (!cur || !curBg || curBg === 'none' || banner.style.opacity !== '1' || document.body.classList.contains('perf')) {
+        bannerImg.style.backgroundImage = nextBg;
+        banner.style.opacity = '1';
+      } else {
+        // Crossfade: new layer goes underneath (first in DOM, so querySelector finds it), old one fades out on top.
+        banner.querySelectorAll('.banner-image.banner-leaving').forEach(n => n.remove());
+        const next = cur.cloneNode(false);
+        next.style.backgroundImage = nextBg;
+        cur.before(next);
+        cur.classList.add('banner-leaving');
+        cur.addEventListener('animationend', () => cur.remove(), { once: true });
+        setTimeout(() => cur.remove(), 1200);
+      }
+      if (state.isTvKaraokeOpen) syncTvBanner();
     };
     img.onerror = () => {
       if (trackBanner && state.currentTrack) {
@@ -2141,7 +2189,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     banner.style.display = '';
     const bannerImg = banner.querySelector('.banner-image') || banner;
-    const globalMedia = localStorage.getItem('riff_banner_media');
+    const globalMedia = localStorage.getItem('muriel_banner_media');
     const mediaToUse = globalMedia || thumbUrl;
 
     if (!mediaToUse) {
@@ -2205,7 +2253,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   function getTrackArt(t) {
     try {
-      return JSON.parse(localStorage.getItem('riff_track_art') || '{}')[getTrackCanonicalId(t)] || {};
+      return JSON.parse(localStorage.getItem('muriel_track_art') || '{}')[getTrackCanonicalId(t)] || {};
     } catch (e) {
       return {};
     }
@@ -2214,14 +2262,14 @@ document.addEventListener('DOMContentLoaded', async () => {
   function setTrackArt(t, patch) {
     let all = {};
     try {
-      all = JSON.parse(localStorage.getItem('riff_track_art') || '{}');
+      all = JSON.parse(localStorage.getItem('muriel_track_art') || '{}');
     } catch (e) {}
     const id = getTrackCanonicalId(t);
     if (!id) return;
     const cur = { ...(all[id] || {}), ...patch };
     for (const k in cur) if (!cur[k]) delete cur[k];
     if (Object.keys(cur).length) all[id] = cur; else delete all[id];
-    localStorage.setItem('riff_track_art', JSON.stringify(all));
+    localStorage.setItem('muriel_track_art', JSON.stringify(all));
   }
 
   let crossfadeTriggered = false;
@@ -3309,10 +3357,9 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (audioEngine) audioEngine._applyMasterVolume();
       if (crossfadeFadeInPending) {
         crossfadeFadeInPending = false;
-        const X = parseInt(localStorage.getItem('riff_crossfade') || '0', 10);
+        const X = parseInt(localStorage.getItem('muriel_crossfade') || '0', 10);
         if (X > 0 && audioEngine) audioEngine.fadeIn(X / 2);
       }
-      sendDiscordRpcUpdate(state.currentTrack, true);
       sendStateToServer();
       updateMediaSession();
     });
@@ -3325,7 +3372,6 @@ document.addEventListener('DOMContentLoaded', async () => {
       document.body.classList.remove('is-playing');
       updatePlayPauseButton(false, false);
       if (el.coverContainer) el.coverContainer.classList.remove('spinning');
-      sendDiscordRpcUpdate(null, false);
       sendStateToServer();
       updateMediaSession();
     });
@@ -3365,7 +3411,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       const cur = el.nativeAudio.currentTime || 0;
       const dur = el.nativeAudio.duration || (state.currentTrack ? state.currentTrack.duration : 0);
 
-      const X = parseInt(localStorage.getItem('riff_crossfade') || '0', 10);
+      const X = parseInt(localStorage.getItem('muriel_crossfade') || '0', 10);
       if (X > 0 && !crossfadeTriggered && !state.isRepeat && dur > X && cur >= dur - X && (!audioEngine || !audioEngine.isLiveStream(el.nativeAudio))) {
         crossfadeTriggered = true;
         crossfadeFadeInPending = true;
@@ -3505,7 +3551,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     initAudioContext();
     renderPresets();
     if (activeTweenRaf) { cancelAnimationFrame(activeTweenRaf); activeTweenRaf = null; }
-    if (localStorage.getItem('riff_smooth_presets') === 'false') {
+    if (localStorage.getItem('muriel_smooth_presets') === 'false') {
       state.audioSettings = { ...normalized.settings };
       syncSettingsSlidersToState();
       applyAudioSettings();
@@ -3647,7 +3693,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
       row.innerHTML = `
       <span class="track-row-index">${idx + 1}</span>
-      <img class="track-row-thumb" src="${escapeHtml(rowThumb || '')}" alt="" onerror="this.style.visibility='hidden'">
+      <img class="track-row-thumb" src="${escapeHtml(listThumb(rowThumb) || '')}" data-full="${escapeHtml(rowThumb || '')}" alt="" loading="lazy" decoding="async" onerror="${THUMB_FALLBACK}">
       <div class="track-row-info">
       <span class="track-row-title">${escapeHtml(track.title || 'untitled')}</span>
       <span class="track-row-artist" title="view artist profile">${escapeHtml(track.artist || 'unknown artist')}</span>
@@ -3803,7 +3849,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   function renderTracks(container, tracks, context = 'search') {
     if (!container) return;
     
-    const scrollParent = document.querySelector('.main-content');
+    // lists inside the drawer scroll the drawer pane, everything else scrolls the main column
+    const scrollParent = container.closest('.drawer-pane') || document.querySelector('.main-content');
     if (container._vScrollHandler && scrollParent) {
       scrollParent.removeEventListener('scroll', container._vScrollHandler);
     }
@@ -3813,7 +3860,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (!tracks || tracks.length === 0) {
       container.style.paddingTop = '0px';
       container.style.paddingBottom = '0px';
-      container.innerHTML = '<div class="empty-hint">X</div>';
+      const emptyText = context === 'queue' ? 'Queue is empty. Play a track to start.' : 'Nothing here yet.';
+      container.innerHTML = `<div class="empty-hint">${emptyText}</div>`;
       return;
     }
 
@@ -4047,7 +4095,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   function updateQueueBadge() {
-    if (el.queueCount) el.queueCount.textContent = state.queue.length;
+    if (el.queueCount) { el.queueCount.textContent = state.queue.length; el.queueCount.style.display = state.queue.length ? 'inline-block' : 'none'; }
   }
 
   function renderQueueView() {
@@ -4160,6 +4208,17 @@ document.addEventListener('DOMContentLoaded', async () => {
     } catch (e) {
       console.warn('Import audio files error:', e);
     }
+  }
+
+  // Small-list art: a 44px row doesn't need a 720p frame decoded into RAM (~1.1 MB each).
+  // Falls back to the full URL via data-full if the small variant 404s.
+  function listThumb(url) {
+    if (!url || !getAdv('light_thumbs', true)) return url;
+    const yt = url.match(/^https?:\/\/i\d?\.ytimg\.com\/vi(?:_webp)?\/([\w-]{6,})\//);
+    if (yt) return `https://i.ytimg.com/vi/${yt[1]}/mqdefault.jpg`;
+    if (/(googleusercontent|ggpht)\.com/.test(url)) return url.replace(/=w\d+-h\d+[^&?]*$/, '=w120-h120-l90-rj').replace(/=s\d+[^&?]*$/, '=s120');
+    if (/sndcdn\.com/.test(url)) return url.replace(/-(t500x500|original|crop)\./, '-t300x300.');
+    return url;
   }
 
   function getTrackThumbUrl(track) {
@@ -4714,6 +4773,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   function switchView(viewName) {
+    // the queue lives in the drawer now, not in its own page
+    if (viewName === 'queue') { openDrawer('queue'); return; }
     state.currentView = viewName;
 
     requestAnimationFrame(() => {
@@ -4752,7 +4813,7 @@ document.addEventListener('DOMContentLoaded', async () => {
           } else if (viewName === 'settings') {
             if (el.viewSettings) el.viewSettings.classList.add('active');
             if (el.navSettings) el.navSettings.classList.add('active');
-            showSettingsCategory(localStorage.getItem('riff_settings_cat') || 'interface');
+            showSettingsCategory(localStorage.getItem('muriel_settings_cat') || 'interface');
             updateOfflineStorageUI();
             updateMusicFolderUI();
   updateDownloadFolderUI();
@@ -5010,30 +5071,49 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   }
 
-  if (el.btnToggleLyricsPanel) {
-    el.btnToggleLyricsPanel.addEventListener('click', () => {
-      state.isRightPanelOpen = !state.isRightPanelOpen;
-      if (el.rightPanel) el.rightPanel.classList.toggle('hidden', !state.isRightPanelOpen);
-      el.btnToggleLyricsPanel.classList.toggle('active', state.isRightPanelOpen);
-      setTimeout(resizeCanvases, 150);
-    });
+  // Slide-over drawer: "Now playing" (cover + lyrics) and "Queue" tabs, closed by default.
+  const btnToggleQueue = document.getElementById('btn-toggle-queue');
+  const drawerTabs = document.querySelectorAll('.drawer-tab');
+  function syncDrawerUI() {
+    const open = state.isRightPanelOpen;
+    if (el.rightPanel) el.rightPanel.classList.toggle('hidden', !open);
+    drawerTabs.forEach(t => t.classList.toggle('active', t.dataset.drawerTab === state.drawerTab));
+    const now = document.getElementById('drawer-now');
+    const queue = document.getElementById('drawer-queue');
+    if (now) now.classList.toggle('hidden', state.drawerTab !== 'now');
+    if (queue) queue.classList.toggle('hidden', state.drawerTab !== 'queue');
+    if (el.btnToggleLyricsPanel) el.btnToggleLyricsPanel.classList.toggle('active', open && state.drawerTab === 'now');
+    if (btnToggleQueue) btnToggleQueue.classList.toggle('active', open && state.drawerTab === 'queue');
   }
-
-  if (el.btnCloseRightPanel) {
-    el.btnCloseRightPanel.addEventListener('click', () => {
-      state.isRightPanelOpen = false;
-      if (el.rightPanel) el.rightPanel.classList.add('hidden');
-      if (el.btnToggleLyricsPanel) el.btnToggleLyricsPanel.classList.remove('active');
-      setTimeout(resizeCanvases, 150);
-    });
+  function openDrawer(tab) {
+    state.drawerTab = tab || state.drawerTab;
+    state.isRightPanelOpen = true;
+    if (state.drawerTab === 'queue') renderQueueView();
+    syncDrawerUI();
+    setTimeout(resizeCanvases, 150);
   }
+  function closeDrawer() {
+    state.isRightPanelOpen = false;
+    syncDrawerUI();
+  }
+  function toggleDrawer(tab) {
+    if (state.isRightPanelOpen && state.drawerTab === tab) closeDrawer(); else openDrawer(tab);
+  }
+  if (el.btnToggleLyricsPanel) el.btnToggleLyricsPanel.addEventListener('click', () => toggleDrawer('now'));
+  if (btnToggleQueue) btnToggleQueue.addEventListener('click', () => toggleDrawer('queue'));
+  if (el.btnCloseRightPanel) el.btnCloseRightPanel.addEventListener('click', closeDrawer);
+  drawerTabs.forEach(t => t.addEventListener('click', () => openDrawer(t.dataset.drawerTab)));
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && state.isRightPanelOpen && !document.querySelector('.modal-backdrop:not(.hidden)')) closeDrawer();
+  });
+  syncDrawerUI();
 
   (function initPanelResize() {
     const edge = document.getElementById('panel-resize-edge');
     const panel = el.rightPanel || document.getElementById('right-panel');
     if (!edge || !panel) return;
 
-    const savedWidth = localStorage.getItem('riff_right_panel_width');
+    const savedWidth = localStorage.getItem('muriel_right_panel_width');
     if (savedWidth) {
       const w = parseInt(savedWidth, 10);
       if (w >= 260 && w <= 720) {
@@ -5083,7 +5163,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         raf = 0;
       }
       if (pendingW >= 260 && pendingW <= 720) {
-        localStorage.setItem('riff_right_panel_width', pendingW.toString());
+        localStorage.setItem('muriel_right_panel_width', pendingW.toString());
       }
       if (typeof resizeCanvases === 'function') resizeCanvases();
     };
@@ -5094,7 +5174,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     edge.addEventListener('dblclick', () => {
       panel.style.width = '340px';
       panel.style.setProperty('--right-panel-width', '340px');
-      localStorage.setItem('riff_right_panel_width', '340px');
+      localStorage.setItem('muriel_right_panel_width', '340px');
       if (typeof resizeCanvases === 'function') resizeCanvases();
     });
   })();
@@ -5147,7 +5227,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   function setPlatform(platform, triggerSearch = true) {
     if (!['youtube', 'ytmusic', 'soundcloud'].includes(platform)) platform = 'youtube';
     state.platform = platform;
-    localStorage.setItem('riff_platform', platform);
+    localStorage.setItem('muriel_platform', platform);
 
     if (el.platformYt) el.platformYt.classList.toggle('active', platform === 'youtube');
     if (el.platformYtm) el.platformYtm.classList.toggle('active', platform === 'ytmusic');
@@ -5170,7 +5250,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   }
 
-  const savedPlatform = localStorage.getItem('riff_platform') || 'youtube';
+  const savedPlatform = localStorage.getItem('muriel_platform') || 'youtube';
   setPlatform(savedPlatform, false);
 
   if (el.platformYt) el.platformYt.addEventListener('click', () => setPlatform('youtube'));
@@ -5218,7 +5298,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   const btnCompactEngineBtns = document.getElementById('btn-compact-engine-btns');
-  const isCompactEngine = localStorage.getItem('riff_compact_engine_btns') === '1';
+  const isCompactEngine = localStorage.getItem('muriel_compact_engine_btns') === '1';
   document.body.classList.toggle('compact-engine-btns', isCompactEngine);
   if (btnCompactEngineBtns) {
     btnCompactEngineBtns.classList.toggle('active', isCompactEngine);
@@ -5226,14 +5306,14 @@ document.addEventListener('DOMContentLoaded', async () => {
       const next = !btnCompactEngineBtns.classList.contains('active');
       btnCompactEngineBtns.classList.toggle('active', next);
       document.body.classList.toggle('compact-engine-btns', next);
-      localStorage.setItem('riff_compact_engine_btns', next ? '1' : '0');
+      localStorage.setItem('muriel_compact_engine_btns', next ? '1' : '0');
       updateEngineWidthVar();
       setTimeout(updateEngineWidthVar, 350);
     });
   }
 
   const btnHideEngineBtns = document.getElementById('btn-hide-engine-btns');
-  const isHideEngine = localStorage.getItem('riff_hide_engine_btns') === '1';
+  const isHideEngine = localStorage.getItem('muriel_hide_engine_btns') === '1';
   document.body.classList.toggle('hide-engine-btns', isHideEngine);
   if (btnHideEngineBtns) {
     btnHideEngineBtns.classList.toggle('active', isHideEngine);
@@ -5241,7 +5321,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       const next = !btnHideEngineBtns.classList.contains('active');
       btnHideEngineBtns.classList.toggle('active', next);
       document.body.classList.toggle('hide-engine-btns', next);
-      localStorage.setItem('riff_hide_engine_btns', next ? '1' : '0');
+      localStorage.setItem('muriel_hide_engine_btns', next ? '1' : '0');
       updateEngineWidthVar();
       setTimeout(updateEngineWidthVar, 350);
     });
@@ -5255,7 +5335,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     el.btnShuffle.classList.toggle('active', state.isShuffle);
     el.btnShuffle.addEventListener('click', () => {
       state.isShuffle = !state.isShuffle;
-      localStorage.setItem('riff_shuffle', state.isShuffle ? '1' : '0');
+      localStorage.setItem('muriel_shuffle', state.isShuffle ? '1' : '0');
       el.btnShuffle.classList.toggle('active', state.isShuffle);
     });
   }
@@ -5264,7 +5344,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     el.btnRepeat.classList.toggle('active', state.isRepeat);
     el.btnRepeat.addEventListener('click', () => {
       state.isRepeat = !state.isRepeat;
-      localStorage.setItem('riff_repeat', state.isRepeat ? '1' : '0');
+      localStorage.setItem('muriel_repeat', state.isRepeat ? '1' : '0');
       el.btnRepeat.classList.toggle('active', state.isRepeat);
     });
   }
@@ -5274,8 +5354,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   function persistVolumeState() {
     try {
-      localStorage.setItem('riff_volume', String(state.volume));
-      localStorage.setItem('riff_muted', state.isMuted ? '1' : '0');
+      localStorage.setItem('muriel_volume', String(state.volume));
+      localStorage.setItem('muriel_muted', state.isMuted ? '1' : '0');
     } catch (e) {}
   }
 
@@ -5686,7 +5766,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     el.themeModeBtns.forEach(btn => {
       btn.addEventListener('click', () => {
         state.themeMode = btn.dataset.themeMode;
-        localStorage.setItem('riff_theme_mode', state.themeMode);
+        localStorage.setItem('muriel_theme_mode', state.themeMode);
         updateThemeFromState();
       });
     });
@@ -5696,11 +5776,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     el.themeSwatches.forEach(sw => {
       sw.addEventListener('click', () => {
         state.themeAccent = sw.dataset.color;
-        localStorage.setItem('riff_theme_accent', state.themeAccent);
+        localStorage.setItem('muriel_theme_accent', state.themeAccent);
         if (state.themeMode === 'auto') {
           const targetMode = currentEffectiveMode || 'dark';
           state.themeMode = targetMode;
-          localStorage.setItem('riff_theme_mode', targetMode);
+          localStorage.setItem('muriel_theme_mode', targetMode);
         }
         updateThemeFromState();
       });
@@ -5710,11 +5790,11 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (el.customColorInput) {
     el.customColorInput.addEventListener('input', (e) => {
       state.themeAccent = e.target.value;
-      localStorage.setItem('riff_theme_accent', state.themeAccent);
+      localStorage.setItem('muriel_theme_accent', state.themeAccent);
       if (state.themeMode === 'auto') {
         const targetMode = currentEffectiveMode || 'dark';
         state.themeMode = targetMode;
-        localStorage.setItem('riff_theme_mode', targetMode);
+        localStorage.setItem('muriel_theme_mode', targetMode);
       }
       updateThemeFromState();
       if (el.themeSwatches) el.themeSwatches.forEach(sw => sw.classList.remove('active'));
@@ -5731,11 +5811,11 @@ document.addEventListener('DOMContentLoaded', async () => {
       const h = parseInt(e.target.value, 10);
       if (el.valHue) el.valHue.textContent = h + '°';
       state.themeAccent = hslToHex(h, 55, 50);
-      localStorage.setItem('riff_theme_accent', state.themeAccent);
+      localStorage.setItem('muriel_theme_accent', state.themeAccent);
       if (state.themeMode === 'auto') {
         const targetMode = currentEffectiveMode || 'dark';
         state.themeMode = targetMode;
-        localStorage.setItem('riff_theme_mode', targetMode);
+        localStorage.setItem('muriel_theme_mode', targetMode);
       }
       updateThemeFromState();
       if (el.themeSwatches) el.themeSwatches.forEach(sw => sw.classList.remove('active'));
@@ -5753,7 +5833,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       state.themeIntensity = val;
       document.body.classList.toggle('intensity-zero', state.themeIntensity < 8);
       if (el.valIntensity) el.valIntensity.textContent = val + '%';
-      localStorage.setItem('riff_theme_intensity', val.toString());
+      localStorage.setItem('muriel_theme_intensity', val.toString());
       updateThemeFromState();
     });
   }
@@ -5767,7 +5847,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       const val = parseInt(e.target.value, 10);
       state.themeBrightness = val;
       if (el.valBrightness) el.valBrightness.textContent = val + '%';
-      localStorage.setItem('riff_theme_brightness', val.toString());
+      localStorage.setItem('muriel_theme_brightness', val.toString());
       updateThemeFromState();
     });
   }
@@ -5795,7 +5875,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       const val = parseInt(e.target.value, 10);
       if (el.valFontScale) el.valFontScale.textContent = `${val}%`;
       document.documentElement.style.setProperty('--font-scale', ((val / 100) * 1.25).toString());
-      localStorage.setItem('riff_font_scale', val.toString());
+      localStorage.setItem('muriel_font_scale', val.toString());
       requestAnimationFrame(updateEngineWidthVar);
     });
   }
@@ -5819,7 +5899,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   }
 
-  const savedSearchPos = localStorage.getItem('riff_search_pos') || 'middle';
+  const savedSearchPos = localStorage.getItem('muriel_search_pos') || 'middle';
   applySearchPos(savedSearchPos);
 
   const searchPosDropdown = document.getElementById('search-pos-dropdown');
@@ -5835,7 +5915,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       opt.addEventListener('click', (e) => {
         e.stopPropagation();
         const val = opt.dataset.value;
-        localStorage.setItem('riff_search_pos', val);
+        localStorage.setItem('muriel_search_pos', val);
         applySearchPos(val);
         searchPosDropdown.classList.remove('open');
       });
@@ -5867,7 +5947,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (el.valCornerRadius) el.valCornerRadius.textContent = val === 16 ? 'Default' : `${val}px`;
       document.documentElement.style.setProperty('--md-shape-corner-l', `${val}px`);
       document.documentElement.style.setProperty('--md-shape-corner-m', `${Math.max(0, val - 4)}px`);
-      localStorage.setItem('riff_corner_radius', val.toString());
+      localStorage.setItem('muriel_corner_radius', val.toString());
     });
   }
 
@@ -5876,7 +5956,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       const val = Math.max(20, Math.min(100, parseInt(e.target.value, 10) || 100));
       if (el.valUiAlpha) el.valUiAlpha.textContent = `${val}%`;
       document.documentElement.style.setProperty('--ui-alpha', `${val}%`);
-      localStorage.setItem('riff_ui_alpha', val.toString());
+      localStorage.setItem('muriel_ui_alpha', val.toString());
       refreshCachedThemeColors();
     });
   }
@@ -5887,7 +5967,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (el.sliderUiAlpha) el.sliderUiAlpha.value = val;
       if (el.valUiAlpha) el.valUiAlpha.textContent = `${val}%`;
       document.documentElement.style.setProperty('--ui-alpha', `${val}%`);
-      localStorage.setItem('riff_ui_alpha', val.toString());
+      localStorage.setItem('muriel_ui_alpha', val.toString());
       refreshCachedThemeColors();
     });
   }
@@ -5897,7 +5977,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       const val = Math.max(1, Math.min(100, parseInt(e.target.value, 10) || 100));
       if (el.valTextAlpha) el.valTextAlpha.textContent = `${val}%`;
       document.documentElement.style.setProperty('--text-alpha', `${val}%`);
-      localStorage.setItem('riff_text_alpha', val.toString());
+      localStorage.setItem('muriel_text_alpha', val.toString());
       refreshCachedThemeColors();
     });
   }
@@ -5908,7 +5988,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (el.sliderTextAlpha) el.sliderTextAlpha.value = val;
       if (el.valTextAlpha) el.valTextAlpha.textContent = `${val}%`;
       document.documentElement.style.setProperty('--text-alpha', `${val}%`);
-      localStorage.setItem('riff_text_alpha', val.toString());
+      localStorage.setItem('muriel_text_alpha', val.toString());
       refreshCachedThemeColors();
     });
   }
@@ -5921,7 +6001,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (window.electronAPI && window.electronAPI.pickMedia) {
         const url = await window.electronAPI.pickMedia();
         if (url) {
-          localStorage.setItem('riff_banner_media', url);
+          localStorage.setItem('muriel_banner_media', url);
           const thumb = getTrackThumbUrl(state.currentTrack);
           updateRightPanelBanner(thumb);
           updatePlaylistDetailBanner(thumb);
@@ -5932,7 +6012,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   if (btnResetBannerMedia) {
     btnResetBannerMedia.addEventListener('click', () => {
-      localStorage.removeItem('riff_banner_media');
+      localStorage.removeItem('muriel_banner_media');
       const thumb = getTrackThumbUrl(state.currentTrack);
       updateRightPanelBanner(thumb);
       updatePlaylistDetailBanner(thumb);
@@ -5948,7 +6028,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       const v = parseInt(e.target.value, 10);
       document.documentElement.style.setProperty('--banner-blur', `${v}px`);
       if (valBannerBlur) valBannerBlur.textContent = `${v}px`;
-      localStorage.setItem('riff_banner_blur', v.toString());
+      localStorage.setItem('muriel_banner_blur', v.toString());
     });
   }
 
@@ -5961,7 +6041,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       const v = parseInt(e.target.value, 10);
       document.documentElement.style.setProperty('--banner-opacity', `${v / 100}`);
       if (valBannerOpacity) valBannerOpacity.textContent = `${v}%`;
-      localStorage.setItem('riff_banner_opacity', v.toString());
+      localStorage.setItem('muriel_banner_opacity', v.toString());
     });
   }
 
@@ -5980,7 +6060,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         rightBanner.style.setProperty('--banner-fade-end', `${v}%`);
       }
       if (valBannerFade) valBannerFade.textContent = `${v}%`;
-      localStorage.setItem('riff_banner_fade', v.toString());
+      localStorage.setItem('muriel_banner_fade', v.toString());
     });
   }
 
@@ -6030,7 +6110,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       opt.addEventListener('click', (e) => {
         e.stopPropagation();
         const val = opt.dataset.value;
-        localStorage.setItem('riff_banner_fit', val);
+        localStorage.setItem('muriel_banner_fit', val);
         applyBannerFit(val);
         if (bannerFitLabel) bannerFitLabel.textContent = opt.textContent;
         bannerFitMenu.querySelectorAll('.m3-dropdown-option').forEach(o => o.classList.remove('selected'));
@@ -6062,9 +6142,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (window.electronAPI && window.electronAPI.onWindowVisibility) window.electronAPI.onWindowVisibility(() => syncBgVideoPlayback());
 
   function updateCustomBg() {
-    const bgUrl = localStorage.getItem('riff_bg_url') || '';
-    const opacityVal = parseInt(localStorage.getItem('riff_bg_opacity') ?? '100', 10);
-    const blurVal = parseInt(localStorage.getItem('riff_bg_blur') ?? '0', 10);
+    const bgUrl = localStorage.getItem('muriel_bg_url') || '';
+    const opacityVal = parseInt(localStorage.getItem('muriel_bg_opacity') ?? '100', 10);
+    const blurVal = parseInt(localStorage.getItem('muriel_bg_blur') ?? '0', 10);
     const isVideo = /\.(mp4|webm)($|\?)/i.test(bgUrl);
     document.body.classList.toggle('has-video-bg', isVideo && !!bgUrl);
 
@@ -6135,7 +6215,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (window.electronAPI && window.electronAPI.pickMedia) {
         const url = await window.electronAPI.pickMedia();
         if (url) {
-          localStorage.setItem('riff_bg_url', url);
+          localStorage.setItem('muriel_bg_url', url);
           updateCustomBg();
         }
       }
@@ -6144,7 +6224,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   if (btnRemoveCustomBg) {
     btnRemoveCustomBg.addEventListener('click', () => {
-      localStorage.removeItem('riff_bg_url');
+      localStorage.removeItem('muriel_bg_url');
       updateCustomBg();
     });
   }
@@ -6153,7 +6233,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     sliderBgOpacity.addEventListener('input', (e) => {
       const v = parseInt(e.target.value, 10);
       if (valBgOpacity) valBgOpacity.textContent = `${v}%`;
-      localStorage.setItem('riff_bg_opacity', String(v));
+      localStorage.setItem('muriel_bg_opacity', String(v));
       const customBg = document.getElementById('custom-bg');
       if (customBg) customBg.style.opacity = (v / 100).toString();
     });
@@ -6163,7 +6243,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     sliderBgBlur.addEventListener('input', (e) => {
       const v = parseInt(e.target.value, 10);
       if (valBgBlur) valBgBlur.textContent = `${v}px`;
-      localStorage.setItem('riff_bg_blur', String(v));
+      localStorage.setItem('muriel_bg_blur', String(v));
       const customBg = document.getElementById('custom-bg');
       if (customBg) {
         customBg.style.filter = 'none';
@@ -6195,7 +6275,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       const v = parseInt(e.target.value, 10);
       state.meshBrightness = v;
       if (valMeshBrightness) valMeshBrightness.textContent = `${v}%`;
-      localStorage.setItem('riff_mesh_brightness', v.toString());
+      localStorage.setItem('muriel_mesh_brightness', v.toString());
       updateThemeFromState();
     });
   }
@@ -6209,7 +6289,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   let meshCfg = { ...DEFAULT_MESH_CFG };
   try {
-    const raw = localStorage.getItem('riff_mesh_cfg');
+    const raw = localStorage.getItem('muriel_mesh_cfg');
     if (raw) {
       const parsed = JSON.parse(raw);
       if (parsed && parsed.p1 && parsed.p2) {
@@ -6256,7 +6336,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (vlBlur) vlBlur.textContent = `${cfg.blur}px`;
 
     if (save) {
-      localStorage.setItem('riff_mesh_cfg', JSON.stringify(cfg));
+      localStorage.setItem('muriel_mesh_cfg', JSON.stringify(cfg));
     }
   }
 
@@ -6410,7 +6490,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         e.stopPropagation();
         const val = opt.dataset.value;
         state.paletteStyle = val;
-        localStorage.setItem('riff_palette_style', state.paletteStyle);
+        localStorage.setItem('muriel_palette_style', state.paletteStyle);
         if (paletteLabel) paletteLabel.textContent = opt.textContent;
         paletteMenu.querySelectorAll('.m3-dropdown-option').forEach(o => o.classList.remove('selected'));
         opt.classList.add('selected');
@@ -6427,7 +6507,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   const btnToggleAdv = document.getElementById('btn-toggle-adv-section');
   const advWrapper = document.getElementById('adv-collapsible-wrapper');
   if (btnToggleAdv && advWrapper) {
-    const isAdvOpen = localStorage.getItem('riff_adv_open') === 'true';
+    const isAdvOpen = localStorage.getItem('muriel_adv_open') === 'true';
     if (isAdvOpen) {
       btnToggleAdv.classList.add('is-open');
       advWrapper.classList.add('is-open');
@@ -6435,14 +6515,53 @@ document.addEventListener('DOMContentLoaded', async () => {
     btnToggleAdv.addEventListener('click', () => {
       const nowOpen = advWrapper.classList.toggle('is-open');
       btnToggleAdv.classList.toggle('is-open', nowOpen);
-      localStorage.setItem('riff_adv_open', nowOpen ? 'true' : 'false');
+      localStorage.setItem('muriel_adv_open', nowOpen ? 'true' : 'false');
+    });
+  }
+
+  document.body.classList.toggle('no-blur', !getAdv('blur_fx', true));
+
+  const sliderGlassBlur = document.getElementById('slider-glass-blur');
+  const valGlassBlur = document.getElementById('val-glass-blur');
+  function applyGlass() {
+    const on = getAdv('glass_blur', false);
+    const px = Math.max(4, Math.min(40, parseInt(localStorage.getItem('muriel_glass_blur') || '16', 10) || 16));
+    document.body.classList.toggle('glass', on);
+    document.documentElement.style.setProperty('--glass-blur', `${px}px`);
+    if (sliderGlassBlur) sliderGlassBlur.value = px;
+    if (valGlassBlur) valGlassBlur.textContent = `${px}px`;
+    const strengthRow = document.getElementById('setting-glass-strength');
+    if (strengthRow) strengthRow.classList.toggle('is-disabled', !on);
+  }
+  if (sliderGlassBlur) sliderGlassBlur.addEventListener('input', () => {
+    localStorage.setItem('muriel_glass_blur', sliderGlassBlur.value);
+    applyGlass();
+  });
+  applyGlass();
+
+  const fpsBtns = document.querySelectorAll('[data-fps-cap]');
+  const syncFpsBtns = () => {
+    const cur = localStorage.getItem('muriel_fps_cap') || '0';
+    fpsBtns.forEach(b => b.classList.toggle('active', b.dataset.fpsCap === cur));
+  };
+  fpsBtns.forEach(b => b.addEventListener('click', () => { localStorage.setItem('muriel_fps_cap', b.dataset.fpsCap); syncFpsBtns(); }));
+  syncFpsBtns();
+
+  const btnHwAccel = document.getElementById('btn-hw-accel');
+  if (btnHwAccel && window.electronAPI && window.electronAPI.getHwAccel) {
+    window.electronAPI.getHwAccel().then(on => btnHwAccel.classList.toggle('active', on !== false));
+    btnHwAccel.addEventListener('click', () => {
+      const next = !btnHwAccel.classList.contains('active');
+      btnHwAccel.classList.toggle('active', next);
+      window.electronAPI.setHwAccel(next);
+      showToast('Restart Muriel to apply', 'info');
     });
   }
 
   const advButtons = document.querySelectorAll('.effect-switch-btn[data-adv]');
   advButtons.forEach(btn => {
     const key = btn.dataset.adv;
-    const defaultVal = (key === 'reduce_motion' || key === 'mesh_gradient') ? false : true;
+    const defaultVal = (key === 'reduce_motion' || key === 'mesh_gradient' || key === 'glass_blur') ? false : true;
     const currentVal = getAdv(key, defaultVal);
     btn.classList.toggle('active', currentVal);
 
@@ -6453,6 +6572,18 @@ document.addEventListener('DOMContentLoaded', async () => {
 
       if (key === 'reduce_motion') {
         applyReducedMotionSetting();
+      } else if (key === 'glass_blur') {
+        applyGlass();
+        // glass over a fully opaque UI does nothing, so make it see-through the first time
+        if (newVal && parseInt(localStorage.getItem('muriel_ui_alpha') || '100', 10) >= 100) {
+          localStorage.setItem('muriel_ui_alpha', '60');
+          applyUiOpacity();
+          showToast('Interface opacity set to 60% so the glass shows', 'info');
+        }
+      } else if (key === 'blur_fx') {
+        document.body.classList.toggle('no-blur', !newVal);
+      } else if (key === 'light_thumbs') {
+        document.querySelectorAll('.track-row-thumb[data-full], .quick-play-pill-img[data-full]').forEach(img => { img.src = listThumb(img.dataset.full) || img.dataset.full; });
       } else if (key === 'mesh_gradient') {
         updateThemeFromState();
       } else if (key === 'my_wave') {
@@ -6493,11 +6624,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   const btnSmooth = document.getElementById('btn-smooth-presets');
   if (btnSmooth) {
-    btnSmooth.classList.toggle('active', localStorage.getItem('riff_smooth_presets') !== 'false');
+    btnSmooth.classList.toggle('active', localStorage.getItem('muriel_smooth_presets') !== 'false');
     btnSmooth.addEventListener('click', () => {
       const v = !btnSmooth.classList.contains('active');
       btnSmooth.classList.toggle('active', v);
-      localStorage.setItem('riff_smooth_presets', String(v));
+      localStorage.setItem('muriel_smooth_presets', String(v));
     });
   }
   if (sidebarEl) {
@@ -6511,7 +6642,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   const btnShowLocal = document.getElementById('btn-show-local');
   function updateShowLocalUI(animate = false) {
-    const show = localStorage.getItem('riff_show_local') !== 'false';
+    const show = localStorage.getItem('muriel_show_local') !== 'false';
     if (el.navLocal) el.navLocal.classList.toggle('nav-collapsed', !show);
     if (btnShowLocal) btnShowLocal.classList.toggle('active', show);
     if (!show && state.currentView === 'local') {
@@ -6531,8 +6662,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
   if (btnShowLocal) {
     btnShowLocal.addEventListener('click', () => {
-      const show = localStorage.getItem('riff_show_local') !== 'false';
-      localStorage.setItem('riff_show_local', (!show) ? 'true' : 'false');
+      const show = localStorage.getItem('muriel_show_local') !== 'false';
+      localStorage.setItem('muriel_show_local', (!show) ? 'true' : 'false');
       updateShowLocalUI(true);
       refreshStacks();
     });
@@ -6543,14 +6674,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.body.classList.toggle('no-hand-cursor', !!on);
   }
   const btnNoHandCursor = document.getElementById('btn-no-hand-cursor');
-  const noHand = localStorage.getItem('riff_no_hand_cursor') !== '0';
+  const noHand = localStorage.getItem('muriel_no_hand_cursor') !== '0';
   applyNoHandCursor(noHand);
   if (btnNoHandCursor) {
     btnNoHandCursor.classList.toggle('active', noHand);
     btnNoHandCursor.addEventListener('click', () => {
       const next = !btnNoHandCursor.classList.contains('active');
       btnNoHandCursor.classList.toggle('active', next);
-      localStorage.setItem('riff_no_hand_cursor', next ? '1' : '0');
+      localStorage.setItem('muriel_no_hand_cursor', next ? '1' : '0');
       applyNoHandCursor(next);
     });
   }
@@ -6559,14 +6690,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.body.classList.toggle('highlight-buttons', !!on);
   }
   const btnHighlightButtons = document.getElementById('btn-highlight-buttons');
-  const initialHighlightButtons = localStorage.getItem('riff_highlight_buttons') !== '0';
+  const initialHighlightButtons = localStorage.getItem('muriel_highlight_buttons') !== '0';
   applyHighlightButtons(initialHighlightButtons);
   if (btnHighlightButtons) {
     btnHighlightButtons.classList.toggle('active', initialHighlightButtons);
     btnHighlightButtons.addEventListener('click', () => {
       const next = !btnHighlightButtons.classList.contains('active');
       btnHighlightButtons.classList.toggle('active', next);
-      localStorage.setItem('riff_highlight_buttons', next ? '1' : '0');
+      localStorage.setItem('muriel_highlight_buttons', next ? '1' : '0');
       applyHighlightButtons(next);
     });
   }
@@ -6619,8 +6750,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   const btnWavyProgress = document.getElementById('btn-wavy-progress');
   function updateWavyProgressUI() {
-    const isWavy = localStorage.getItem('riff_wavy_progress') !== 'false';
-    const isPerf = localStorage.getItem('riff_perf_mode') === '1' || localStorage.getItem('riff_perf_mode') === 'true';
+    const isWavy = localStorage.getItem('muriel_wavy_progress') !== 'false';
+    const isPerf = localStorage.getItem('muriel_perf_mode') === '1' || localStorage.getItem('muriel_perf_mode') === 'true';
     document.body.classList.toggle('no-wavy', isPerf ? true : !isWavy);
     if (btnWavyProgress) {
       btnWavyProgress.classList.toggle('active', isWavy);
@@ -6629,28 +6760,28 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   function applyPerfMode(on) {
     document.body.classList.toggle('perf', !!on);
-    const isWavy = localStorage.getItem('riff_wavy_progress') !== 'false';
+    const isWavy = localStorage.getItem('muriel_wavy_progress') !== 'false';
     document.body.classList.toggle('no-wavy', on ? true : !isWavy);
     syncBgVideoPlayback();
   }
   const btnPerfMode = document.getElementById('btn-perf-mode');
-  const initialPerfMode = localStorage.getItem('riff_perf_mode') === '1' || localStorage.getItem('riff_perf_mode') === 'true';
+  const initialPerfMode = localStorage.getItem('muriel_perf_mode') === '1' || localStorage.getItem('muriel_perf_mode') === 'true';
   applyPerfMode(initialPerfMode);
   if (btnPerfMode) {
     btnPerfMode.classList.toggle('active', initialPerfMode);
     btnPerfMode.addEventListener('click', () => {
       const next = !btnPerfMode.classList.contains('active');
       btnPerfMode.classList.toggle('active', next);
-      localStorage.setItem('riff_perf_mode', next ? '1' : '0');
+      localStorage.setItem('muriel_perf_mode', next ? '1' : '0');
       applyPerfMode(next);
     });
   }
 
   if (btnWavyProgress) {
     btnWavyProgress.addEventListener('click', () => {
-      const isWavy = localStorage.getItem('riff_wavy_progress') !== 'false';
+      const isWavy = localStorage.getItem('muriel_wavy_progress') !== 'false';
       const next = !isWavy;
-      localStorage.setItem('riff_wavy_progress', next ? 'true' : 'false');
+      localStorage.setItem('muriel_wavy_progress', next ? 'true' : 'false');
       updateWavyProgressUI();
       hasDrawnPausedFrame = false;
     });
@@ -6659,7 +6790,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   updateWavyProgressUI();
 
   const btnTrayOnClose = document.getElementById('btn-tray-on-close');
-  const storedTrayOnClose = localStorage.getItem('riff_tray_on_close');
+  const storedTrayOnClose = localStorage.getItem('muriel_tray_on_close');
   const savedTrayOnClose = storedTrayOnClose !== null
     ? storedTrayOnClose === 'true'
     : /Windows|Mac/.test(navigator.userAgent);
@@ -6668,7 +6799,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     btnTrayOnClose.addEventListener('click', () => {
       const next = !btnTrayOnClose.classList.contains('active');
       btnTrayOnClose.classList.toggle('active', next);
-      localStorage.setItem('riff_tray_on_close', next ? 'true' : 'false');
+      localStorage.setItem('muriel_tray_on_close', next ? 'true' : 'false');
       if (window.electronAPI && window.electronAPI.setTrayOnClose) {
         window.electronAPI.setTrayOnClose(next);
       }
@@ -6678,23 +6809,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     window.electronAPI.setTrayOnClose(savedTrayOnClose);
   }
 
-  const btnMultiInstance = document.getElementById('btn-multi-instance');
-  if (btnMultiInstance && window.electronAPI && window.electronAPI.getMultiInstance) {
-    window.electronAPI.getMultiInstance().then((on) => btnMultiInstance.classList.toggle('active', !!on));
-    btnMultiInstance.addEventListener('click', () => {
-      const next = !btnMultiInstance.classList.contains('active');
-      btnMultiInstance.classList.toggle('active', next);
-      window.electronAPI.setMultiInstance(next);
-      showToast(next ? 'Multiple instances will be allowed after restart' : 'Single instance mode after restart', 'info');
-    });
-  }
-
   function showSettingsCategory(cat) {
     if (cat === 'appearance' || !cat) cat = 'interface';
     document.querySelectorAll('#view-settings .settings-section').forEach(s => s.classList.toggle('cat-hidden', s.dataset.cat !== cat));
     document.querySelectorAll('#settings-nav .settings-nav-btn').forEach(b => b.classList.toggle('active', b.dataset.cat === cat));
     const pane = document.querySelector('#view-settings .settings-pane'); if (pane) pane.scrollTop = 0;
-    try { localStorage.setItem('riff_settings_cat', cat); } catch (e) {}
+    try { localStorage.setItem('muriel_settings_cat', cat); } catch (e) {}
     if (cat === 'custom-themes' && typeof renderThemeCards === 'function') renderThemeCards();
     refreshStacks();
   }
@@ -6714,18 +6834,18 @@ document.addEventListener('DOMContentLoaded', async () => {
   let appCssCache = null;
 
   function applyCustomStyles() {
-    document.querySelectorAll('style[data-riff-custom]').forEach((n) => n.remove());
+    document.querySelectorAll('style[data-muriel-custom]').forEach((n) => n.remove());
     customThemes.filter((t) => t.enabled).forEach((t) => {
       const s = document.createElement('style');
-      s.dataset.riffCustom = 'theme';
+      s.dataset.murielCustom = 'theme';
       s.dataset.themeId = t.id;
       s.textContent = t.css;
       document.head.appendChild(s);
     });
-    const userCss = localStorage.getItem('riff_custom_css') || '';
+    const userCss = localStorage.getItem('muriel_custom_css') || '';
     if (userCss.trim()) {
       const s = document.createElement('style');
-      s.dataset.riffCustom = 'user';
+      s.dataset.murielCustom = 'user';
       s.textContent = userCss;
       document.head.appendChild(s);
     }
@@ -6733,9 +6853,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   function resetCustomStyling() {
-    const userCss = localStorage.getItem('riff_custom_css') || '';
-    if (userCss.trim()) localStorage.setItem('riff_custom_css_backup', userCss);
-    localStorage.removeItem('riff_custom_css');
+    const userCss = localStorage.getItem('muriel_custom_css') || '';
+    if (userCss.trim()) localStorage.setItem('muriel_custom_css_backup', userCss);
+    localStorage.removeItem('muriel_custom_css');
     customThemes.forEach((t) => { t.enabled = false; });
     if (window.electronAPI && window.electronAPI.disableAllThemes) window.electronAPI.disableAllThemes();
     if (typeof cssEditorInstance !== 'undefined' && cssEditorInstance) cssEditorInstance.setValue('');
@@ -6866,8 +6986,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     const high = hex('--md-sys-color-surface-container-high-solid', '#2b2930');
     const primary = hex('--md-sys-color-primary', '#d0bcff');
     const lum = (h) => { const n = parseInt(h.slice(1), 16); return (0.299 * (n >> 16) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255)) / 255; };
-    monaco.editor.defineTheme('riff', { base: lum(bg) < 0.5 ? 'vs-dark' : 'vs', inherit: true, rules: [], colors: { 'editor.background': bg, 'editorGutter.background': bg, 'minimap.background': bg, 'editor.lineHighlightBackground': high, 'editorCursor.foreground': primary, 'editor.selectionBackground': primary + '55' } });
-    monaco.editor.setTheme('riff');
+    monaco.editor.defineTheme('muriel', { base: lum(bg) < 0.5 ? 'vs-dark' : 'vs', inherit: true, rules: [], colors: { 'editor.background': bg, 'editorGutter.background': bg, 'minimap.background': bg, 'editor.lineHighlightBackground': high, 'editorCursor.foreground': primary, 'editor.selectionBackground': primary + '55' } });
+    monaco.editor.setTheme('muriel');
   }
 
   async function openCssEditor() {
@@ -6878,7 +6998,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     defineRiffMonacoTheme(monaco);
     if (cssEditorInstance) { cssEditorInstance.focus(); return; }
     cssEditorInstance = monaco.editor.create(document.getElementById('css-editor-host'), {
-      value: localStorage.getItem('riff_custom_css') || '/* Your CSS goes here. Example:\n.btn-pill-primary { border-radius: 8px; }\n*/\n',
+      value: localStorage.getItem('muriel_custom_css') || '/* Your CSS goes here. Example:\n.btn-pill-primary { border-radius: 8px; }\n*/\n',
       language: 'css',
       theme: 'riff',
       automaticLayout: true,
@@ -6900,7 +7020,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     cssEditorInstance.onDidChangeModelContent(() => {
       clearTimeout(saveTimer);
       saveTimer = setTimeout(() => {
-        localStorage.setItem('riff_custom_css', cssEditorInstance.getValue());
+        localStorage.setItem('muriel_custom_css', cssEditorInstance.getValue());
         applyCustomStyles();
       }, 350);
     });
@@ -6913,17 +7033,17 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (btnCssClose) btnCssClose.addEventListener('click', () => document.getElementById('css-editor').classList.add('hidden'));
   const btnCssClear = document.getElementById('btn-css-clear');
   if (btnCssClear) btnCssClear.addEventListener('click', () => {
-    const current = localStorage.getItem('riff_custom_css') || '';
-    if (current.trim()) localStorage.setItem('riff_custom_css_backup', current);
+    const current = localStorage.getItem('muriel_custom_css') || '';
+    if (current.trim()) localStorage.setItem('muriel_custom_css_backup', current);
     if (cssEditorInstance) cssEditorInstance.setValue('');
-    else { localStorage.removeItem('riff_custom_css'); applyCustomStyles(); }
+    else { localStorage.removeItem('muriel_custom_css'); applyCustomStyles(); }
   });
   const btnCssRestore = document.getElementById('btn-css-restore');
   if (btnCssRestore) btnCssRestore.addEventListener('click', () => {
-    const backup = localStorage.getItem('riff_custom_css_backup');
+    const backup = localStorage.getItem('muriel_custom_css_backup');
     if (!backup) { showToast('Nothing to restore', 'info'); return; }
     if (cssEditorInstance) cssEditorInstance.setValue(backup);
-    else { localStorage.setItem('riff_custom_css', backup); applyCustomStyles(); }
+    else { localStorage.setItem('muriel_custom_css', backup); applyCustomStyles(); }
   });
 
   function addSliderTicks(input) {
@@ -6979,13 +7099,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     settingWinMediaKeys.style.display = isWindows ? '' : 'none';
   }
 
-  const savedWinMediaKeys = localStorage.getItem('riff_global_media_keys') !== 'false';
+  const savedWinMediaKeys = localStorage.getItem('muriel_global_media_keys') !== 'false';
   if (btnWinMediaKeys) {
     btnWinMediaKeys.classList.toggle('active', savedWinMediaKeys);
     btnWinMediaKeys.addEventListener('click', () => {
       const next = !btnWinMediaKeys.classList.contains('active');
       btnWinMediaKeys.classList.toggle('active', next);
-      localStorage.setItem('riff_global_media_keys', next ? 'true' : 'false');
+      localStorage.setItem('muriel_global_media_keys', next ? 'true' : 'false');
       if (window.electronAPI && window.electronAPI.setMediaKeys) {
         window.electronAPI.setMediaKeys(next);
       }
@@ -7013,15 +7133,14 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
     }
     if (d.toggles) {
-      setSwitch(document.getElementById('btn-show-local'), d.toggles.riff_show_local);
-      setSwitch(document.getElementById('btn-no-hand-cursor'), d.toggles.riff_no_hand_cursor);
-      setSwitch(document.getElementById('btn-perf-mode'), d.toggles.riff_perf_mode);
-      if (d.toggles.riff_custom_bg_enabled && d.background) {
-        localStorage.setItem('riff_bg_url', d.background);
+      setSwitch(document.getElementById('btn-show-local'), d.toggles.muriel_show_local);
+      setSwitch(document.getElementById('btn-no-hand-cursor'), d.toggles.muriel_no_hand_cursor);
+      setSwitch(document.getElementById('btn-perf-mode'), d.toggles.muriel_perf_mode);
+      if (d.toggles.muriel_custom_bg_enabled && d.background) {
+        localStorage.setItem('muriel_bg_url', d.background);
         if (typeof updateCustomBg === 'function') updateCustomBg();
       }
     }
-    if (d.discord !== undefined) setSwitch(document.getElementById('btn-discord-rpc'), d.discord);
     if (d.spotify && d.spotify.url) {
       const btnOpen = document.getElementById('btn-open-spotify-import');
       if (btnOpen) btnOpen.click();
@@ -7032,7 +7151,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       const btnConfirm = document.getElementById('btn-confirm-spotify-import');
       if (btnConfirm) btnConfirm.click();
     }
-    showToast('Welcome to Riff!', 'info');
+    showToast('Welcome to Muriel!', 'info');
   }
   if (window.electronAPI && window.electronAPI.onWelcomeResult) window.electronAPI.onWelcomeResult((d) => applyWelcomeResult(d));
 
@@ -7060,20 +7179,20 @@ document.addEventListener('DOMContentLoaded', async () => {
   const sliderCrossfade = document.getElementById('slider-crossfade');
   const valCrossfade = document.getElementById('val-crossfade');
   if (sliderCrossfade) {
-    const cf = parseInt(localStorage.getItem('riff_crossfade') || '0', 10);
+    const cf = parseInt(localStorage.getItem('muriel_crossfade') || '0', 10);
     sliderCrossfade.value = cf;
     if (valCrossfade) valCrossfade.textContent = cf > 0 ? `${cf}s` : 'Off';
     sliderCrossfade.addEventListener('input', (e) => {
       const v = parseInt(e.target.value, 10);
       if (valCrossfade) valCrossfade.textContent = v > 0 ? `${v}s` : 'Off';
-      localStorage.setItem('riff_crossfade', String(v));
+      localStorage.setItem('muriel_crossfade', String(v));
     });
   }
 
   if (el.btnTrEnabled) {
     el.btnTrEnabled.addEventListener('click', () => {
       state.trEnabled = !state.trEnabled;
-      localStorage.setItem('riff_tr_enabled', String(state.trEnabled));
+      localStorage.setItem('muriel_tr_enabled', String(state.trEnabled));
       updateLyricsTranslationUI();
       if (!state.trEnabled) {
         state.trActive = false;
@@ -7111,7 +7230,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         e.stopPropagation();
         const val = opt.dataset.value;
         state.trLang = val;
-        localStorage.setItem('riff_tr_lang', state.trLang);
+        localStorage.setItem('muriel_tr_lang', state.trLang);
         if (trLangLabel) trLangLabel.textContent = opt.textContent;
         trLangMenu.querySelectorAll('.m3-dropdown-option').forEach(o => o.classList.remove('selected'));
         opt.classList.add('selected');
@@ -7131,7 +7250,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (el.btnTrAuto) {
     el.btnTrAuto.addEventListener('click', () => {
       state.trAuto = !state.trAuto;
-      localStorage.setItem('riff_tr_auto', String(state.trAuto));
+      localStorage.setItem('muriel_tr_auto', String(state.trAuto));
       updateLyricsTranslationUI();
       if (state.trEnabled && state.trAuto && !state.trActive) {
         state.trActive = true;
@@ -7154,38 +7273,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   }
 
-  (function initUpdateUI() {
-    const api = window.electronAPI;
-    if (!api || !api.checkForUpdates) return;
-    const $ = (id) => document.getElementById(id);
-    const modal = $('update-modal'), title = $('update-title'), text = $('update-text'), bar = $('update-progress');
-    const nowB = $('btn-update-now'), laterB = $('btn-update-later'), ignoreB = $('btn-update-ignore');
-    api.getAppVersion().then((v) => {
-      const a = $('about-version'); if (a) a.textContent = 'Version ' + v;
+  if (window.electronAPI && window.electronAPI.getAppVersion) {
+    window.electronAPI.getAppVersion().then((v) => {
+      const a = document.getElementById('about-version'); if (a) a.textContent = 'Version ' + v;
       const t = document.querySelector('.settings-version-tag'); if (t) t.textContent = 'v' + v;
     }).catch(() => {});
-    const btn = $('btn-check-updates');
-    if (btn) btn.addEventListener('click', async () => {
-      const r = await api.checkForUpdates();
-      showToast(r && r.ok === false ? 'Updates are checked only in the installed app' : 'Checking for updates...', 'info');
-    });
-    api.onUpdateAvailable((d) => {
-      title.textContent = 'Riff ' + d.version + ' is available';
-      bar.classList.add('hidden'); bar.firstElementChild.style.width = '0';
-      nowB.disabled = laterB.disabled = false;
-      nowB.classList.toggle('hidden', !d.canInstall); laterB.classList.toggle('hidden', !d.canInstall);
-      text.innerHTML = d.canInstall ? 'A new version is ready to download.' : 'Download the new version manually: <a href="' + d.url + '" target="_blank" rel="noopener">open the release page</a>.';
-      openModal(modal);
-    });
-    api.onUpdateProgress((d) => { bar.classList.remove('hidden'); bar.firstElementChild.style.width = d.percent + '%'; text.textContent = 'Downloading... ' + d.percent + '%'; });
-    api.onUpdateReady(() => { text.textContent = 'Update downloaded. It will be installed when you close Riff.'; nowB.classList.add('hidden'); laterB.classList.add('hidden'); });
-    api.onUpdateError((d) => showToast('Update error: ' + d.message, 'error'));
-    api.onUpdateNotAvailable((d) => showToast('You are on the latest version (' + d.version + ')', 'info'));
-    nowB.addEventListener('click', () => { api.updateAction('now'); nowB.disabled = laterB.disabled = true; text.textContent = 'Downloading...'; });
-    laterB.addEventListener('click', () => { api.updateAction('later'); closeModal(modal); showToast('The update will be installed when you close Riff', 'info'); });
-    ignoreB.addEventListener('click', () => { api.updateAction('ignore'); closeModal(modal); });
-    $('btn-close-update').addEventListener('click', () => closeModal(modal));
-  })();
+  }
 
   function isTextInput(target) {
     if (!target) return false;
@@ -7329,37 +7422,6 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
     }
   }, true);
-
-  const btnDiscordRpc = document.getElementById('btn-discord-rpc');
-  const badgeDiscordRpc = document.getElementById('badge-discord-rpc');
-
-  function syncDiscordRpcUI() {
-    if (btnDiscordRpc) {
-      btnDiscordRpc.classList.toggle('active', state.discordRpcEnabled);
-      
-    }
-    if (badgeDiscordRpc) {
-      badgeDiscordRpc.textContent = state.discordRpcEnabled ? 'on' : 'off';
-    }
-    const card = document.getElementById('card-discord-rpc');
-    if (card) card.classList.toggle('enabled', state.discordRpcEnabled);
-  }
-
-  if (btnDiscordRpc) {
-    btnDiscordRpc.addEventListener('click', () => {
-      state.discordRpcEnabled = !state.discordRpcEnabled;
-      localStorage.setItem('devsize_discord_rpc', JSON.stringify(state.discordRpcEnabled));
-      if (window.electronAPI && window.electronAPI.discordRpcSetEnabled) {
-        window.electronAPI.discordRpcSetEnabled(state.discordRpcEnabled);
-      }
-      if (state.discordRpcEnabled && state.isPlaying && state.currentTrack) {
-        sendDiscordRpcUpdate(state.currentTrack, true);
-      }
-      syncDiscordRpcUI();
-    });
-  }
-
-  syncDiscordRpcUI();
 
   function createWavyProgress(container) {
     const W = 240, H = 12, WL = 16; let d = `M0 ${H/2}`;
@@ -7830,7 +7892,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const cleanId = String(trackId).replace(/[^a-zA-Z0-9_-]/g, '_');
     if (analysisCache.has(cleanId)) return analysisCache.get(cleanId);
     try {
-      const stored = localStorage.getItem(`riff_audio_analysis_${cleanId}`);
+      const stored = localStorage.getItem(`muriel_audio_analysis_${cleanId}`);
       if (stored) {
         const parsed = JSON.parse(stored);
         analysisCache.set(cleanId, parsed);
@@ -7845,7 +7907,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const cleanId = String(trackId).replace(/[^a-zA-Z0-9_-]/g, '_');
     analysisCache.set(cleanId, analysis);
     try {
-      localStorage.setItem(`riff_audio_analysis_${cleanId}`, JSON.stringify(analysis));
+      localStorage.setItem(`muriel_audio_analysis_${cleanId}`, JSON.stringify(analysis));
       fetch(`http://127.0.0.1:${state.serverPort}/api/track-analysis`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -8152,7 +8214,7 @@ document.addEventListener('DOMContentLoaded', async () => {
           pill.className = 'quick-play-pill';
           pill.style.animationDelay = (idx * 60) + 'ms';
           pill.innerHTML = `
-          <img class="quick-play-pill-img" src="${escapeHtml(t.thumbnail || '')}" alt="" onerror="this.style.visibility='hidden'">
+          <img class="quick-play-pill-img" src="${escapeHtml(listThumb(t.thumbnail) || '')}" data-full="${escapeHtml(t.thumbnail || '')}" alt="" decoding="async" onerror="${THUMB_FALLBACK}">
           <div class="quick-play-pill-text">
           <span class="quick-play-pill-title">${escapeHtml(t.title || 'untitled')}</span>
           <span class="quick-play-pill-artist">${escapeHtml(t.artist || '')}</span>
@@ -8632,7 +8694,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
       const move = window.confirm(
         'Move your existing music to the new folder?\n\n' +
-        'OK: move all downloaded and imported files, then restart Riff.\n' +
+        'OK: move all downloaded and imported files, then restart Muriel.\n' +
         'Cancel: switch to the new folder without moving (files stay in the old one).'
       );
       btnChangeMusicFolder.disabled = true;
@@ -8652,7 +8714,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         return;
       }
       btnChangeMusicFolder.textContent = 'Restarting...';
-      showToast('Restarting Riff...');
+      showToast('Restarting Muriel...');
       setTimeout(() => { if (window.electronAPI.restartApp) window.electronAPI.restartApp(); }, 400);
     });
   }
@@ -8982,7 +9044,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (data.progress && data.progress.status === 'downloading') {
         pollToolsStatus();
       } else if (promptUser && (!data.ytDlp || !data.ffmpeg)) {
-        if (!sessionStorage.getItem('riff_tools_prompt_dismissed')) {
+        if (!sessionStorage.getItem('muriel_tools_prompt_dismissed')) {
           const modal = document.getElementById('tools-install-modal');
           if (modal) openModal(modal);
         }
@@ -9017,14 +9079,14 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   if (btnDismissToolsModal && toolsModal) {
     btnDismissToolsModal.addEventListener('click', () => {
-      sessionStorage.setItem('riff_tools_prompt_dismissed', '1');
+      sessionStorage.setItem('muriel_tools_prompt_dismissed', '1');
       closeModal(toolsModal);
     });
   }
 
   if (btnCloseToolsModal && toolsModal) {
     btnCloseToolsModal.addEventListener('click', () => {
-      sessionStorage.setItem('riff_tools_prompt_dismissed', '1');
+      sessionStorage.setItem('muriel_tools_prompt_dismissed', '1');
       closeModal(toolsModal);
     });
   }
@@ -9078,7 +9140,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.querySelectorAll('.track-row').forEach(row => {
       if (row.dataset && row.dataset.canonicalId === canonical) {
         const img = row.querySelector('.track-row-thumb');
-        if (img) img.src = getTrackThumbUrl(track);
+        if (img) { const full = getTrackThumbUrl(track); img.dataset.full = full; img.src = listThumb(full); }
       }
     });
   }
@@ -9111,7 +9173,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const bannerVid = document.getElementById('track-art-banner-vid');
     const bannerPh = document.getElementById('track-art-banner-placeholder');
     const bannerStatus = document.getElementById('track-art-banner-status');
-    const activeBanner = art.banner || localStorage.getItem('riff_banner_media') || activeCover;
+    const activeBanner = art.banner || localStorage.getItem('muriel_banner_media') || activeCover;
     const isVideo = activeBanner && /\.(mp4|webm)($|\?)/i.test(activeBanner);
 
     if (activeBanner) {
@@ -9134,7 +9196,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (bannerVid) bannerVid.style.display = 'none';
       if (bannerPh) bannerPh.style.display = 'block';
     }
-    if (bannerStatus) bannerStatus.textContent = art.banner ? 'Custom banner' : (localStorage.getItem('riff_banner_media') ? 'Global banner' : 'Default art');
+    if (bannerStatus) bannerStatus.textContent = art.banner ? 'Custom banner' : (localStorage.getItem('muriel_banner_media') ? 'Global banner' : 'Default art');
   }
 
   function openTrackArtModal(track, triggerEl = null) {
@@ -9261,15 +9323,15 @@ document.addEventListener('DOMContentLoaded', async () => {
   updateLyricsTranslationUI();
   loadCustomThemes();
   applyCustomStyles();
-  showSettingsCategory(localStorage.getItem('riff_settings_cat') || 'interface');
+  showSettingsCategory(localStorage.getItem('muriel_settings_cat') || 'interface');
   refreshStacks();
   requestAnimationFrame(() => requestAnimationFrame(refreshStacks));
   requestAnimationFrame(() => requestAnimationFrame(() => updateNavIndicator(false)));
 
-  if (localStorage.getItem('riff_perf_mode') === null && window.electronAPI && window.electronAPI.getGpuCompositing) {
+  if (localStorage.getItem('muriel_perf_mode') === null && window.electronAPI && window.electronAPI.getGpuCompositing) {
     window.electronAPI.getGpuCompositing().then((status) => {
       if (status && !status.startsWith('enabled')) {
-        localStorage.setItem('riff_perf_mode', '1');
+        localStorage.setItem('muriel_perf_mode', '1');
         applyPerfMode(true);
         if (btnPerfMode) btnPerfMode.classList.add('active');
         showToast('Performance mode enabled: no GPU acceleration detected. You can turn it off in Settings');

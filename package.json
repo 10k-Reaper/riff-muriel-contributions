@@ -1,9 +1,9 @@
 {
-  "name": "riff",
-  "version": "42.0.0",
+  "name": "muriel",
+  "version": "1.0.0",
   "main": "main.js",
   "bin": {
-    "riff": "./cli.js"
+    "muriel": "./cli.js"
   },
   "scripts": {
     "start": "electron .",
@@ -14,32 +14,30 @@
     "release:major": "npm version major && git push --follow-tags"
   },
   "keywords": [],
-  "author": "rootscripts",
+  "author": "cloverscripts",
   "license": "MIT",
-  "description": "made for humans, Riff - audio player.",
+  "description": "Muriel - a lightweight music player.",
   "devDependencies": {
     "electron": "^41.7.1",
     "electron-builder": "^26.15.3"
   },
   "dependencies": {
     "cfonts": "^3.3.1",
-    "discord-rpc": "^4.0.1",
-    "electron-updater": "^6.8.9",
     "hls.js": "^1.7.1",
     "tone": "^15.1.22"
   },
-  "productName": "Riff",
-  "homepage": "https://github.com/rootscripts/riff",
+  "productName": "Muriel",
+  "homepage": "https://github.com/cloverscripts/riff-muriel",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/rootscripts/riff.git"
+    "url": "git+https://github.com/cloverscripts/riff-muriel.git"
   },
   "bugs": {
-    "url": "https://github.com/rootscripts/riff/issues"
+    "url": "https://github.com/cloverscripts/riff-muriel/issues"
   },
   "build": {
-    "appId": "io.github.rootscripts.riff",
-    "productName": "Riff",
+    "appId": "io.github.cloverscripts.muriel",
+    "productName": "Muriel",
     "artifactName": "${name}-${version}-${os}-${arch}.${ext}",
     "directories": {
       "output": "dist"
@@ -51,8 +49,7 @@
       "!bin/**",
       "!*.md",
       "!strip_comments.js",
-      "!.riff_progress.md",
-      "!package-lock.json"
+            "!package-lock.json"
     ],
     "win": {
       "target": [
@@ -108,8 +105,8 @@
     "publish": [
       {
         "provider": "github",
-        "owner": "rootscripts",
-        "repo": "riff",
+        "owner": "cloverscripts",
+        "repo": "riff-muriel",
         "releaseType": "release"
       }
     ]
