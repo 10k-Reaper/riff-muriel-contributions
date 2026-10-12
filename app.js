@@ -3360,7 +3360,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const nextTrack = state.queue[nextIdx];
         if (nextTrack && nextTrack.url && nextTrack.platform !== 'local') {
           setTimeout(() => {
-            fetch(`http://127.0.0.1:${state.serverPort}/api/prefetch?url=${encodeURIComponent(nextTrack.url)}&id=${encodeURIComponent(nextTrack.id || '')}&platform=${nextTrack.platform || state.platform}`).catch(() => {});
+            fetch(`http://127.0.0.1:${state.serverPort}/api/prefetch?url=${encodeURIComponent(nextTrack.url)}&id=${encodeURIComponent(nextTrack.id || '')}&platform=${nextTrack.platform || state.platform}&title=${encodeURIComponent(nextTrack.title || '')}&artist=${encodeURIComponent(nextTrack.artist || '')}&duration=${encodeURIComponent(nextTrack.duration || 0)}&thumbnail=${encodeURIComponent(nextTrack.thumbnail || '')}`).catch(() => {});
           }, 2000);
         }
       }

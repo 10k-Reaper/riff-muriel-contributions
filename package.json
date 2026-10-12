@@ -18,8 +18,17 @@
   "license": "MIT",
   "description": "Muriel - a lightweight music player.",
   "devDependencies": {
+    "@capacitor/cli": "^8.5.3",
+    "@capacitor/core": "^8.5.3",
+    "@capacitor/filesystem": "^8.1.4",
+    "@capacitor/ios": "^8.5.3",
+    "buffer": "^6.0.3",
     "electron": "^41.7.1",
-    "electron-builder": "^26.15.3"
+    "electron-builder": "^26.15.3",
+    "esbuild": "^0.28.2",
+    "events": "^3.3.0",
+    "path-browserify": "^1.0.1",
+    "youtubei.js": "^18.1.0"
   },
   "dependencies": {
     "cfonts": "^3.3.1",
@@ -49,7 +58,7 @@
       "!bin/**",
       "!*.md",
       "!strip_comments.js",
-            "!package-lock.json"
+      "!package-lock.json"
     ],
     "win": {
       "target": [

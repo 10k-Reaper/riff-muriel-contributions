@@ -9,6 +9,8 @@ const { StringDecoder } = require("string_decoder");
 
 const PORT = 38472;
 const { CACHE_DIR, CUSTOM_LYRICS_DIR, LYRICS_DIR, THUMBNAILS_DIR, METADATA_PATH, LIBRARY_DIR, LIBRARY_PATH, ytDlpCommand, resolveDownloadDir } = require('./platform');
+// iOS can't hand a cross-origin stream to Web Audio, so it plays everything from the disk cache.
+const STREAM_VIA_CACHE = !!require('./platform').STREAM_VIA_CACHE;
 
 if (!fs.existsSync(CACHE_DIR)) fs.mkdirSync(CACHE_DIR, { recursive: true });
 if (!fs.existsSync(CUSTOM_LYRICS_DIR)) fs.mkdirSync(CUSTOM_LYRICS_DIR, { recursive: true });
@@ -595,8 +597,10 @@ async function downloadTrackToDisk(trackUrl, trackId, platform, meta = {}) {
   if (downloadingSet.has(cleanId) || await findCachedFile(cleanId)) return;
   downloadingSet.add(cleanId);
 
-  const outputPath = path.join(CACHE_DIR, `${cleanId}.opus`);
+  const tempPrefix = `${cleanId}.temp.`;
   const tempPath = path.join(CACHE_DIR, `${cleanId}.temp.opus`);
+  // the iOS extractor keeps the original container (m4a/mp3), so let it pick the extension
+  const outTemplate = STREAM_VIA_CACHE ? path.join(CACHE_DIR, `${tempPrefix}%(ext)s`) : tempPath;
 
   const args = [
     '--no-config',
@@ -606,7 +610,7 @@ async function downloadTrackToDisk(trackUrl, trackId, platform, meta = {}) {
     '-x',
     '--audio-format', 'opus',
     '--audio-quality', '128K',
-    '-o', tempPath
+    '-o', outTemplate
   ];
 
   if (platform === 'youtube') {
@@ -621,46 +625,68 @@ async function downloadTrackToDisk(trackUrl, trackId, platform, meta = {}) {
 
   let cmd;
   try { cmd = ytDlpCommand(args); } catch (e) { downloadingSet.delete(cleanId); console.error(e.message); return; }
-  const proc = spawn(cmd.bin, cmd.args, { windowsHide: true });
-  proc.on('close', async (code) => {
-    downloadingSet.delete(cleanId);
-    if (code === 0 && fs.existsSync(tempPath)) {
-      try {
-        const stat = await fs.promises.stat(tempPath);
-        if (stat.size > 60000) {
-          await fs.promises.rename(tempPath, outputPath);
-          saveTrackMetadata(cleanId, {
-            id: trackId,
-            title: meta.title || '',
-            artist: meta.artist || '',
-            duration: meta.duration || 0,
-            thumbnail: meta.thumbnail || '',
-            platform: platform || 'youtube',
-            fileSize: stat.size
-          });
-        } else {
-          try { await fs.promises.unlink(tempPath); } catch (e) {}
-        }
-      } catch (e) {}
-    } else {
-      if (fs.existsSync(tempPath)) {
-        try { await fs.promises.unlink(tempPath); } catch (e) {}
-      }
-    }
-  });
 
-  proc.on('error', () => {
-    downloadingSet.delete(cleanId);
+  const findTemp = () => {
+    if (fs.existsSync(tempPath)) return tempPath;
+    try {
+      const name = fs.readdirSync(CACHE_DIR).find((f) => f.startsWith(tempPrefix));
+      return name ? path.join(CACHE_DIR, name) : null;
+    } catch (e) { return null; }
+  };
+
+  return new Promise((resolve) => {
+    const proc = spawn(cmd.bin, cmd.args, { windowsHide: true });
+    proc.on('close', async (code) => {
+      downloadingSet.delete(cleanId);
+      const found = findTemp();
+      if (code === 0 && found) {
+        try {
+          const stat = await fs.promises.stat(found);
+          if (stat.size > 60000) {
+            const outputPath = path.join(CACHE_DIR, `${cleanId}${path.extname(found)}`);
+            await fs.promises.rename(found, outputPath);
+            saveTrackMetadata(cleanId, {
+              id: trackId,
+              title: meta.title || '',
+              artist: meta.artist || '',
+              duration: meta.duration || 0,
+              thumbnail: meta.thumbnail || '',
+              platform: platform || 'youtube',
+              fileSize: stat.size
+            });
+          } else {
+            try { await fs.promises.unlink(found); } catch (e) {}
+          }
+        } catch (e) {}
+      } else if (found) {
+        try { await fs.promises.unlink(found); } catch (e) {}
+      }
+      resolve();
+    });
+
+    proc.on('error', () => {
+      downloadingSet.delete(cleanId);
+      resolve();
+    });
   });
 }
 
-async function prefetchTrack(trackUrl, trackId, platform) {
+async function prefetchTrack(trackUrl, trackId, platform, meta = null) {
   let cleanId = cleanTrackId(trackId);
   if (!cleanId && trackUrl && trackUrl.includes('v=')) {
     cleanId = cleanTrackId(trackUrl.split('v=')[1].split('&')[0]);
   }
   if (!cleanId || prefetchingSet.size > 2) return;
   if (await findCachedFile(cleanId) || streamUrlCache.has(cleanId) || prefetchingSet.has(cleanId)) return;
+  if (STREAM_VIA_CACHE) {
+    // only pre-download songs the app is about to play (it sends their metadata); skip speculative
+    // search-result prefetches, which would cost a whole download on mobile data
+    if (!meta || !meta.title) return;
+    if (platform === 'youtube' && (!trackUrl || !trackUrl.startsWith('http'))) trackUrl = `https://www.youtube.com/watch?v=${cleanId}`;
+    prefetchingSet.add(cleanId);
+    try { await downloadTrackToDisk(trackUrl, cleanId, platform, meta); } finally { prefetchingSet.delete(cleanId); }
+    return;
+  }
   prefetchingSet.add(cleanId);
 
   try {
@@ -1046,6 +1072,20 @@ async function handleStreamInfo(req, res, trackUrl, trackId, platform = 'youtube
 
   if (platform === 'youtube' && (!trackUrl || !trackUrl.startsWith('http')) && cleanId) {
     trackUrl = `https://www.youtube.com/watch?v=${cleanId}`;
+  }
+
+  if (STREAM_VIA_CACHE) {
+    await downloadTrackToDisk(trackUrl, cleanId, platform, meta);
+    if (!await findCachedFile(cleanId) && (title || artist)) {
+      // same SoundCloud fallback as the streaming path below
+      await downloadTrackToDisk(`scsearch1:${`${artist} ${title}`.trim()}`, cleanId, 'soundcloud', meta);
+    }
+    if (await findCachedFile(cleanId)) {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ success: true, isLocal: true, streamUrl: `http://127.0.0.1:${PORT}/api/local-track?id=${encodeURIComponent(cleanId)}` }));
+    }
+    res.writeHead(500, { 'Content-Type': 'application/json' });
+    return res.end(JSON.stringify({ success: false, error: 'could not extract audio stream' }));
   }
 
   let streamUrl = null;
@@ -2025,7 +2065,8 @@ const server = http.createServer(async (req, res) => {
     const trackUrl = parsedUrl.query.url || '';
     const trackId = parsedUrl.query.id || '';
     const platform = parsedUrl.query.platform || 'youtube';
-    prefetchTrack(trackUrl, trackId, platform);
+    const q = parsedUrl.query;
+    prefetchTrack(trackUrl, trackId, platform, q.title ? { title: q.title, artist: q.artist || '', duration: Number(q.duration) || 0, thumbnail: q.thumbnail || '' } : null);
     res.writeHead(200, { 'Content-Type': 'application/json' });
     return res.end(JSON.stringify({ success: true }));
   }
