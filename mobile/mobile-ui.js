@@ -1,5 +1,21 @@
 // iOS layout behaviour on top of app.js: mini player <-> now-playing sheet, swipe to dismiss,
 // and the progress line on the mini player.
+
+// Background playback: iOS suspends Web Audio when the app is backgrounded or the screen locks,
+// but keeps a plain <audio> element playing (and on the lock screen). So on iPhone the engine never
+// routes the element through an AudioContext. Speed/pitch still work (they're element properties);
+// EQ, reverb, distortion and the visualizer need the graph and are off. app.js builds the engine on
+// DOMContentLoaded, which hasn't fired yet when this script runs.
+(() => {
+  const Engine = window.MurielAudioEngine;
+  if (!Engine) return;
+  Engine.prototype.init = function (audioElement) { this.__element = audioElement || this.__element; };
+  // iOS ignores element.volume (hardware buttons own it); mute still works
+  Engine.prototype._applyMasterVolume = function () {
+    if (this.__element) this.__element.muted = !!this.isMuted || this.volume === 0;
+  };
+})();
+
 (() => {
   const panel = document.getElementById('right-panel');
   const playbar = document.getElementById('playbar');
