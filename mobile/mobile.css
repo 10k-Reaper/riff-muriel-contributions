@@ -378,3 +378,24 @@ html.is-mobile #np-like.on { color: #ff5a8a; }
 html.is-mobile #np-like.pop { animation: np-like-pop .35s cubic-bezier(.2, .8, .2, 1.4); }
 @keyframes np-like-pop { 0% { transform: scale(1); } 40% { transform: scale(1.3); } 100% { transform: scale(1); } }
 html.is-mobile #right-panel:not(.lyrics-empty) .right-panel-title-row { width: 100% !important; }
+
+/* ---------- artist page: compact, centred header; bio clamped to 3 lines (tap to expand) ---------- */
+html.is-mobile .artist-hero-card { padding: 18px 16px 16px !important; min-height: 0 !important; height: auto !important; position: relative !important; }
+html.is-mobile #btn-back-artist { position: absolute !important; top: 12px !important; left: 12px !important; z-index: 2 !important; }
+html.is-mobile .artist-card-body {
+  flex-direction: column !important; align-items: center !important; text-align: center !important;
+  gap: 12px !important; width: 100% !important; padding: 0 !important; min-height: 0 !important;
+}
+html.is-mobile .artist-avatar-wrap, html.is-mobile .artist-avatar-img, html.is-mobile .artist-avatar-fallback {
+  width: 128px !important; height: 128px !important; margin: 0 auto !important; flex: 0 0 auto !important;
+}
+html.is-mobile .artist-meta-box { width: 100% !important; align-items: center !important; text-align: center !important; gap: 8px !important; min-width: 0 !important; }
+html.is-mobile .artist-title { font-size: 26px !important; line-height: 1.15 !important; text-align: center !important; overflow-wrap: anywhere !important; }
+html.is-mobile .artist-bio-snippet {
+  display: -webkit-box !important; -webkit-box-orient: vertical !important; -webkit-line-clamp: 3 !important; line-clamp: 3 !important;
+  overflow: hidden !important; text-align: center !important; font-size: 14px !important; line-height: 1.45 !important; cursor: pointer !important;
+  max-height: none !important; margin: 0 !important;
+}
+html.is-mobile .artist-bio-snippet.expanded { -webkit-line-clamp: unset !important; line-clamp: unset !important; }
+html.is-mobile .artist-actions-bar { width: 100% !important; justify-content: center !important; margin-top: 4px !important; }
+html.is-mobile #btn-play-artist-tracks { width: 100% !important; justify-content: center !important; height: 44px !important; }
