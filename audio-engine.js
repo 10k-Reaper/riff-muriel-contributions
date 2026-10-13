@@ -29,6 +29,7 @@
       this.eqLow = null;
       this.eqMid = null;
       this.eqHigh = null;
+      this.eqBands = [];
 
       this.masterGain = null;
       this.analyserNode = null;
@@ -49,7 +50,8 @@
         distortion: 0,
         volume: 1.0,
         echo: 0,
-        eq: { low: 0, mid: 0, high: 0 }
+        eq: { low: 0, mid: 0, high: 0 },
+        eqBands: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
       };
       this.isMuted = false;
       this.volume = 0.85;
@@ -180,6 +182,21 @@
           this.eqLow.connect(this.eqMid);
           this.eqMid.connect(this.eqHigh);
 
+          const EQ_BAND_FREQS = [32, 64, 125, 250, 500, 1000, 2000, 4000, 8000, 16000];
+          this.eqBands = EQ_BAND_FREQS.map(f => {
+            const node = this.ctx.createBiquadFilter();
+            node.type = 'peaking';
+            node.frequency.value = f;
+            node.Q.value = 1.1;
+            node.gain.value = 0;
+            return node;
+          });
+          this.eqHigh.connect(this.eqBands[0]);
+          for (let i = 0; i < this.eqBands.length - 1; i++) {
+            this.eqBands[i].connect(this.eqBands[i + 1]);
+          }
+          const lastBand = this.eqBands[this.eqBands.length - 1];
+
           this.hqInput.connect(this.hqCompressor);
           this.hqCompressor.connect(this.hqBass);
           this.hqBass.connect(this.hqVocal);
@@ -190,18 +207,18 @@
 
           this.stdInput.connect(this.eqLow);
 
-          this.eqHigh.connect(this.dryGain);
+          lastBand.connect(this.dryGain);
           this.dryGain.connect(this.masterGain);
 
-          this.eqHigh.connect(this.distortionNode);
+          lastBand.connect(this.distortionNode);
           this.distortionNode.connect(this.distortionGain);
           this.distortionGain.connect(this.masterGain);
 
-          this.eqHigh.connect(this.delayNode);
+          lastBand.connect(this.delayNode);
           this.delayNode.connect(this.delayGain);
           this.delayGain.connect(this.masterGain);
 
-          this.eqHigh.connect(this.convolverNode);
+          lastBand.connect(this.convolverNode);
           this.convolverNode.connect(this.reverbGain);
           this.reverbGain.connect(this.masterGain);
 
@@ -308,6 +325,25 @@
       if (this.eqHigh) this.eqHigh.gain.value = this.audioSettings.eq.high;
     }
 
+    setEqBands(gains) {
+      if (!Array.isArray(gains)) return;
+      if (!Array.isArray(this.audioSettings.eqBands)) {
+        this.audioSettings.eqBands = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+      }
+      const clamp = v => Math.max(-12, Math.min(12, typeof v === 'number' ? v : 0));
+      for (let i = 0; i < 10; i++) {
+        const val = clamp(gains[i]);
+        this.audioSettings.eqBands[i] = val;
+        if (this.eqBands && this.eqBands[i]) {
+          if (this.ctx && this.eqBands[i].gain.setTargetAtTime) {
+            this.eqBands[i].gain.setTargetAtTime(val, this.ctx.currentTime, 0.02);
+          } else {
+            this.eqBands[i].gain.value = val;
+          }
+        }
+      }
+    }
+
     setVolume(volume, isMuted) {
       this.volume = volume;
       this.isMuted = isMuted;
@@ -333,6 +369,7 @@
       }
 
       if (s.eq) this.setEq(s.eq);
+      if (s.eqBands) this.setEqBands(s.eqBands);
 
       if (this.reverbGain) this.reverbGain.gain.value = s.reverb / 100;
 
@@ -362,8 +399,9 @@
     isModified() {
       const s = this.audioSettings;
       const eqMod = s.eq ? (s.eq.low !== 0 || s.eq.mid !== 0 || s.eq.high !== 0) : false;
+      const eqBandsMod = Array.isArray(s.eqBands) ? s.eqBands.some(v => v !== 0) : false;
       return s.speed !== 1.0 || s.speedPitch !== 1.0 || s.pitch !== 0 ||
-        s.reverb !== 0 || s.distortion !== 0 || s.volume !== 1.0 || s.echo !== 0 || eqMod;
+        s.reverb !== 0 || s.distortion !== 0 || s.volume !== 1.0 || s.echo !== 0 || eqMod || eqBandsMod;
     }
 
 
@@ -433,6 +471,24 @@
       const eqH = offline.createBiquadFilter(); eqH.type = 'highshelf'; eqH.frequency.value = 4000; eqH.gain.value = Math.max(-12, Math.min(12, s.eq?.high || 0));
       eqL.connect(eqM); eqM.connect(eqH);
 
+      let offlineEqTail = eqH;
+      if (Array.isArray(s.eqBands)) {
+        const freqs = [32, 64, 125, 250, 500, 1000, 2000, 4000, 8000, 16000];
+        const bands = freqs.map((f, i) => {
+          const filter = offline.createBiquadFilter();
+          filter.type = 'peaking';
+          filter.frequency.value = f;
+          filter.Q.value = 1.1;
+          filter.gain.value = Math.max(-12, Math.min(12, s.eqBands[i] || 0));
+          return filter;
+        });
+        offlineEqTail.connect(bands[0]);
+        for (let i = 0; i < bands.length - 1; i++) {
+          bands[i].connect(bands[i + 1]);
+        }
+        offlineEqTail = bands[bands.length - 1];
+      }
+
       if (useHq) {
         const comp = offline.createDynamicsCompressor();
         comp.threshold.value = -12;
@@ -481,7 +537,7 @@
         air.connect(sat);
         sat.connect(limiter);
         limiter.connect(eqL);
-        eqH.connect(master);
+        offlineEqTail.connect(master);
         master.connect(offline.destination);
 
       } else {
@@ -519,18 +575,18 @@
         delay.connect(feedback);
         feedback.connect(delay);
 
-        eqH.connect(dry);
+        offlineEqTail.connect(dry);
         dry.connect(master);
 
-        eqH.connect(distNode);
+        offlineEqTail.connect(distNode);
         distNode.connect(distGain);
         distGain.connect(master);
 
-        eqH.connect(delay);
+        offlineEqTail.connect(delay);
         delay.connect(echoGain);
         echoGain.connect(master);
 
-        eqH.connect(conv);
+        offlineEqTail.connect(conv);
         conv.connect(revGain);
         revGain.connect(master);
 

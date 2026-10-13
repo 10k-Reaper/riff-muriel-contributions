@@ -32,7 +32,7 @@ await build({
   alias: {
     fs: shim('fs'), http: shim('http'), https: shim('https'), child_process: shim('child_process'),
     os: shim('os'), url: shim('url'), string_decoder: shim('string_decoder'), crypto: shim('crypto'),
-    electron: shim('electron'), path: 'path-browserify', events: 'events', buffer: 'buffer',
+    electron: shim('electron'), dns: shim('dns'), net: shim('net'), path: 'path-browserify', events: 'events', buffer: 'buffer',
   },
   inject: [join(root, 'mobile', 'globals.js')],
   define: { 'process.env.NODE_ENV': '"production"', 'require.main': 'undefined' },

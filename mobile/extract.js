@@ -176,4 +176,68 @@ async function resolveAudio(target) {
   throw new Error(`unsupported target ${s}`);
 }
 
-module.exports = { youtubeSearch, ytMusicSearch, soundcloudSearch, resolveAudio };
+// ---- playlists (link import): yt-dlp-style { title, entries } ----
+async function youtubePlaylist(listId, limit) {
+  const y = await yt();
+  let page = await y.getPlaylist(listId);
+  const title = text(page.info && page.info.title) || 'Playlist';
+  const entries = [];
+  const parseDur = (s) => String(s || '').split(':').map(Number).reduce((acc, n) => acc * 60 + (n || 0), 0);
+  const take = (p) => (p.videos || p.items || []).forEach((v) => {
+    if (entries.length >= limit) return;
+    if (v.type === 'LockupView') {
+      // newer playlist layout: id in content_id, title/channel in metadata, duration as a thumbnail badge
+      if (v.content_type && v.content_type !== 'VIDEO') return;
+      const md = v.metadata || {};
+      const rows = (md.metadata && md.metadata.metadata_rows) || [];
+      const channel = rows[0] && rows[0].metadata_parts && rows[0].metadata_parts[0] ? text(rows[0].metadata_parts[0].text) : '';
+      const badge = ((v.content_image && v.content_image.overlays) || []).flatMap((o) => o.badges || [])[0];
+      if (!v.content_id) return;
+      entries.push({
+        id: v.content_id, title: text(md.title), uploader: channel, channel,
+        duration: parseDur(badge && badge.text), thumbnails: thumbs(v.content_image && v.content_image.image), webpage_url: `https://www.youtube.com/watch?v=${v.content_id}`,
+      });
+      return;
+    }
+    if (!v.id) return;
+    entries.push({
+      id: v.id, title: text(v.title), uploader: text(v.author && v.author.name), channel: text(v.author && v.author.name),
+      duration: (v.duration && v.duration.seconds) || 0, thumbnails: thumbs(v.thumbnails), webpage_url: `https://www.youtube.com/watch?v=${v.id}`,
+    });
+  });
+  take(page);
+  while (entries.length < limit && page.has_continuation) {
+    page = await page.getContinuation();
+    take(page);
+  }
+  return { title, entries };
+}
+
+async function soundcloudPlaylist(pageUrl, limit) {
+  const set = await scApi(`/resolve?url=${encodeURIComponent(pageUrl)}`);
+  if (set.kind === 'track') return { title: set.title, entries: [scEntry(set)] };
+  const tracks = (set.tracks || []).slice(0, limit);
+  // long sets only carry full data for the first few tracks; fetch the rest by id
+  const missing = tracks.filter((t) => !t.title).map((t) => t.id);
+  const full = new Map(tracks.filter((t) => t.title).map((t) => [t.id, t]));
+  for (let i = 0; i < missing.length; i += 50) {
+    const batch = await scApi(`/tracks?ids=${missing.slice(i, i + 50).join(',')}`).catch(() => []);
+    (batch || []).forEach((t) => full.set(t.id, t));
+  }
+  return { title: set.title || 'SoundCloud playlist', entries: tracks.map((t) => full.get(t.id)).filter(Boolean).map(scEntry) };
+}
+
+async function playlist(pageUrl, limit = 500) {
+  const s = String(pageUrl);
+  if (/soundcloud\.com/.test(s)) return soundcloudPlaylist(s, limit);
+  const list = (s.match(/[?&]list=([\w-]+)/) || [])[1];
+  if (list) return youtubePlaylist(list, limit);
+  const id = ytId(s);
+  if (id) {
+    const a = await youtubeAudio(id);
+    return { title: a.title, entries: [{ id, title: a.title, uploader: a.artist, duration: a.duration, thumbnails: [], webpage_url: `https://www.youtube.com/watch?v=${id}` }] };
+  }
+  throw new Error(`unsupported link ${s}`);
+}
+
+module.exports = { youtubeSearch, ytMusicSearch, soundcloudSearch, resolveAudio, playlist };

@@ -1,6 +1,11 @@
 const { contextBridge, ipcRenderer, webFrame } = require('electron');
 
+
 contextBridge.exposeInMainWorld('electronAPI', {
+  serverToken: (() => {
+    const arg = process.argv.find((a) => a.startsWith('--muriel-token='));
+    return arg ? arg.slice('--muriel-token='.length) : '';
+  })(),
   minimizeWindow: () => ipcRenderer.send('window-minimize'),
   maximizeWindow: () => ipcRenderer.send('window-maximize'),
   closeWindow: () => ipcRenderer.send('window-close'),
@@ -47,4 +52,5 @@ contextBridge.exposeInMainWorld('electronAPI', {
   welcomeFinish: (detail) => ipcRenderer.send('welcome-finish', detail),
   onWelcomeResult: (cb) => ipcRenderer.on('welcome-result', (e, d) => cb(d)),
   getLauncherInfo: () => ipcRenderer.invoke('launcher-info'),
+  openExternal: (u) => ipcRenderer.send('open-external', u),
 });
