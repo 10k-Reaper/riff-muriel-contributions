@@ -6,6 +6,28 @@ const http = require('./shims/http');
 const fs = require('./shims/fs');
 const electronAPI = require('./electron-api');
 
+// ---- error log ("Fehlerlog teilen" in Settings): last 300 warnings/errors, kept across restarts ----
+const LOG_KEY = 'muriel_debug_log';
+const logLines = (() => { try { return JSON.parse(localStorage.getItem(LOG_KEY) || '[]'); } catch (e) { return []; } })();
+let logSaveTimer = null;
+function murielLog(level, msg) {
+  logLines.push(`${new Date().toISOString()} ${level.toUpperCase()} ${String(msg).slice(0, 500)}`);
+  if (logLines.length > 300) logLines.splice(0, logLines.length - 300);
+  clearTimeout(logSaveTimer);
+  logSaveTimer = setTimeout(() => { try { localStorage.setItem(LOG_KEY, JSON.stringify(logLines)); } catch (e) {} }, 500);
+}
+for (const level of ['warn', 'error']) {
+  const orig = console[level].bind(console);
+  console[level] = (...args) => { murielLog(level, args.map((a) => (a && a.stack) || (typeof a === 'object' ? JSON.stringify(a) : String(a))).join(' ')); orig(...args); };
+}
+window.addEventListener('error', (e) => murielLog('error', `${e.message} @ ${(e.filename || '').split('/').pop()}:${e.lineno}`));
+window.addEventListener('unhandledrejection', (e) => murielLog('error', `unhandled: ${(e.reason && (e.reason.stack || e.reason.message)) || e.reason}`));
+window.MurielLog = {
+  add: murielLog,
+  text: () => [`Muriel ${navigator.userAgent}`, `platform: ${Capacitor.getPlatform()}`, ...logLines].join('\n'),
+  clear: () => { logLines.length = 0; try { localStorage.removeItem(LOG_KEY); } catch (e) {} },
+};
+
 const PORT = 38472;
 const BASE = `http://127.0.0.1:${PORT}/`;
 const MIME = { '.m4a': 'audio/mp4', '.mp3': 'audio/mpeg', '.opus': 'audio/ogg', '.webm': 'audio/webm', '.flac': 'audio/flac', '.wav': 'audio/wav', '.aac': 'audio/aac', '.ogg': 'audio/ogg', '.jpg': 'image/jpeg', '.png': 'image/png', '.gif': 'image/gif', '.webp': 'image/webp' };
@@ -70,7 +92,13 @@ async function resolveLocalUrl(u) {
 window.fetch = async (input, init = {}) => {
   const url = typeof input === 'string' ? input : input && input.url;
   if (!url || !url.startsWith(BASE)) return pageFetch(input, init);
-  const r = await call(url, init);
+  let r = await call(url, init);
+  // loading a song can fail on a passing YouTube/network hiccup; one quiet retry fixes most of them
+  if (r.status >= 500 && url.includes('/api/stream-info')) {
+    murielLog('warn', `stream-info failed (${r.status}), retrying: ${r.body.slice(0, 120)}`);
+    await new Promise((res) => setTimeout(res, 1200));
+    r = await call(url, init);
+  }
   if (r.file) return pageFetch(await fileUrlFor(r.file));
   return new Response(r.status === 204 ? null : r.body, { status: r.status, headers: r.headers });
 };

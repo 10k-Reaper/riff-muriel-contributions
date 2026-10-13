@@ -1,6 +1,7 @@
 // window.electronAPI for the iOS build. Desktop-only features (window controls, tray, mini player,
 // data folders, hardware acceleration) become no-ops; file pickers use the iOS document picker.
 const crypto = require('./shims/crypto');
+const { Share } = require('@capacitor/share');
 
 function pickFiles(accept, multiple) {
   return new Promise((resolve) => {
@@ -86,5 +87,12 @@ module.exports = function electronAPI({ ready, port, fs, fileUrlFor }) {
     welcomeFinish: noop,
     onWelcomeResult: noop,
     getLauncherInfo: async () => ({ platform: 'ios', canInstall: false, installed: true }),
+    // native share sheet (WhatsApp, Mail, …); falls back to the clipboard
+    async shareText(title, text) {
+      try { await Share.share({ title, text, dialogTitle: title }); return 'shared'; } catch (e) {
+        if (e && /cancel/i.test(String(e.message || e))) return 'cancelled';
+        try { await navigator.clipboard.writeText(text); return 'copied'; } catch (x) { return 'failed'; }
+      }
+    },
   };
 };

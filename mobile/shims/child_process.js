@@ -5,6 +5,7 @@ const fs = require('./fs');
 const store = require('./store');
 const ex = require('../extract');
 const { segmentsToAac } = require('../ts2aac');
+const { enforceCacheLimit } = require('../cache-limit');
 
 function fakeProcess(work) {
   const p = new EventEmitter();
@@ -56,9 +57,18 @@ async function downloadHls(playlistUrl, headers) {
   const worker = async () => {
     while (next < urls.length) {
       const i = next++;
-      const r = await globalThis.__murielFetch(urls[i], { headers });
-      if (!r.ok) throw new Error(`segment ${i} failed: ${r.status}`);
-      parts[i] = new Uint8Array(await r.arrayBuffer());
+      // a flaky segment shouldn't sink the whole song: retry it a couple of times with a short backoff
+      for (let attempt = 0; ; attempt++) {
+        try {
+          const r = await globalThis.__murielFetch(urls[i], { headers });
+          if (!r.ok) throw new Error(`segment ${i} failed: ${r.status}`);
+          parts[i] = new Uint8Array(await r.arrayBuffer());
+          break;
+        } catch (e) {
+          if (attempt >= 2) throw e;
+          await new Promise((res) => setTimeout(res, 600 * (attempt + 1)));
+        }
+      }
     }
   };
   await Promise.all(Array.from({ length: Math.min(4, urls.length) }, worker));
@@ -80,6 +90,7 @@ async function download(args, target) {
     size = await store.download(audio.url, out, audio.headers || { 'User-Agent': 'Mozilla/5.0' });
   }
   fs._register(out, size);
+  enforceCacheLimit();
   return '';
 }
 

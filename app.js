@@ -3450,15 +3450,15 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     el.nativeAudio.addEventListener('playing', () => {
       updatePlayPauseButton(state.isPlaying, false);
-      const nextIdx = state.queueIndex + 1;
-      if (state.queue && nextIdx < state.queue.length) {
-        const nextTrack = state.queue[nextIdx];
+      // warm up the next two songs (staggered) so skipping or a slow network never leaves a gap
+      [1, 2].forEach((ahead, k) => {
+        const nextTrack = state.queue && state.queue[state.queueIndex + ahead];
         if (nextTrack && nextTrack.url && nextTrack.platform !== 'local') {
           setTimeout(() => {
             fetch(`http://127.0.0.1:${state.serverPort}/api/prefetch?url=${encodeURIComponent(nextTrack.url)}&id=${encodeURIComponent(nextTrack.id || '')}&platform=${nextTrack.platform || state.platform}&title=${encodeURIComponent(nextTrack.title || '')}&artist=${encodeURIComponent(nextTrack.artist || '')}&duration=${encodeURIComponent(nextTrack.duration || 0)}&thumbnail=${encodeURIComponent(nextTrack.thumbnail || '')}`).catch(() => {});
-          }, 2000);
+          }, 2000 + k * 6000);
         }
-      }
+      });
     });
 
     el.nativeAudio.addEventListener('canplay', () => {

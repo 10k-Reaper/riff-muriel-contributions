@@ -307,3 +307,64 @@ html.is-mobile #right-panel:not(.lyrics-empty) .lyrics-container { flex: 1 1 aut
    playlist links and the Spotify data-export files work on the phone */
 html.is-mobile #sp-modes button[data-mode="login"],
 html.is-mobile .sp-pane[data-mode="login"] { display: none !important; }
+
+/* ---------- Now Playing: drifting cover-colour glow ---------- */
+html.is-mobile #right-panel > .np-ambient {
+  position: absolute !important; inset: 0 !important; z-index: 0 !important; overflow: hidden; pointer-events: none; border-radius: inherit;
+}
+html.is-mobile .np-ambient i {
+  position: absolute; width: 120vmax; height: 120vmax; left: 50%; top: 40%; margin: -60vmax 0 0 -60vmax; border-radius: 50%;
+  background: radial-gradient(closest-side, color-mix(in srgb, var(--np-c1, #6750A4) 55%, transparent), transparent 70%);
+  opacity: .55; will-change: transform;
+  animation: np-drift-a 26s ease-in-out infinite alternate; animation-play-state: paused;
+}
+html.is-mobile .np-ambient i:nth-child(2) {
+  background: radial-gradient(closest-side, color-mix(in srgb, var(--np-c2, #9A82DB) 55%, transparent), transparent 70%);
+  animation-name: np-drift-b; animation-duration: 33s; opacity: .45;
+}
+html.is-mobile .np-ambient i:nth-child(3) {
+  width: 80vmax; height: 80vmax; margin: -40vmax 0 0 -40vmax; top: 75%;
+  background: radial-gradient(closest-side, color-mix(in srgb, var(--np-c1, #6750A4) 40%, var(--np-c2, #9A82DB) 30%), transparent 70%);
+  animation-name: np-drift-c; animation-duration: 41s; opacity: .35;
+}
+html.is-mobile body.np-open:not(.hidden-window) .np-ambient i { animation-play-state: running; }
+@keyframes np-drift-a { from { transform: translate(-28%, -20%) scale(1); } to { transform: translate(18%, 12%) scale(1.25); } }
+@keyframes np-drift-b { from { transform: translate(25%, 18%) scale(1.15); } to { transform: translate(-20%, -16%) scale(.9); } }
+@keyframes np-drift-c { from { transform: translate(-10%, 10%) scale(.95); } to { transform: translate(14%, -14%) scale(1.2); } }
+html.is-mobile #right-panel > :not(.np-ambient) { position: relative; z-index: 1; }
+@media (prefers-reduced-motion: reduce) { html.is-mobile .np-ambient i { animation: none !important; } }
+
+/* ---------- lyrics in the Apple Music style: big, bold, left-aligned, sung words light up ---------- */
+html.is-mobile #right-panel .lyric-line {
+  font-size: calc(25px * var(--font-scale, 1)) !important; font-weight: 800 !important; line-height: 1.22 !important; letter-spacing: -0.012em;
+  text-align: left !important; padding: 9px 6px !important; transform-origin: left center !important;
+  color: var(--md-sys-color-on-surface) !important; filter: none !important;
+  opacity: max(.22, calc(.42 - var(--dist, 0) * .05)) !important;
+  transition: opacity .45s ease, transform .45s cubic-bezier(.2, .8, .2, 1) !important;
+}
+html.is-mobile #right-panel .lyric-line.active { opacity: 1 !important; transform: scale(1.025) !important; background: transparent !important; }
+html.is-mobile #right-panel .lyric-line.active .lyric-word { color: color-mix(in srgb, var(--md-sys-color-on-surface) 38%, transparent); transition: color .22s ease, text-shadow .22s ease; font-weight: 800; }
+html.is-mobile #right-panel .lyric-line.active .lyric-word.past-word { color: var(--md-sys-color-on-surface); }
+html.is-mobile #right-panel .lyric-line.active .lyric-word.active-word { color: var(--md-sys-color-on-surface); text-shadow: 0 0 16px color-mix(in srgb, var(--md-sys-color-on-surface) 45%, transparent); }
+
+/* ---------- touch: everything tappable is at least ~40px ---------- */
+html.is-mobile .track-row .btn-icon-pill { width: 40px !important; height: 40px !important; }
+html.is-mobile .playbar .btn-icon-pill, html.is-mobile .playbar .control-btn { min-width: 40px !important; min-height: 40px !important; }
+html.is-mobile .chip-btn { min-height: 36px !important; }
+html.is-mobile .lyrics-action-btn { width: 40px !important; height: 40px !important; }
+
+/* lyrics showing: compact header (small cover + title/artist in one row), lyrics fill the screen */
+html.is-mobile #right-panel:not(.lyrics-empty) .right-panel-artwork-box {
+  flex-direction: row !important; align-items: center !important; justify-content: flex-start !important; gap: 12px !important; text-align: left !important; flex: 0 0 auto !important;
+}
+html.is-mobile #right-panel:not(.lyrics-empty) .cover-container,
+html.is-mobile #right-panel:not(.lyrics-empty) .right-panel-cover,
+html.is-mobile #right-panel:not(.lyrics-empty) .right-panel-cover-fallback { width: 56px !important; height: 56px !important; border-radius: 8px !important; flex: 0 0 auto !important; }
+html.is-mobile #right-panel:not(.lyrics-empty) #btn-right-panel-art { display: none !important; }
+html.is-mobile #right-panel:not(.lyrics-empty) .right-panel-meta { align-items: flex-start !important; text-align: left !important; min-width: 0 !important; flex: 1 1 auto !important; }
+html.is-mobile #right-panel:not(.lyrics-empty) .right-panel-title { font-size: 17px !important; text-align: left !important; }
+html.is-mobile #right-panel:not(.lyrics-empty) .lyrics-header { justify-content: flex-start !important; }
+html.is-mobile .right-panel-header-actions { display: flex !important; align-items: center !important; justify-content: flex-end !important; gap: 6px !important; width: 100% !important; }
+html.is-mobile .np-tools-moved { display: flex !important; gap: 6px !important; padding: 0 !important; margin-right: auto !important; background: transparent !important; }
+html.is-mobile .np-tools-moved .lyrics-action-btn { width: 36px !important; height: 36px !important; }
+html.is-mobile #right-panel .lyrics-header:empty, html.is-mobile #right-panel .lyrics-header:not(:has(*)) { display: none !important; }

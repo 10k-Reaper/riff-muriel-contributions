@@ -7,6 +7,8 @@
 // EQ, reverb, distortion and the visualizer need the graph and are off. app.js builds the engine on
 // DOMContentLoaded, which hasn't fired yet when this script runs.
 (() => {
+  // desktop's default text scale (1.25x) is sized for a monitor; phones start at 1.0x unless the user picked one
+  if (!localStorage.getItem('muriel_font_scale')) localStorage.setItem('muriel_font_scale', '80');
   const Engine = window.MurielAudioEngine;
   if (!Engine) return;
   Engine.prototype.init = function (audioElement) { this.__element = audioElement || this.__element; };
@@ -58,6 +60,59 @@
     if (dy > 110) closeSheet();
   });
 
+  // phones default to word-by-word karaoke (the Line/Word button still switches)
+  const preferWordLyrics = () => {
+    const st = window.MurielCore && window.MurielCore.state;
+    const btn = document.getElementById('btn-lyrics-mode');
+    if (st && btn && st.lyricsMode === 'line' && localStorage.getItem('muriel_adv_karaoke_words') !== 'false') btn.click();
+  };
+  if (window.MurielCore) preferWordLyrics(); else window.addEventListener('muriel:ready', preferWordLyrics, { once: true });
+
+  // lyrics tools (edit / sync / translate / fullscreen) move up next to the Line/Word button,
+  // so the lyrics get that row back; same buttons, so their handlers keep working
+  const tools = panel.querySelector('.lyrics-header-actions');
+  const topRow = panel.querySelector('.right-panel-header-actions');
+  if (tools && topRow) { topRow.prepend(tools); tools.classList.add('np-tools-moved'); }
+
+  // slowly drifting colour glow behind Now Playing (cover colours, plain gradients: cheap to draw)
+  const ambient = document.createElement('div');
+  ambient.className = 'np-ambient';
+  ambient.innerHTML = '<i></i><i></i><i></i>';
+  panel.prepend(ambient);
+
+  // swipe the cover left/right to skip, with the cover following your finger
+  const cover = document.getElementById('cover-container');
+  if (cover) {
+    let x0 = null, y0 = null, dx = 0, horizontal = null;
+    cover.addEventListener('touchstart', (e) => { x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; dx = 0; horizontal = null; cover.style.transition = 'none'; }, { passive: true });
+    cover.addEventListener('touchmove', (e) => {
+      if (x0 === null) return;
+      dx = e.touches[0].clientX - x0;
+      const dy = e.touches[0].clientY - y0;
+      if (horizontal === null && (Math.abs(dx) > 8 || Math.abs(dy) > 8)) horizontal = Math.abs(dx) > Math.abs(dy);
+      if (horizontal) cover.style.transform = `translateX(${dx}px) rotate(${dx / 40}deg)`;
+    }, { passive: true });
+    cover.addEventListener('touchend', () => {
+      if (x0 === null) return;
+      x0 = null;
+      cover.style.transition = 'transform .32s cubic-bezier(.2,.8,.2,1), opacity .32s';
+      if (horizontal && Math.abs(dx) > 70) {
+        const dir = dx < 0 ? -1 : 1;
+        cover.style.transform = `translateX(${dir * window.innerWidth}px) rotate(${dir * 12}deg)`;
+        cover.style.opacity = '0';
+        if (navigator.vibrate) navigator.vibrate(10);
+        setTimeout(() => {
+          if (dir < 0) document.getElementById('btn-next').click(); else document.getElementById('btn-prev').click();
+          cover.style.transition = 'none';
+          cover.style.transform = `translateX(${-dir * 60}px)`;
+          requestAnimationFrame(() => { cover.style.transition = 'transform .38s cubic-bezier(.2,.8,.2,1), opacity .38s'; cover.style.transform = ''; cover.style.opacity = ''; });
+        }, 220);
+      } else {
+        cover.style.transform = '';
+      }
+    });
+  }
+
   // mini player progress line
   if (audio) {
     const tick = () => {
@@ -66,6 +121,44 @@
     };
     audio.addEventListener('timeupdate', tick);
     audio.addEventListener('emptied', tick);
+  }
+
+  // phone-only settings in Storage: cache size limit and sharing the error log
+  const storageGroup = document.querySelector('.settings-section[data-cat="storage"] .m3-group');
+  if (storageGroup) {
+    const limits = [['1024', '1 GB'], ['2048', '2 GB'], ['5120', '5 GB'], ['10240', '10 GB']];
+    const current = localStorage.getItem('muriel_cache_limit_mb') || '2048';
+    const limitRow = document.createElement('div');
+    limitRow.className = 'setting-item';
+    limitRow.innerHTML = `
+      <div class="setting-item-top" style="align-items: center;">
+        <div style="display: flex; flex-direction: column; gap: 2px;">
+          <span class="setting-name">Song storage limit</span>
+          <span style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">Songs you play are kept for offline use. Over this limit, the ones played longest ago are removed.</span>
+        </div>
+      </div>
+      <div class="theme-mode-toggle" style="margin-top: 10px;">
+        ${limits.map(([v, l]) => `<button class="fps-cap-btn${v === current ? ' active' : ''}" data-limit="${v}">${l}</button>`).join('')}
+      </div>`;
+    limitRow.querySelectorAll('[data-limit]').forEach((b) => b.addEventListener('click', () => {
+      localStorage.setItem('muriel_cache_limit_mb', b.dataset.limit);
+      limitRow.querySelectorAll('[data-limit]').forEach((x) => x.classList.toggle('active', x === b));
+    }));
+    const logRow = document.createElement('div');
+    logRow.className = 'setting-item';
+    logRow.innerHTML = `
+      <div class="setting-item-top" style="align-items: center;">
+        <div style="display: flex; flex-direction: column; gap: 2px;">
+          <span class="setting-name">Share error log</span>
+          <span style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">If something breaks, send this so it can be fixed.</span>
+        </div>
+        <button class="btn-pill-primary" type="button">Share</button>
+      </div>`;
+    logRow.querySelector('button').addEventListener('click', async () => {
+      const res = await window.electronAPI.shareText('Muriel error log', window.MurielLog ? window.MurielLog.text() : 'no log');
+      if (res === 'copied' && window.MurielCore) window.MurielCore.toast('Log copied to clipboard', 'info');
+    });
+    storageGroup.append(limitRow, logRow);
   }
 
   // settings that only make sense on desktop
