@@ -3137,6 +3137,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     syncState.currentIndex = 0;
 
     renderSyncLines();
+    // the banner shipped with placeholder text and was never filled in
+    const syncTitle = document.getElementById('sync-track-title');
+    const syncArtist = document.getElementById('sync-track-artist');
+    if (syncTitle) syncTitle.textContent = (state.currentTrack && state.currentTrack.title) || 'Untitled';
+    if (syncArtist) syncArtist.textContent = (state.currentTrack && state.currentTrack.artist) || '';
     if (el.syncModeOverlay) openModal(el.syncModeOverlay);
 
     if (el.nativeAudio && el.nativeAudio.paused && state.currentTrack) {

@@ -243,3 +243,62 @@ html.is-mobile .settings-content, html.is-mobile .settings-section, html.is-mobi
 html.is-mobile .setting-item { padding: 14px 14px !important; }
 html.is-mobile .theme-mode-toggle { flex-wrap: wrap !important; }
 html.is-mobile .slider-ticks i.major:not(:first-child):not(:last-child) > span { display: none !important; }
+
+/* ---------- Now Playing sheet: a solid screen of its own (no Home bleeding through) ---------- */
+html.is-mobile #right-panel {
+  background:
+    radial-gradient(130% 55% at 50% 0%, color-mix(in srgb, var(--np-c1) 40%, transparent), transparent 72%),
+    var(--md-sys-color-surface-container-low-solid, #1A1B1E) !important;
+  -webkit-backdrop-filter: none !important; backdrop-filter: none !important; border: none !important;
+  padding-bottom: calc(var(--safe-bottom) + 236px) !important;
+}
+/* nothing behind the sheet needs to draw while it covers the screen */
+html.is-mobile body.np-open .main-content,
+html.is-mobile body.np-open .sidebar { visibility: hidden !important; }
+/* lyrics fade out above the controls instead of running underneath them */
+html.is-mobile #right-panel .lyrics-container {
+  -webkit-mask-image: linear-gradient(transparent, #000 8%, #000 86%, transparent);
+  mask-image: linear-gradient(transparent, #000 8%, #000 86%, transparent);
+}
+html.is-mobile body.np-open .playbar { background: linear-gradient(transparent, var(--md-sys-color-surface-container-low-solid, #1A1B1E) 22%) !important; }
+
+/* ---------- popups: opaque cards that fit the phone ---------- */
+html.is-mobile .modal-backdrop {
+  background: rgba(0, 0, 0, 0.72) !important;
+  -webkit-backdrop-filter: none !important; backdrop-filter: none !important;
+  z-index: 5000 !important;
+  padding: calc(var(--safe-top) + 12px) 12px calc(var(--safe-bottom) + 12px) !important;
+}
+html.is-mobile .modal-backdrop .settings-card {
+  background: var(--md-sys-color-surface-container-solid, #1E1F22) !important;
+  -webkit-backdrop-filter: none !important; backdrop-filter: none !important;
+  width: 100% !important; max-width: 100% !important;
+  max-height: calc(100vh - var(--safe-top) - var(--safe-bottom) - 24px) !important; overflow-y: auto !important;
+}
+/* real-time lyrics sync: one clean column */
+html.is-mobile .sync-mode-card .settings-card-header { flex-wrap: wrap !important; gap: 8px !important; }
+html.is-mobile .sync-track-banner { flex-direction: column !important; align-items: flex-start !important; gap: 6px !important; }
+html.is-mobile .sync-tip-pill { white-space: normal !important; }
+html.is-mobile .sync-controls-bar { display: grid !important; grid-template-columns: 1fr 1fr !important; gap: 10px !important; align-items: center !important; }
+html.is-mobile .sync-controls-bar .sync-progress-text { grid-column: 1 / -1 !important; order: -1 !important; text-align: center !important; white-space: nowrap !important; }
+html.is-mobile .sync-controls-bar button { width: 100% !important; justify-content: center !important; }
+
+/* ---------- toasts: above the player at the bottom, never over headers ---------- */
+html.is-mobile .toast-container {
+  top: auto !important; bottom: calc(var(--tabbar-h) + var(--mini-h) + var(--safe-bottom) + 18px) !important;
+  left: 12px !important; right: 12px !important; transform: none !important; align-items: center !important; z-index: 6000 !important;
+}
+html.is-mobile body.np-open .toast-container { bottom: calc(var(--safe-bottom) + 250px) !important; }
+/* sheet: hints sit at the very bottom, under the popup content rather than on it */
+html.is-mobile body.np-open .toast-container { bottom: calc(var(--safe-bottom) + 12px) !important; }
+/* sync popup header stays on one line: title shrinks, close button keeps its spot */
+html.is-mobile .sync-mode-card .settings-card-header { flex-wrap: nowrap !important; align-items: center !important; }
+html.is-mobile .sync-mode-card .settings-title-group { flex: 1 1 auto !important; min-width: 0 !important; flex-wrap: wrap !important; gap: 4px 8px !important; }
+html.is-mobile .sync-mode-card .settings-title-group h3 { font-size: 18px !important; }
+html.is-mobile .sync-mode-card #btn-cancel-sync { flex: 0 0 auto !important; }
+/* when a song has lyrics, the cover shrinks so the lyrics get the space */
+html.is-mobile #right-panel:not(.lyrics-empty) .cover-container,
+html.is-mobile #right-panel:not(.lyrics-empty) .right-panel-cover,
+html.is-mobile #right-panel:not(.lyrics-empty) .right-panel-cover-fallback { width: min(42vw, 20vh) !important; height: min(42vw, 20vh) !important; }
+html.is-mobile #right-panel:not(.lyrics-empty) .lyrics-section { flex: 1 1 auto !important; min-height: 0 !important; }
+html.is-mobile #right-panel:not(.lyrics-empty) .lyrics-container { flex: 1 1 auto !important; min-height: 0 !important; overflow-y: auto !important; }
