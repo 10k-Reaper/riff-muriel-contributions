@@ -67,7 +67,7 @@ if (process.argv.includes('lyrics') || process.argv.includes('--lyrics')) {
 }
 
 function runGUI() {
-  const { startServer, PORT } = require('./server');
+  const { startServer, PORT, getServerToken } = require('./server');
 
   let mainWindow = null;
   const gotLock = app.requestSingleInstanceLock();
@@ -193,6 +193,7 @@ function runGUI() {
                                    useContentSize: true,
                                    webPreferences: {
                                      preload: path.join(__dirname, 'preload.js'),
+                                   additionalArguments: [`--muriel-token=${getServerToken()}`],
                                    nodeIntegration: false,
                                    contextIsolation: true,
                                    webSecurity: false,
@@ -285,6 +286,10 @@ function runGUI() {
 
     ipcMain.on('window-close', () => {
       if (mainWindow && !mainWindow.isDestroyed()) mainWindow.close();
+    });
+
+    ipcMain.on('open-external', (e, u) => {
+      if (/^https:\/\/accounts\.spotify\.com\//.test(String(u))) shell.openExternal(u);
     });
 
       ipcMain.handle('get-server-port', () => serverPort);

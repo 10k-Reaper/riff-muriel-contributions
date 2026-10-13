@@ -34,16 +34,19 @@ globalThis.__murielFetch = async (input, init) => {
 
 // ---- the in-app "server" ----
 let ready;
+let server = null;
 async function start() {
   await fs.init();
-  require('../server.js').startServer(PORT);
+  server = require('../server.js');
+  server.startServer(PORT);
 }
 
 function call(url, init = {}) {
   return ready.then(() => http.dispatch({
     url: url.slice(BASE.length - 1),
     method: init.method || 'GET',
-    headers: init.headers instanceof Headers ? Object.fromEntries(init.headers.entries()) : (init.headers || {}),
+    // there's no socket to protect in-app, but server.js checks its CSRF token, so every call carries it
+    headers: { ...(init.headers instanceof Headers ? Object.fromEntries(init.headers.entries()) : (init.headers || {})), 'x-muriel-token': server.getServerToken() },
     body: typeof init.body === 'string' ? init.body : '',
   }));
 }

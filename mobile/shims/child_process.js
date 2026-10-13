@@ -37,6 +37,10 @@ async function searchJson(target, limit) {
     entries = m[1] === 'sc' ? await ex.soundcloudSearch(m[3], n) : await ex.youtubeSearch(m[3], n);
   } else if ((m = target.match(/music\.youtube\.com\/search\?q=([^#&]+)/))) {
     entries = await ex.ytMusicSearch(decodeURIComponent(m[1].replace(/\+/g, ' ')), limit || 20);
+  } else if (/^https?:\/\//.test(target)) {
+    // playlist / album / set link (link import)
+    const pl = await ex.playlist(target, limit || 500);
+    return JSON.stringify({ title: pl.title, entries: pl.entries });
   } else {
     throw new Error(`unsupported search target ${target}`);
   }
