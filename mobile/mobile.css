@@ -6,8 +6,10 @@
 html.is-mobile {
   --tabbar-h: 56px;
   --mini-h: 64px;
-  --safe-top: env(safe-area-inset-top, 0px);
-  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  /* iOS reports insets through env(); Capacitor on Android injects --safe-area-inset-* instead
+     (older Android WebViews report env() as 0), so take whichever is larger */
+  --safe-top: max(env(safe-area-inset-top, 0px), var(--safe-area-inset-top, 0px));
+  --safe-bottom: max(env(safe-area-inset-bottom, 0px), var(--safe-area-inset-bottom, 0px));
   --chrome-bottom: calc(var(--tabbar-h) + var(--mini-h) + var(--safe-bottom) + 12px);
   -webkit-text-size-adjust: 100%;
   -webkit-tap-highlight-color: transparent;
@@ -368,3 +370,11 @@ html.is-mobile .right-panel-header-actions { display: flex !important; align-ite
 html.is-mobile .np-tools-moved { display: flex !important; gap: 6px !important; padding: 0 !important; margin-right: auto !important; background: transparent !important; }
 html.is-mobile .np-tools-moved .lyrics-action-btn { width: 36px !important; height: 36px !important; }
 html.is-mobile #right-panel .lyrics-header:empty, html.is-mobile #right-panel .lyrics-header:not(:has(*)) { display: none !important; }
+
+/* like button in Now Playing */
+html.is-mobile #np-like { flex: 0 0 auto; width: 40px; height: 40px; display: grid; place-items: center; background: none; border: 0; color: var(--md-sys-color-on-surface-variant); }
+html.is-mobile #np-like svg { width: 24px; height: 24px; }
+html.is-mobile #np-like.on { color: #ff5a8a; }
+html.is-mobile #np-like.pop { animation: np-like-pop .35s cubic-bezier(.2, .8, .2, 1.4); }
+@keyframes np-like-pop { 0% { transform: scale(1); } 40% { transform: scale(1.3); } 100% { transform: scale(1); } }
+html.is-mobile #right-panel:not(.lyrics-empty) .right-panel-title-row { width: 100% !important; }

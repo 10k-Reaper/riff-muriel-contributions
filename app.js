@@ -10247,6 +10247,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     isSameTrack: (a, b) => isSameTrack(a, b),
     formatDuration: (s) => formatDuration(s),
     toast: (msg, kind) => showToast(msg, kind),
+    refreshBackground: () => updateCustomBg(),
   };
   window.dispatchEvent(new Event('muriel:ready'));
 });

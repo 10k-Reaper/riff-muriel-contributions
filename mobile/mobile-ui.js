@@ -60,6 +60,18 @@
     if (dy > 110) closeSheet();
   });
 
+  // custom background: rebuild its file URL from the app-relative path (it changes on every reinstall)
+  const fixBackground = async () => {
+    const vpath = localStorage.getItem('muriel_bg_vpath');
+    const current = localStorage.getItem('muriel_bg_url') || '';
+    if (!vpath || !window.electronAPI.fileUrl) return;
+    if (!current) { localStorage.removeItem('muriel_bg_vpath'); return; } // background was removed
+    if (!current.includes(vpath.split('/').pop())) { localStorage.removeItem('muriel_bg_vpath'); return; } // a different one was chosen
+    const url = await window.electronAPI.fileUrl(vpath);
+    if (url && url !== current) { localStorage.setItem('muriel_bg_url', url); window.MurielCore.refreshBackground(); }
+  };
+  if (window.MurielCore) fixBackground(); else window.addEventListener('muriel:ready', fixBackground, { once: true });
+
   // phones default to word-by-word karaoke (the Line/Word button still switches)
   const preferWordLyrics = () => {
     const st = window.MurielCore && window.MurielCore.state;
@@ -73,6 +85,28 @@
   const tools = panel.querySelector('.lyrics-header-actions');
   const topRow = panel.querySelector('.right-panel-header-actions');
   if (tools && topRow) { topRow.prepend(tools); tools.classList.add('np-tools-moved'); }
+
+  // like button next to the title in Now Playing (the player bar's heart is hidden on phones);
+  // it presses the real one and mirrors its state
+  const realFav = document.getElementById('btn-toggle-fav');
+  const favIcon = document.getElementById('fav-icon');
+  const titleRow = panel.querySelector('.right-panel-title-row');
+  if (realFav && favIcon && titleRow) {
+    const like = document.createElement('button');
+    like.id = 'np-like';
+    like.type = 'button';
+    like.setAttribute('aria-label', 'Like');
+    like.innerHTML = favIcon.outerHTML.replace('id="fav-icon"', '');
+    const mirror = () => { const on = favIcon.getAttribute('fill') === 'currentColor'; like.classList.toggle('on', on); like.querySelector('svg').setAttribute('fill', on ? 'currentColor' : 'none'); };
+    like.addEventListener('click', () => {
+      realFav.click();
+      like.classList.remove('pop'); void like.offsetWidth; like.classList.add('pop');
+      if (navigator.vibrate) navigator.vibrate(12);
+    });
+    new MutationObserver(mirror).observe(favIcon, { attributes: true, attributeFilter: ['fill'] });
+    titleRow.appendChild(like);
+    mirror();
+  }
 
   // slowly drifting colour glow behind Now Playing (cover colours, plain gradients: cheap to draw)
   const ambient = document.createElement('div');

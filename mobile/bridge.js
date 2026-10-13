@@ -140,6 +140,29 @@ new MutationObserver((muts) => {
   }
 }).observe(document.documentElement, { subtree: true, childList: true, attributes: true, attributeFilter: ['src'] });
 
+// Android hardware back: close whatever is on top instead of quitting the app.
+// On Home it backgrounds the app (music keeps playing) rather than closing it.
+if (Capacitor.getPlatform() === 'android') {
+  const { App } = require('@capacitor/app');
+  const visible = (el) => el && !el.classList.contains('hidden') && getComputedStyle(el).display !== 'none';
+  App.addListener('backButton', () => {
+    const modal = [...document.querySelectorAll('.modal-backdrop')].reverse().find((m) => visible(m) && m.classList.contains('visible'));
+    if (modal) {
+      const closeBtn = modal.querySelector('[id^="btn-close"], [id^="btn-cancel"], .modal-close');
+      if (closeBtn) closeBtn.click(); else modal.click();
+      return;
+    }
+    const tv = document.getElementById('tv-karaoke');
+    if (visible(tv)) { document.getElementById('btn-close-tv-karaoke').click(); return; }
+    const drawer = document.getElementById('rail-drawer');
+    if (visible(drawer)) { document.getElementById('btn-close-rail-drawer').click(); return; }
+    if (document.body.classList.contains('np-open')) { document.getElementById('btn-close-right-panel').click(); return; }
+    const home = document.getElementById('nav-discover');
+    if (home && !home.classList.contains('active')) { home.click(); return; }
+    App.minimizeApp();
+  });
+}
+
 ready = start();
 window.electronAPI = electronAPI({ ready, port: PORT, fs, fileUrlFor });
 document.documentElement.classList.add('is-mobile');

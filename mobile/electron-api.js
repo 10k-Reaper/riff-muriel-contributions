@@ -41,6 +41,9 @@ module.exports = function electronAPI({ ready, port, fs, fileUrlFor }) {
       await ready;
       const vpath = `/data/backgrounds/bg_${Date.now()}.${extOf(file.name)}`;
       fs.writeFileSync(vpath, new Uint8Array(await file.arrayBuffer()));
+      // the absolute file URL changes when iOS moves the app container (every reinstall), so keep the
+      // app-relative path too and rebuild the URL on launch (mobile-ui.js)
+      localStorage.setItem('muriel_bg_vpath', vpath);
       return fileUrlFor(vpath);
     },
 
@@ -87,6 +90,7 @@ module.exports = function electronAPI({ ready, port, fs, fileUrlFor }) {
     welcomeFinish: noop,
     onWelcomeResult: noop,
     getLauncherInfo: async () => ({ platform: 'ios', canInstall: false, installed: true }),
+    fileUrl: async (vpath) => { await ready; return fs.existsSync(vpath) ? fileUrlFor(vpath) : null; },
     // native share sheet (WhatsApp, Mail, …); falls back to the clipboard
     async shareText(title, text) {
       try { await Share.share({ title, text, dialogTitle: title }); return 'shared'; } catch (e) {
