@@ -47,7 +47,7 @@ jobs:
             -destination 'generic/platform=iOS' \
             -derivedDataPath build \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
-            MARKETING_VERSION="$(node -p "require('./package.json').version")" \
+            MARKETING_VERSION="$(node -p "require('./package.json').version.split('.').slice(0, 2).join('.')").${{ github.run_number }}" \
             CURRENT_PROJECT_VERSION="${{ github.run_number }}" \
             build
 
@@ -57,6 +57,13 @@ jobs:
           cp -R build/Build/Products/Release-iphoneos/App.app Payload/
           zip -qry Muriel.ipa Payload
           ls -lh Muriel.ipa
+
+      - name: Write the SideStore / AltStore source
+        env:
+          RUN: ${{ github.run_number }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+        run: node .github/sidestore-source.js
 
       - uses: actions/upload-artifact@v4
         with:
@@ -68,7 +75,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release delete ios-latest --cleanup-tag --yes 2>/dev/null || true
-          gh release create ios-latest Muriel.ipa \
+          gh release create ios-latest Muriel.ipa sidestore.json \
             --prerelease \
             --target "$GITHUB_SHA" \
             --title "Muriel for iPhone (latest build)" \
