@@ -15437,6 +15437,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (data.progress && (data.progress.status === 'done' || data.progress.status === 'error')) {
           clearInterval(toolsPollInterval);
           toolsPollInterval = null;
+          // on a fresh install the home page loaded before yt-dlp existed and is showing its retry button
+          const retryHome = data.progress.status === 'done' && document.getElementById('btn-retry-vibe');
+          if (retryHome) retryHome.click();
         }
       } catch (e) {}
     }, 1000);

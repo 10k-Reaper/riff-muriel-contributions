@@ -1293,16 +1293,7 @@
           <p class="step-header-subtitle">Optional. You can skip this and set it up whenever you like.</p>
         </div>
 
-        <div class="stacked-container stacked-3-middle row">
-          <div class="row-icon">
-            <svg viewBox="0 0 24 24"><path d="M21 6h-2v9H6v2c0 .55.45 1 1 1h11l4 4V7c0-.55-.45-1-1-1zm-4 6V3c0-.55-.45-1-1-1H3c-.55 0-1 .45-1 1v14l4-4h10c.55 0 1-.45 1-1z"/></svg>
-          </div>
-          <div class="row-text">
-            <div class="row-title">Discord Rich Presence</div>
-            <div class="row-sub" id="discordSub">Show what you're listening to on your Discord profile</div>
-          </div>
-          <button class="sw" role="switch" aria-checked="false" id="discordSwitch"></button>
-        </div>
+        <!-- Muriel has no Discord Rich Presence, so the upstream switch is left out -->
 
         <div class="stacked-container stacked-3-middle">
           <div class="row">
@@ -1909,28 +1900,7 @@
       bgSub.textContent = bgDisplayName(bgUrl);
     });
 
-    const discordSwitch = document.getElementById('discordSwitch');
-    const discordSub = document.getElementById('discordSub');
-    const DISCORD_HINT = discordSub.textContent;
-    let discordOn = false;
-
-    async function refreshDiscord() {
-      if (!discordOn) {
-        discordSub.textContent = DISCORD_HINT;
-        return;
-      }
-      const connected = await bridge.discordConnected();
-      discordSub.textContent = connected ? 'Connected to Discord' : 'Waiting for Discord to start';
-    }
-
-    discordSwitch.addEventListener('click', () => {
-      discordOn = discordSwitch.classList.toggle('on');
-      discordSwitch.setAttribute('aria-checked', discordOn ? 'true' : 'false');
-      bridge.discordSetEnabled(discordOn);
-      bridge.set('muriel_discord_rpc', discordOn ? '1' : '0');
-      refreshDiscord();
-      if (discordOn) setTimeout(refreshDiscord, 1800);
-    });
+    const discordOn = false;
 
 
     const launcherSwitch = document.getElementById('launcherSwitch');
