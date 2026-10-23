@@ -150,11 +150,13 @@
   // mini player progress line
   if (audio) {
     const tick = () => {
+      if (document.hidden) return;
       const p = audio.duration ? audio.currentTime / audio.duration : 0;
       playbar.style.setProperty('--mini-progress', String(Math.max(0, Math.min(1, p))));
     };
     audio.addEventListener('timeupdate', tick);
     audio.addEventListener('emptied', tick);
+    document.addEventListener('visibilitychange', tick);
   }
 
   // phone-only settings in Storage: cache size limit and sharing the error log

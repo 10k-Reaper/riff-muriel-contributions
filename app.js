@@ -1976,18 +1976,20 @@ document.addEventListener('DOMContentLoaded', async () => {
   let levelAvgDb = -120;
   function normalizeEnabled() { return localStorage.getItem('muriel_audio_normalize') === '1'; }
   function resetLevelWatcher() { levelAvgDb = -120; if (audioEngine && audioEngine.setNormalizeGainDb) audioEngine.setNormalizeGainDb(0); }
-  setInterval(() => {
+  // the phone app has no Web Audio graph (see mobile-ui.js), so nothing to measure there
+  const isPhoneApp = document.documentElement.classList.contains('is-mobile');
+  if (!isPhoneApp) setInterval(() => {
+    if (!normalizeEnabled()) {
+      if (levelAvgDb > -120) resetLevelWatcher();
+      return;
+    }
     const audio = el.nativeAudio;
     if (!audioEngine || !audioEngine.getLevelDb || !audio || audio.paused || !state.isPlaying) return;
     const db = audioEngine.getLevelDb();
-    if (normalizeEnabled()) {
-      if (db > -50) {
-        levelAvgDb = levelAvgDb <= -120 ? db : levelAvgDb + (db - levelAvgDb) * 0.05;
-        const gainDb = Math.max(-9, Math.min(9, -17 - levelAvgDb));
-        audioEngine.setNormalizeGainDb(gainDb);
-      }
-    } else if (levelAvgDb > -120) {
-      resetLevelWatcher();
+    if (db > -50) {
+      levelAvgDb = levelAvgDb <= -120 ? db : levelAvgDb + (db - levelAvgDb) * 0.05;
+      const gainDb = Math.max(-9, Math.min(9, -17 - levelAvgDb));
+      audioEngine.setNormalizeGainDb(gainDb);
     }
   }, 100);
 
@@ -2162,7 +2164,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
       animationFrameId = requestAnimationFrame(renderLoop);
 
-      const fpsCap = document.body.classList.contains('perf') ? 30 : (parseInt(localStorage.getItem('muriel_fps_cap') || '0', 10) || 0);
+      const fpsCap = document.body.classList.contains('perf') ? 30 : isPhoneApp ? 20 : (parseInt(localStorage.getItem('muriel_fps_cap') || '0', 10) || 0);
       if (fpsCap && timestamp - lastFrameTime < 1000 / fpsCap - 1) return;
       lastFrameTime = timestamp;
 
@@ -2504,6 +2506,11 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (window.electronAPI && window.electronAPI.onWindowVisibility) {
     window.electronAPI.onWindowVisibility(visible => handleVisibilityChange(visible));
   }
+  // WKWebView doesn't always fire visibilitychange on lock/home; the native app-state event does
+  try {
+    const capApp = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.App;
+    if (capApp && capApp.addListener) capApp.addListener('appStateChange', (s) => handleVisibilityChange(!!(s && s.isActive)));
+  } catch (_) {}
 
   function applyVisualEffects() {
     const v = state.vfx;
@@ -10125,7 +10132,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   const btnWavyProgress = document.getElementById('btn-wavy-progress');
   function updateWavyProgressUI() {
     const isWavy = localStorage.getItem('muriel_wavy_progress') !== 'false';
-    const isPerf = localStorage.getItem('muriel_perf_mode') === '1' || localStorage.getItem('muriel_perf_mode') === 'true';
+    const isPerf = document.body.classList.contains('perf');
     document.body.classList.toggle('no-wavy', isPerf ? true : !isWavy);
     if (btnWavyProgress) {
       btnWavyProgress.classList.toggle('active', isWavy);
@@ -10314,8 +10321,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
   document.addEventListener('visibilitychange', () => { if (!document.hidden) applyM3Cover(); });
 
+  // auto battery saver: perf mode while a laptop runs on battery (the stored setting is left alone)
+  let batterySaver = false;
+  function storedPerfMode() { const v = localStorage.getItem('muriel_perf_mode'); return v === '1' || v === 'true'; }
   function applyPerfMode(on) {
-    document.body.classList.toggle('perf', !!on);
+    on = !!on || batterySaver;
+    document.body.classList.toggle('perf', on);
     const isWavy = localStorage.getItem('muriel_wavy_progress') !== 'false';
     document.body.classList.toggle('no-wavy', on ? true : !isWavy);
     syncBgVideoPlayback();
@@ -10382,6 +10393,18 @@ document.addEventListener('DOMContentLoaded', async () => {
   const btnPerfMode = document.getElementById('btn-perf-mode');
   const initialPerfMode = localStorage.getItem('muriel_perf_mode') === '1' || localStorage.getItem('muriel_perf_mode') === 'true';
   applyPerfMode(initialPerfMode);
+  if (!isPhoneApp && typeof navigator.getBattery === 'function' && localStorage.getItem('muriel_battery_saver') !== '0') {
+    navigator.getBattery().then((b) => {
+      const sync = () => {
+        const next = b.charging === false;
+        if (next === batterySaver) return;
+        batterySaver = next;
+        applyPerfMode(storedPerfMode());
+      };
+      sync();
+      b.addEventListener('chargingchange', sync);
+    }).catch(() => {});
+  }
   if (btnPerfMode) {
     btnPerfMode.classList.toggle('active', initialPerfMode);
     btnPerfMode.addEventListener('click', () => {
@@ -15734,7 +15757,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     sleepTimerInterval = setInterval(() => {
       if (!state.sleepTimer || state.sleepTimer.mode !== 'minutes') return;
       if (state.sleepTimer.endsAt > Date.now()) {
-        updateSleepTimerUI();
+        if (!document.hidden) updateSleepTimerUI();
         return;
       }
       clearInterval(sleepTimerInterval);
