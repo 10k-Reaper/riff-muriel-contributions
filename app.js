@@ -10172,7 +10172,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   const RING_W = 2.4;
 
   const m3c = { canvas: null, ctx: null, img: new Image(), imgReady: false, from: 0, to: 0, start: 0, raf: 0, last: 0, phase: 0, hoverProgress: 0, isHovered: false };
-  function m3cEnabled() { return localStorage.getItem('muriel_m3_cover') !== '0' && !document.body.classList.contains('perf'); }
+  // phones keep the plain cover: the animated ring doesn't fit the mini player and its loop costs battery
+  function m3cEnabled() { return !isPhoneApp && localStorage.getItem('muriel_m3_cover') !== '0' && !document.body.classList.contains('perf'); }
   function m3cInit() {
     m3c.canvas = document.getElementById('m3c-canvas');
     if (!m3c.canvas) return;

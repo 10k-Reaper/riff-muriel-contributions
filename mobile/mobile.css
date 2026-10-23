@@ -410,3 +410,12 @@ html.is-mobile .np-ambient i { animation: none !important; will-change: auto; }
 html.is-mobile :is(.bg-mesh-layer, #mesh-gradient, .shape-pill, .shape-egg, .shape-triangle, .cover-container.spinning, .logo-bars rect, #sleep-timer-status.active::before) { animation: none !important; }
 html.is-mobile *, html.is-mobile *::before, html.is-mobile *::after { -webkit-backdrop-filter: none !important; backdrop-filter: none !important; }
 html.is-mobile #visualizer-container, html.is-mobile #mini-visualizer { display: none !important; }
+
+/* Riff 42.3 gave the Now Playing header min-height:0, so in the sheet's column it shrank to a few px and the
+   lyrics tools (edit / sync / translate / fullscreen / Word) got clipped under the tabs */
+html.is-mobile .right-panel-header { flex-shrink: 0 !important; min-height: max-content !important; margin-bottom: 0 !important; }
+/* the animated M3 cover is desktop-only (see m3cEnabled in app.js) */
+html.is-mobile .setting-item:has(#toggle-m3-cover) { display: none !important; }
+/* mini player cover: Muriel's 48px square inside the bar, not Riff 42.3's 72px one that pokes out above it */
+html.is-mobile #playbar-artwork-wrapper, html.is-mobile #m3c-wrap { width: 48px !important; height: 48px !important; margin-top: 0 !important; }
+html.is-mobile #playbar-artwork-wrapper { overflow: hidden !important; border-radius: var(--md-shape-corner-s); }
