@@ -7894,3 +7894,5 @@ body.glass.glass-lite :is(.sidebar, .main-content, #right-panel, .playbar, .sear
 #view-discover { height: auto; overflow: clip; }
 .home-hero { height: clamp(480px, 66vh, 720px); }
 #section-for-you { padding-bottom: 24px; }
+/* without the M3 cover the placeholder sat next to the (empty) 48-72px cover box and got squeezed to a sliver */
+.artwork-wrapper > .artwork-fallback { position: absolute; inset: 0; width: auto; height: auto; }
