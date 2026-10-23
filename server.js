@@ -147,6 +147,7 @@ const artistCache = new Map();
 const vibeCache = new Map();
 const ytArtistCache = new Map();
 const downloadingSet = new Set();
+const downloadingPromises = new Map(); // cleanId -> promise of the running download, so callers can wait on it
 const prefetchingSet = new Set();
 const downloadInFlight = new Map();
 
@@ -1225,7 +1226,10 @@ async function cacheThumbnailToDisk(cleanId, thumbnailUrl) {
 
 async function downloadTrackToDisk(trackUrl, trackId, platform, meta = {}) {
   const cleanId = cleanTrackId(trackId);
-  if (downloadingSet.has(cleanId) || await findCachedFile(cleanId)) return;
+  // a prefetch may already be fetching this song: wait for it instead of reporting it missing
+  if (downloadingSet.has(cleanId)) return downloadingPromises.get(cleanId);
+  if (await findCachedFile(cleanId)) return;
+  if (downloadingSet.has(cleanId)) return downloadingPromises.get(cleanId);
   downloadingSet.add(cleanId);
 
   const tempPrefix = `${cleanId}.temp.`;
@@ -1248,7 +1252,7 @@ async function downloadTrackToDisk(trackUrl, trackId, platform, meta = {}) {
     args.push('--extractor-args', 'youtube:player_client=android');
   }
 
-  args.push(trackUrl);
+  args.push('--', trackUrl);
 
   if (meta.thumbnail) {
     cacheThumbnailToDisk(cleanId, meta.thumbnail).catch(() => {});
@@ -1265,10 +1269,9 @@ async function downloadTrackToDisk(trackUrl, trackId, platform, meta = {}) {
     } catch (e) { return null; }
   };
 
-  return new Promise((resolve) => {
+  const job = new Promise((resolve) => {
     const proc = spawn(cmd.bin, cmd.args, { windowsHide: true });
     proc.on('close', async (code) => {
-      downloadingSet.delete(cleanId);
       const found = findTemp();
       if (code === 0 && found) {
         try {
@@ -1297,11 +1300,12 @@ async function downloadTrackToDisk(trackUrl, trackId, platform, meta = {}) {
     });
 
     proc.on('error', (err) => {
-      downloadingSet.delete(cleanId);
       try { logger.error('Download spawn error: ' + (meta.title || trackId), err); } catch (_) {}
       resolve();
     });
-  });
+  }).finally(() => { downloadingSet.delete(cleanId); downloadingPromises.delete(cleanId); });
+  downloadingPromises.set(cleanId, job);
+  return job;
 }
 
 async function prefetchTrack(trackUrl, trackId, platform, meta = null) {
@@ -1832,12 +1836,15 @@ async function handleStreamInfo(req, res, trackUrl, trackId, platform = 'youtube
       // same SoundCloud fallback as the streaming path below
       await downloadTrackToDisk(`scsearch1:${`${artist} ${title}`.trim()}`, cleanId, 'soundcloud', meta);
     }
-    if (await findCachedFile(cleanId)) {
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      return res.end(JSON.stringify({ success: true, isLocal: true, streamUrl: `http://127.0.0.1:${PORT}/api/local-track?id=${encodeURIComponent(cleanId)}` }));
-    }
-    res.writeHead(500, { 'Content-Type': 'application/json' });
-    return res.end(JSON.stringify({ success: false, error: 'could not extract audio stream' }));
+    // settle the in-flight entry so concurrent lookups for this track don't wait forever,
+    // and drop it so later prefetches don't mistake it for a cached stream URL
+    const outcome = await findCachedFile(cleanId)
+      ? { success: true, isLocal: true, streamUrl: `http://127.0.0.1:${PORT}/api/local-track?id=${encodeURIComponent(cleanId)}` }
+      : { success: false, error: 'could not extract audio stream' };
+    resolveLookup(outcome);
+    if (cacheKey && streamUrlCache.get(cacheKey) === inFlightEntry) streamUrlCache.delete(cacheKey);
+    res.writeHead(outcome.success ? 200 : 500, { 'Content-Type': 'application/json' });
+    return res.end(JSON.stringify(outcome));
   }
 
   let streamUrl = null;
@@ -3737,7 +3744,8 @@ const spotifySafeStorage = process.versions.electron ? require('electron').safeS
 
 function canStoreSpotifyAuth() {
   return spotifySafeStorage?.isEncryptionAvailable() &&
-    (process.platform !== 'linux' || spotifySafeStorage.getSelectedStorageBackend() !== 'basic_text');
+    (process.platform !== 'linux' || typeof spotifySafeStorage.getSelectedStorageBackend !== 'function' ||
+      spotifySafeStorage.getSelectedStorageBackend() !== 'basic_text');
 }
 
 function loadSpotifyAuth() {
@@ -4105,12 +4113,19 @@ const ITUNES_TO_DEEZER_GENRE = {
 };
 const discoverCache = new Map();
 
+function setDiscoverCache(key, data) {
+  discoverCache.delete(key);
+  if (discoverCache.size >= 50) discoverCache.delete(discoverCache.keys().next().value);
+  discoverCache.set(key, { at: Date.now(), data });
+}
+
 function httpsJson(target, timeout = 5000) {
   return new Promise((resolve) => {
     https.get(target, { headers: { 'User-Agent': 'Mozilla/5.0' }, timeout }, (r) => {
       let d = '';
       r.on('data', (c) => { d += c; });
       r.on('end', () => { try { resolve(JSON.parse(d)); } catch (e) { resolve(null); } });
+      r.on('error', () => resolve(null));
     }).on('error', () => resolve(null)).on('timeout', function () { this.destroy(); resolve(null); });
   });
 }
@@ -4148,7 +4163,7 @@ async function buildDiscover(historyTracks, favoriteTracks) {
     if (artists && artists.data) sections.push({ type: 'artists', title: 'Popular artists', items: artists.data.map((a) => ({ name: a.name, picture: a.picture_big || a.picture_medium })) });
     if (chart && chart.data) sections.push({ type: 'tracks', title: 'Top songs right now', tracks: chart.data.map(deezerTrackToTrack) });
     const data = { genres: [], sections };
-    discoverCache.set(key, { at: Date.now(), data });
+    setDiscoverCache(key, data);
     return data;
   }
 
@@ -4191,7 +4206,7 @@ async function buildDiscover(historyTracks, favoriteTracks) {
   }
 
   const data = { genres, topArtists: lookups.map((l) => ({ name: l.name, genre: l.genre || '', picture: l.dz ? (l.dz.picture_big || l.dz.picture_medium) : '' })), sections };
-  discoverCache.set(key, { at: Date.now(), data });
+  setDiscoverCache(key, data);
   return data;
 }
 
@@ -4616,7 +4631,18 @@ async function handleHotPicks(req, res, parsedUrl) {
   }
 }
 
-const server = http.createServer(async (req, res) => {
+// a throw inside a route must not become an unhandled rejection that leaves the request hanging
+const guardHandler = (handler) => (req, res) => {
+  Promise.resolve().then(() => handler(req, res)).catch((e) => {
+    try { logger.error('Request handler error: ' + (req.url || '').split('?')[0], e); } catch (_) {}
+    try {
+      if (!res.headersSent) res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: false, error: 'internal error' }));
+    } catch (_) {}
+  });
+};
+
+const server = http.createServer(guardHandler(async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Headers', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
@@ -5195,7 +5221,7 @@ const server = http.createServer(async (req, res) => {
 
   res.writeHead(404);
   res.end('Not found');
-});
+}));
 
 function startServer(port = PORT) {
   if (server.listening) {
