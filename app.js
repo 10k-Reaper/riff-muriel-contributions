@@ -3234,7 +3234,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     try {
       const onlineParam = getAdv('online_lyrics', true) ? '1' : '0';
-      const res = await fetch(`http://127.0.0.1:${state.serverPort}/api/lyrics?title=${encodeURIComponent(title)}&artist=${encodeURIComponent(artist)}&online=${onlineParam}`);
+      const dur = state.currentTrack && (state.currentTrack.title || '') === title ? Math.round(Number(state.currentTrack.duration) || 0) : 0;
+      const res = await fetch(`http://127.0.0.1:${state.serverPort}/api/lyrics?title=${encodeURIComponent(title)}&artist=${encodeURIComponent(artist)}&online=${onlineParam}${dur ? `&duration=${dur}` : ''}`);
       const data = await res.json();
 
       if (token !== state.loadToken || (state.currentTrack && (state.currentTrack.title || '') !== title)) return;

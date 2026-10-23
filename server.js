@@ -2833,64 +2833,55 @@ async function handleEncode(req, res, parsedUrl) {
   }
 }
 
-function sanitizeForLyrics(title, artist) {
-  let cleanTitle = (title || '')
-  .replace(/\[.*?\]|\(.*?\)/g, '')
-  .replace(/official\s*(music)?\s*video|official\s*audio|lyrics|hd|4k|remastered|visualizer|clip\s*officiel|video\s*clip/gi, '')
-  .replace(/ft\.?|feat\.?/gi, '')
-  .replace(/[^\w\s\u0400-\u04FF]/gi, ' ')
-  .replace(/\s+/g, ' ')
-  .trim();
+const { parseForLyrics, pickBest } = require('./lyrics-match');
+const LRCLIB_UA = 'Muriel (https://github.com/cloverscripts/riff-muriel)';
 
-  let cleanArtist = (artist || '')
-  .replace(/\[.*?\]|\(.*?\)/g, '')
-  .replace(/- topic|vevo|records|official/gi, '')
-  .replace(/[^\w\s\u0400-\u04FF]/gi, ' ')
-  .replace(/\s+/g, ' ')
-  .trim();
-
-  return { cleanTitle, cleanArtist };
-}
-
-function fetchLyricsDirect(title, artist) {
+function lrclibJson(pathAndQuery) {
   return new Promise((resolve) => {
-    const { cleanTitle, cleanArtist } = sanitizeForLyrics(title, artist);
-    const apiUrl = `https://lrclib.net/api/get?track_name=${encodeURIComponent(cleanTitle)}&artist_name=${encodeURIComponent(cleanArtist)}`;
-
-    https.get(apiUrl, { headers: { 'User-Agent': 'devsize/2.0' }, timeout: 4000 }, (res) => {
+    const req = https.get(`https://lrclib.net${pathAndQuery}`, { headers: { 'User-Agent': LRCLIB_UA }, timeout: 5000 }, (res) => {
       let data = '';
       const dec = new StringDecoder('utf8');
-      res.on('data', c => data += dec.write(c));
+      res.on('data', (c) => { data += typeof c === 'string' ? c : dec.write(c); });
       res.on('end', () => {
-        try {
-          if (res.statusCode === 200) {
-            const parsed = JSON.parse(data);
-            if (parsed.syncedLyrics || parsed.plainLyrics) {
-              return resolve(parsed.syncedLyrics || parsed.plainLyrics);
-            }
-          }
-        } catch (e) {}
-
-        const query = `${cleanArtist} ${cleanTitle}`.trim();
-        const searchUrl = `https://lrclib.net/api/search?q=${encodeURIComponent(query)}`;
-        https.get(searchUrl, { headers: { 'User-Agent': 'devsize/2.0' }, timeout: 4000 }, (res2) => {
-          let data2 = '';
-          res2.on('data', c => data2 += c);
-          res2.on('end', () => {
-            try {
-              const list = JSON.parse(data2);
-              if (Array.isArray(list) && list.length > 0) {
-                const withSynced = list.find(item => item.syncedLyrics);
-                if (withSynced) return resolve(withSynced.syncedLyrics);
-                return resolve(list[0].syncedLyrics || list[0].plainLyrics || null);
-              }
-            } catch (e) {}
-            resolve(null);
-          });
-        }).on('error', () => resolve(null));
+        if (res.statusCode !== 200) return resolve(null);
+        try { resolve(JSON.parse(data)); } catch (e) { resolve(null); }
       });
-    }).on('error', () => resolve(null));
+      res.on('error', () => resolve(null));
+    });
+    req.on('error', () => resolve(null));
+    req.on('timeout', () => { req.destroy(); resolve(null); });
   });
+}
+
+// YouTube-style titles ("Artist, Feat - Song (Official Video)") are cleaned into what lrclib lists, tried as
+// exact lookups first (with the song length when known), then as a search where only a real match counts
+async function fetchLyricsDirect(title, artist, duration = 0) {
+  const want = parseForLyrics(title, artist);
+  const [t0, t1] = want.titles;
+  const [a0, a1] = want.artists;
+  if (!t0) return null;
+  const q = (o) => Object.entries(o).filter(([, v]) => v).map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join('&');
+  const dur = duration > 0 ? Math.round(duration) : 0;
+  const tries = [[t0, a0, dur], [t0, a0, 0], [t0, a1, 0], [t1, a0, 0]].filter(([t, a, d], i) => t && a && (i !== 1 || dur));
+  const exact = await Promise.all(tries.map(([t, a, d]) => lrclibJson(`/api/get?${q({ track_name: t, artist_name: a, duration: d })}`)));
+  let plain = null;
+  for (const hit of exact) {
+    if (hit && hit.syncedLyrics) return hit.syncedLyrics;
+    if (hit && hit.plainLyrics && !plain) plain = hit.plainLyrics;
+  }
+  const primary = want.artists.find((a) => !/[,&]/.test(a)) || a0 || '';
+  const searches = await Promise.all([
+    lrclibJson(`/api/search?${q({ track_name: t0, artist_name: primary })}`),
+    lrclibJson(`/api/search?${q({ q: `${primary} ${t0}`.trim() })}`),
+  ]);
+  // last resort: the title alone; pickBest still wants the artist or the length to match
+  if (!plain && !searches.some((list) => pickBest(list, want, dur))) searches.push(await lrclibJson(`/api/search?${q({ track_name: t0 })}`));
+  for (const list of searches) {
+    const best = pickBest(list, want, dur);
+    if (best && best.syncedLyrics) return best.syncedLyrics;
+    if (best && best.plainLyrics && !plain) plain = best.plainLyrics;
+  }
+  return plain;
 }
 
 const crypto = require('crypto');
@@ -2966,7 +2957,7 @@ function getFetchedLyricsPath(title, artist) {
   return path.join(LYRICS_DIR, lyricsKey(title, artist) + '.lrc');
 }
 
-async function handleLyrics(req, res, title, artist, allowOnline = true) {
+async function handleLyrics(req, res, title, artist, allowOnline = true, duration = 0) {
   const cacheKey = `${artist}:${title}`;
   const cached = lyricsCache.get(cacheKey);
   if (cached?.promise) {
@@ -3033,7 +3024,7 @@ async function handleLyrics(req, res, title, artist, allowOnline = true) {
   }
 
   try {
-    const rawLyrics = await fetchLyricsDirect(title, artist);
+    const rawLyrics = await fetchLyricsDirect(title, artist, duration);
     if (rawLyrics && rawLyrics.trim().length > 0) {
       try {
         await fs.promises.writeFile(fetchedLyricsPath, rawLyrics, 'utf-8');
@@ -5216,7 +5207,8 @@ const server = http.createServer(guardHandler(async (req, res) => {
     const title = parsedUrl.query.title || '';
     const artist = parsedUrl.query.artist || '';
     const allowOnline = parsedUrl.query.online !== '0';
-    return handleLyrics(req, res, title, artist, allowOnline);
+    const duration = Number(parsedUrl.query.duration) || 0;
+    return handleLyrics(req, res, title, artist, allowOnline, duration);
   }
 
   res.writeHead(404);
