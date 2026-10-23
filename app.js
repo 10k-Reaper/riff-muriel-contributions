@@ -15856,6 +15856,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       { label: 'Open local library', hint: 'View', run: () => switchView('local') },
       { label: 'Open queue', hint: 'View', run: () => switchView('queue') },
       { label: 'Open history', hint: 'View', run: () => switchView('history') },
+      { label: 'Muriel Encore', hint: 'Your stats', run: () => window.MurielEncore && window.MurielEncore.open('month') },
       { label: 'Open discover', hint: 'View', run: () => switchView('discover') },
       { label: 'Open settings', hint: 'View', run: () => switchView('settings') },
       { label: 'Audio settings', hint: 'Audio', run: () => openAudioTab('tempo') },

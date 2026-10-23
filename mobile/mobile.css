@@ -421,3 +421,8 @@ html.is-mobile #playbar-artwork-wrapper, html.is-mobile #m3c-wrap { width: 48px 
 html.is-mobile #playbar-artwork-wrapper { overflow: hidden !important; border-radius: var(--md-shape-corner-s); }
 /* update banner sits just under the status bar on phones */
 html.is-mobile .update-banner { top: calc(var(--safe-top) + 10px); width: calc(100vw - 24px); }
+/* Muriel Encore: keep the story clear of the notch and the home bar */
+html.is-mobile .enc-bar { top: calc(var(--safe-top) + 10px); }
+html.is-mobile .enc-close { top: calc(var(--safe-top) + 2px); }
+html.is-mobile .enc-slide { padding-top: calc(var(--safe-top) + 70px); padding-bottom: calc(var(--safe-bottom) + 40px); }
+html.is-mobile .onrepeat-head .section-title { flex-basis: 100%; }
