@@ -14430,7 +14430,11 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (!isDiscoverActive() || isFormInputFocused()) return;
       if (el.searchResultsContainer && !el.searchResultsContainer.classList.contains('hidden')) return;
       if (e.target.closest('#search-results-container')) return;
-      const delta = Math.abs(e.deltaY) >= Math.abs(e.deltaX) ? e.deltaY : e.deltaX;
+      // the home page scrolls (recommendations below the card): only sideways scrolling, or scrolling
+      // over the card row itself, flips cards
+      const sideways = Math.abs(e.deltaX) > Math.abs(e.deltaY);
+      if (!sideways && !e.target.closest('.my-wave-carousel-wrapper')) return;
+      const delta = sideways ? e.deltaX : e.deltaY;
       if (Math.abs(delta) < 8) return;
       if (isCarouselWheelLocked) return;
       e.preventDefault();
@@ -14458,9 +14462,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         const touchEndX = e.changedTouches[0].clientX;
         const diffY = touchStartY - touchEndY;
         const diffX = touchStartX - touchEndX;
-        const diff = Math.abs(diffX) >= Math.abs(diffY) ? diffX : diffY;
-        if (Math.abs(diff) > 40) {
-          stepCarouselFocus(diff > 0 ? 1 : -1);
+        // vertical swipes scroll the page; sideways swipes flip cards
+        if (Math.abs(diffX) > 40 && Math.abs(diffX) > Math.abs(diffY)) {
+          stepCarouselFocus(diffX > 0 ? 1 : -1);
         }
       }
     }, { passive: true });
