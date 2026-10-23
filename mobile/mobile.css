@@ -399,3 +399,8 @@ html.is-mobile .artist-bio-snippet {
 html.is-mobile .artist-bio-snippet.expanded { -webkit-line-clamp: unset !important; line-clamp: unset !important; }
 html.is-mobile .artist-actions-bar { width: 100% !important; justify-content: center !important; margin-top: 4px !important; }
 html.is-mobile #btn-play-artist-tracks { width: 100% !important; justify-content: center !important; height: 44px !important; }
+
+/* Riff 42.3 home hero: title on the left, refresh/play on the right instead of stacked on top of each other */
+html.is-mobile .home-pane-header { justify-content: space-between; gap: 8px; padding: 0 12px; }
+html.is-mobile .home-pane-header .my-wave-actions { position: static; transform: none; flex: none; }
+html.is-mobile .home-pane-label { min-width: 0; padding: 6px 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

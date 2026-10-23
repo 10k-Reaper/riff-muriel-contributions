@@ -5,6 +5,7 @@ const https = require('https');
 const crypto = require('crypto');
 const { spawn } = require('child_process');
 const { IS_WIN, BIN_DIR, resolveBinary, clearBinaryCache } = require('./platform');
+const logger = require('./logger');
 
 const state = { status: 'idle', tool: '', percent: 0, error: '' };
 const STAMP = path.join(BIN_DIR, '.ytdlp-update-stamp');
@@ -81,8 +82,21 @@ function run(cmd, args, timeoutMs = 600000) {
     let err = '';
     const t = setTimeout(() => { p.kill(); reject(new Error(`${cmd} timed out`)); }, timeoutMs);
     p.stderr.on('data', (d) => { err += d; });
-    p.on('error', (e) => { clearTimeout(t); reject(e); });
-    p.on('close', (code) => { clearTimeout(t); code === 0 ? resolve() : reject(new Error(err || `${cmd} exited with ${code}`)); });
+    p.on('error', (e) => {
+      clearTimeout(t);
+      try { logger.error(`${cmd} spawn error`, e); } catch (_) {}
+      reject(e);
+    });
+    p.on('close', (code) => {
+      clearTimeout(t);
+      if (code === 0) {
+        resolve();
+      } else {
+        const lastStderr = (err || '').split('\n').slice(-20).join('\n');
+        try { logger.error(`${cmd} exited with ${code}`, new Error(lastStderr)); } catch (_) {}
+        reject(new Error(err || `${cmd} exited with ${code}`));
+      }
+    });
   });
 }
 
@@ -159,6 +173,7 @@ async function ensureTools() {
     if (!resolveBinary('ffmpeg')) { state.tool = 'ffmpeg'; state.percent = 0; await installFfmpeg(); clearBinaryCache(); }
     state.status = 'done';
   } catch (e) {
+    try { logger.error(`Tool download failed: ${state.tool}`, e); } catch (_) {}
     state.status = 'error';
     state.error = e.message;
   }
@@ -177,6 +192,7 @@ async function updateYtDlpIfManaged() {
     fs.writeFileSync(STAMP, String(Date.now()));
     return true;
   } catch (e) {
+    try { logger.error('yt-dlp update failed', e); } catch (_) {}
     return false;
   }
 }

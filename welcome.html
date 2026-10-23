@@ -1421,7 +1421,9 @@
         const port = await this.serverPort();
         if (!port) return { success: false, error: 'Muriel server is not available here' };
         try {
-          const res = await fetch(`http://127.0.0.1:${port}/api/spotify-import?url=${encodeURIComponent(url)}`);
+          const res = await fetch(`http://127.0.0.1:${port}/api/spotify-import?url=${encodeURIComponent(url)}`, {
+            headers: { 'X-Muriel-Token': this.api?.serverToken || '' }
+          });
           return await res.json();
         } catch (e) {
           return { success: false, error: 'Could not reach the Muriel server' };

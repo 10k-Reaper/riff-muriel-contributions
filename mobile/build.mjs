@@ -11,11 +11,11 @@ const shim = (n) => join(root, 'mobile', 'shims', `${n}.js`);
 rmSync(out, { recursive: true, force: true });
 mkdirSync(out, { recursive: true });
 
-// server.js requires './platform' and './tools'; on iOS those resolve to the shims.
+// server.js requires './platform', './tools', './logger' and './audio-output'; on phones those resolve to the shims.
 const swapLocal = {
   name: 'muriel-ios-swaps',
   setup(b) {
-    b.onResolve({ filter: /^\.\/(platform|tools)$/ }, (a) => (a.importer.endsWith('server.js') ? { path: shim(a.path.slice(2)) } : undefined));
+    b.onResolve({ filter: /^\.\/(platform|tools|logger|audio-output)$/ }, (a) => (a.importer.endsWith('server.js') ? { path: shim(a.path.slice(2)) } : undefined));
   },
 };
 
@@ -40,7 +40,7 @@ await build({
   logLevel: 'warning',
 });
 
-for (const f of ['app.js', 'styles.css', 'audio-engine.js']) cpSync(join(root, f), join(out, f));
+for (const f of ['app.js', 'styles.css', 'audio-engine.js', 'm3shapes.js', 'lyrics-rtl.js', 'track-sort.js', 'search-text.js', 'library-tools.js']) cpSync(join(root, f), join(out, f));
 cpSync(join(root, 'assets'), join(out, 'assets'), { recursive: true });
 cpSync(join(root, 'mobile', 'mobile.css'), join(out, 'mobile.css'));
 cpSync(join(root, 'mobile', 'mobile-ui.js'), join(out, 'mobile-ui.js'));

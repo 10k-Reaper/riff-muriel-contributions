@@ -1,17 +1,31 @@
 const { app, BrowserWindow, dialog, ipcMain, screen, shell, Tray, Menu, nativeImage, globalShortcut, powerMonitor } = require('electron');
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
 const { pathToFileURL } = require('url');
 const { spawn } = require('child_process');
 const crypto = require('crypto');
-const { LIBRARY_DIR, tutorialDone, markTutorialDone, readStartupConfig, writeStartupConfig } = require('./platform');
+const { LIBRARY_DIR, DATA_DIR, resolveBinary, tutorialDone, markTutorialDone, readStartupConfig, writeStartupConfig } = require('./platform');
 const { getLauncherInfo, installLauncher } = require('./launcher');
+const { getSystemAudioOutputInfo } = require('./audio-output');
+const { log, tail, LOG_DIR } = require('./logger');
+const logger = { log, tail, LOG_DIR, error: (msg, err) => log('ERROR', `${msg}: ${err && err.message ? err.message : err}`) };
+
+process.on('uncaughtException', (err) => {
+  try { logger.error('Uncaught exception in main', err); } catch (_) {}
+});
+process.on('unhandledRejection', (reason) => {
+  try {
+    const err = reason instanceof Error ? reason : new Error(String(reason));
+    logger.error('Unhandled rejection in main', err);
+  } catch (_) {}
+});
 
 const enabledFeatures = [];
 if (process.platform === 'linux') {
   enabledFeatures.push('WaylandWindowDecorations', 'UseOzonePlatform', 'WaylandFractionalScaleV1', 'MediaSessionService', 'HardwareMediaKeyHandling');
   app.commandLine.appendSwitch('ozone-platform-hint', 'auto');
-  app.commandLine.appendSwitch('disable-features', 'Vulkan');
+  app.commandLine.appendSwitch('disable-features', 'Vulkan,AudioServiceOutOfProcess');
 
   if (process.env.MURIEL_SKIP_GPU_BUFFER_FLAGS !== '1') {
     app.commandLine.appendSwitch('disable-gpu-memory-buffer-video-frames');
@@ -29,12 +43,16 @@ if (enabledFeatures.length > 0) {
 }
 
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
-app.commandLine.appendSwitch('disable-renderer-backgrounding');
-app.commandLine.appendSwitch('disable-background-timer-throttling');
-app.commandLine.appendSwitch('disable-backgrounding-occluded-windows');
 app.commandLine.appendSwitch('ignore-gpu-blocklist');
 app.commandLine.appendSwitch('enable-gpu-rasterization');
 app.commandLine.appendSwitch('enable-zero-copy');
+app.commandLine.appendSwitch('renderer-process-limit', '1');
+app.commandLine.appendSwitch('disable-component-update');
+app.commandLine.appendSwitch('disable-background-networking');
+app.commandLine.appendSwitch('disable-domain-reliability');
+app.commandLine.appendSwitch('disable-sync');
+app.commandLine.appendSwitch('disable-speech-api');
+app.commandLine.appendSwitch('js-flags', '--expose-gc');
 
 if (readStartupConfig().hwAccel === false) app.disableHardwareAcceleration();
 
@@ -177,6 +195,7 @@ function runGUI() {
     const primaryDisplay = screen.getPrimaryDisplay();
     const scaleFactor = primaryDisplay.scaleFactor;
 
+    app.setAppUserModelId('io.github.rootscripts.riff');
     mainWindow = new BrowserWindow({
       x: initialBounds.x,
       y: initialBounds.y,
@@ -197,7 +216,7 @@ function runGUI() {
                                    nodeIntegration: false,
                                    contextIsolation: true,
                                    webSecurity: false,
-                                   backgroundThrottling: false,
+                                   backgroundThrottling: true,
                                    spellcheck: false
                                    }
     });
@@ -233,7 +252,12 @@ function runGUI() {
     mainWindow.on('minimize', () => {
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('window-visibility', false);
+        if (global.gc) global.gc();
       }
+    });
+
+    mainWindow.on('blur', () => {
+      if (global.gc) global.gc();
     });
 
     mainWindow.on('restore', () => {
@@ -292,10 +316,39 @@ function runGUI() {
       if (/^https:\/\/accounts\.spotify\.com\//.test(String(u))) shell.openExternal(u);
     });
 
+    let mainLogCount = 0;
+    let mainLogReset = Date.now();
+    ipcMain.on('log-error', (e, data) => {
+      const now = Date.now();
+      if (now - mainLogReset > 60000) {
+        mainLogReset = now;
+        mainLogCount = 0;
+      }
+      if (mainLogCount < 20) {
+        mainLogCount++;
+        if (data && typeof data === 'object') {
+          logger.log(data.level || 'ERROR', data.message || '', data.stack || null);
+        }
+      }
+    });
+
+    ipcMain.handle('get-diagnostics', async () => {
+      const lines = [`Muriel ${app.getVersion()}`, `OS ${process.platform} ${process.arch} ${os.release()}`, `Electron ${process.versions.electron} Chromium ${process.versions.chrome} Node ${process.versions.node}`, `Locale ${app.getLocale()}`, `Data ${DATA_DIR}`];
+      for (const name of ['yt-dlp', 'ffmpeg']) {
+        const bin = resolveBinary(name);
+        lines.push(`${name}: ${bin || 'NOT FOUND'}`);
+      }
+      lines.push('--- last log lines ---', ...tail(60));
+      return lines.join('\n');
+    });
+    ipcMain.on('open-logs-folder', () => { shell.openPath(LOG_DIR); });
+
       ipcMain.handle('get-server-port', () => serverPort);
       ipcMain.handle('get-gpu-compositing', () => { try { return String(app.getGPUFeatureStatus().gpu_compositing || ''); } catch (e) { return ''; } });
       ipcMain.handle('launcher-info', () => getLauncherInfo());
       ipcMain.handle('get-app-version', () => app.getVersion());
+      ipcMain.handle('get-audio-output-info', async () => getSystemAudioOutputInfo());
+      require('./plugins').register(() => mainWindow);
 
       ipcMain.handle('get-cache-size', async () => {
         const fs = require('fs');
