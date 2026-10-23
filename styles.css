@@ -7896,3 +7896,16 @@ body.glass.glass-lite :is(.sidebar, .main-content, #right-panel, .playbar, .sear
 #section-for-you { padding-bottom: 24px; }
 /* without the M3 cover the placeholder sat next to the (empty) 48-72px cover box and got squeezed to a sliver */
 .artwork-wrapper > .artwork-fallback { position: absolute; inset: 0; width: auto; height: auto; }
+
+/* ---- Muriel: "Update available" banner (update-notifier.js) ---- */
+.update-banner { position: fixed; left: 50%; top: 64px; z-index: 9000; display: flex; align-items: center; gap: 12px; width: max-content; max-width: min(560px, calc(100vw - 24px)); padding: 10px 10px 10px 16px; border-radius: 22px; background: var(--md-sys-color-surface-container-high, #2a2630); border: 1px solid rgba(255, 255, 255, 0.12); box-shadow: 0 18px 50px -12px rgba(0, 0, 0, 0.6); color: var(--md-sys-color-on-surface, #fff); opacity: 0; transform: translate(-50%, -24px); transition: transform 0.35s cubic-bezier(0.2, 0, 0, 1), opacity 0.25s ease; }
+.update-banner.show { opacity: 1; transform: translate(-50%, 0); }
+.update-banner-star { width: 24px; height: 24px; flex: none; fill: #FF7EC8; }
+.update-banner-text { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.update-banner-text b { font-size: calc(14px * var(--font-scale, 1)); font-weight: 700; }
+.update-banner-text span { font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.update-banner button { flex: none; height: 36px; padding: 0 16px; border-radius: 18px; border: 0; font: inherit; font-weight: 700; font-size: calc(13px * var(--font-scale, 1)); cursor: pointer; }
+.update-banner-later { background: transparent; color: var(--md-sys-color-on-surface-variant, #ccc); }
+.update-banner-go { background: linear-gradient(135deg, #FF7EC8, #FF3EA5); color: #14040c; }
+#update-status.has-update { color: #FF7EC8; }
+@media (prefers-reduced-motion: reduce) { .update-banner { transition: none; } }

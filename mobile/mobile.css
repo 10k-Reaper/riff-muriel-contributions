@@ -419,3 +419,5 @@ html.is-mobile .setting-item:has(#toggle-m3-cover) { display: none !important; }
 /* mini player cover: Muriel's 48px square inside the bar, not Riff 42.3's 72px one that pokes out above it */
 html.is-mobile #playbar-artwork-wrapper, html.is-mobile #m3c-wrap { width: 48px !important; height: 48px !important; margin-top: 0 !important; }
 html.is-mobile #playbar-artwork-wrapper { overflow: hidden !important; border-radius: var(--md-shape-corner-s); }
+/* update banner sits just under the status bar on phones */
+html.is-mobile .update-banner { top: calc(var(--safe-top) + 10px); width: calc(100vw - 24px); }

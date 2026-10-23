@@ -1478,6 +1478,16 @@
 
             <div class="setting-item">
               <div class="setting-item-top" style="align-items: center; justify-content: space-between;">
+                <div style="display: flex; flex-direction: column; gap: 2px;">
+                  <span class="setting-name">Updates</span>
+                  <span id="update-status" style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">Checks for new builds automatically</span>
+                </div>
+                <button class="btn-outline-pill" id="btn-check-updates">Check now</button>
+              </div>
+            </div>
+
+            <div class="setting-item">
+              <div class="setting-item-top" style="align-items: center; justify-content: space-between;">
                 <span class="setting-name">Keyboard shortcuts</span>
                 <button class="btn-outline-pill" id="btn-open-shortcuts" style="padding: 6px 14px; font-size: calc(12px * var(--font-scale, 1));">Keyboard shortcuts</button>
               </div>
@@ -2744,6 +2754,8 @@
   <script src="track-sort.js"></script>
   <script src="search-text.js"></script>
   <script src="library-tools.js"></script>
+  <script src="build-info.js"></script>
   <script src="app.js"></script>
+  <script src="update-notifier.js"></script>
 </body>
 </html>

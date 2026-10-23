@@ -34,6 +34,7 @@ jobs:
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
         run: |
+          node tools/build-info.mjs build-info.js windows
           npx electron-builder --win portable --x64 --publish never -c.artifactName='Muriel.${ext}'
           ls -la dist
           cp dist/Muriel.exe Muriel.exe

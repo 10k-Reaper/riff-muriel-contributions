@@ -3,6 +3,7 @@ import { build } from 'esbuild';
 import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { buildInfoScript } from '../tools/build-info.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const out = join(root, 'www');
@@ -40,7 +41,9 @@ await build({
   logLevel: 'warning',
 });
 
-for (const f of ['app.js', 'styles.css', 'audio-engine.js', 'm3shapes.js', 'lyrics-rtl.js', 'track-sort.js', 'search-text.js', 'library-tools.js']) cpSync(join(root, f), join(out, f));
+for (const f of ['app.js', 'styles.css', 'audio-engine.js', 'm3shapes.js', 'lyrics-rtl.js', 'track-sort.js', 'search-text.js', 'library-tools.js', 'update-notifier.js']) cpSync(join(root, f), join(out, f));
+// iOS or Android is read at runtime; CI fills in the commit and run number
+writeFileSync(join(out, 'build-info.js'), buildInfoScript(''));
 cpSync(join(root, 'assets'), join(out, 'assets'), { recursive: true });
 cpSync(join(root, 'mobile', 'mobile.css'), join(out, 'mobile.css'));
 cpSync(join(root, 'mobile', 'mobile-ui.js'), join(out, 'mobile-ui.js'));
