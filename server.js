@@ -90,12 +90,57 @@ function streamFileToResponse(stream, res) {
   stream.on('error', () => {
     if (!res.headersSent) {
       try { res.writeHead(500); } catch (e) {}
+      try { res.end('Error reading file'); } catch (e) {}
+    } else {
+      // the headers already promised a Content-Length: ending normally would leave the client waiting for it
+      try { res.destroy(); } catch (e) {}
     }
-    try { res.end('Error reading file'); } catch (e) {}
     try { stream.destroy(); } catch (e) {}
   });
   res.on('close', () => { try { stream.destroy(); } catch (e) {} });
   stream.pipe(res);
+}
+
+// Serves an audio file with HTTP Range support. An end past the file is clamped (a Content-Length larger
+// than the bytes sent leaves the player waiting forever) and an unsatisfiable range gets a 416.
+function sendFileWithRange(req, res, filePath, fileSize, contentType) {
+  const range = req.headers.range;
+  if (!range || !/^bytes=/i.test(range)) {
+    res.writeHead(200, { 'Content-Length': fileSize, 'Content-Type': contentType, 'Accept-Ranges': 'bytes' });
+    return streamFileToResponse(fs.createReadStream(filePath), res);
+  }
+  const m = /^bytes=\s*(\d*)\s*-\s*(\d*)/i.exec(range);
+  let start = m && m[1] ? Number(m[1]) : NaN;
+  let end = m && m[2] ? Number(m[2]) : fileSize - 1;
+  if (m && !m[1] && m[2]) { // "bytes=-500": the last 500 bytes
+    start = Math.max(0, fileSize - Number(m[2]));
+    end = fileSize - 1;
+  }
+  end = Math.min(end, fileSize - 1);
+  if (!Number.isFinite(start) || !Number.isFinite(end) || start > end || start >= fileSize) {
+    res.writeHead(416, { 'Content-Range': `bytes */${fileSize}`, 'Accept-Ranges': 'bytes' });
+    return res.end();
+  }
+  res.writeHead(206, {
+    'Content-Range': `bytes ${start}-${end}/${fileSize}`,
+    'Accept-Ranges': 'bytes',
+    'Content-Length': (end - start) + 1,
+    'Content-Type': contentType,
+  });
+  streamFileToResponse(fs.createReadStream(filePath, { start, end }), res);
+}
+
+const hasOwn = (obj, key) => Object.prototype.hasOwnProperty.call(obj, key);
+
+// The in-memory caches live as long as the app does; past `max` entries the oldest go first.
+function trimCache(map, max) {
+  while (map.size > max) map.delete(map.keys().next().value);
+}
+
+// A bare fetch() waits up to five minutes on a server that stops answering.
+function fetchWithTimeout(target, options = {}, timeoutMs = 15000) {
+  const signal = typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function' ? AbortSignal.timeout(timeoutMs) : undefined;
+  return fetch(target, signal ? { ...options, signal } : options);
 }
 
 if (!fs.existsSync(CACHE_DIR)) fs.mkdirSync(CACHE_DIR, { recursive: true });
@@ -104,39 +149,58 @@ if (!fs.existsSync(LYRICS_DIR)) fs.mkdirSync(LYRICS_DIR, { recursive: true });
 if (!fs.existsSync(THUMBNAILS_DIR)) fs.mkdirSync(THUMBNAILS_DIR, { recursive: true });
 if (!fs.existsSync(LIBRARY_DIR)) fs.mkdirSync(LIBRARY_DIR, { recursive: true });
 
-let trackMetadataIndex = {};
-try {
-  if (fs.existsSync(METADATA_PATH)) {
-    trackMetadataIndex = JSON.parse(fs.readFileSync(METADATA_PATH, 'utf-8'));
+// library.json and metadata.json used to be rewritten in place: a crash halfway left half a file, the next
+// start read that as empty and the next save wiped the index. On desktop the new file is written beside the
+// old one and swapped in. Phones keep the plain write (their file store's rename onto an existing file is
+// not something to rely on); there the write goes through an in-memory copy first anyway.
+const SWAP_WRITES = !(process.versions && process.versions.mobile);
+
+function writeJsonFile(file, value) {
+  const text = JSON.stringify(value, null, 2);
+  if (!SWAP_WRITES) return fs.writeFileSync(file, text, 'utf-8');
+  const tmp = `${file}.${process.pid}.tmp`;
+  fs.writeFileSync(tmp, text, 'utf-8');
+  try {
+    fs.renameSync(tmp, file);
+  } catch (e) {
+    // Windows refuses the swap while something (a virus scanner) holds the file: write it directly
+    fs.writeFileSync(file, text, 'utf-8');
+    try { fs.unlinkSync(tmp); } catch (_) {}
   }
-} catch (e) {
-  trackMetadataIndex = {};
 }
 
+function readJsonFile(file) {
+  if (!fs.existsSync(file)) return {};
+  try {
+    const value = JSON.parse(fs.readFileSync(file, 'utf-8'));
+    return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+  } catch (e) {
+    // move the unreadable file aside (once): the next save would otherwise overwrite the only copy
+    try { fs.renameSync(file, `${file}.broken-${Date.now()}`); } catch (_) {}
+    return {};
+  }
+}
+
+let trackMetadataIndex = readJsonFile(METADATA_PATH);
+
 function saveTrackMetadata(cleanId, meta) {
-  if (!cleanId) return;
+  // "__proto__" survives cleanTrackId and would swap the index's prototype instead of adding an entry
+  if (!cleanId || cleanId === '__proto__') return;
   trackMetadataIndex[cleanId] = {
     ...(trackMetadataIndex[cleanId] || {}),
     ...meta,
     lastPlayed: Date.now()
   };
   try {
-    fs.writeFileSync(METADATA_PATH, JSON.stringify(trackMetadataIndex, null, 2), 'utf-8');
+    writeJsonFile(METADATA_PATH, trackMetadataIndex);
   } catch (e) {}
 }
 
-let libraryIndex = {};
-try {
-  if (fs.existsSync(LIBRARY_PATH)) {
-    libraryIndex = JSON.parse(fs.readFileSync(LIBRARY_PATH, 'utf-8'));
-  }
-} catch (e) {
-  libraryIndex = {};
-}
+let libraryIndex = readJsonFile(LIBRARY_PATH);
 
 function saveLibraryIndex() {
   try {
-    fs.writeFileSync(LIBRARY_PATH, JSON.stringify(libraryIndex, null, 2), 'utf-8');
+    writeJsonFile(LIBRARY_PATH, libraryIndex);
   } catch (e) {}
 }
 
@@ -150,6 +214,15 @@ const downloadingSet = new Set();
 const downloadingPromises = new Map(); // cleanId -> promise of the running download, so callers can wait on it
 const prefetchingSet = new Set();
 const downloadInFlight = new Map();
+
+// Search results go stale (isCached flags, new uploads) and every query adds a key, so they expire after
+// five minutes and the cache keeps at most 500 of them.
+function cacheSearchResult(key, value, ttlMs = 300000) {
+  searchCache.set(key, value);
+  const timer = setTimeout(() => { if (searchCache.get(key) === value) searchCache.delete(key); }, ttlMs);
+  if (timer && typeof timer.unref === 'function') timer.unref();
+  trimCache(searchCache, 500);
+}
 
 let currentAppState = {};
 const sseClients = new Set();
@@ -390,8 +463,7 @@ async function searchSoundcloud(query, limit = 14) {
       });
 
       if (entries.length > 0) {
-        searchCache.set(cacheKey, entries);
-        setTimeout(() => { searchCache.delete(cacheKey); }, 300000);
+        cacheSearchResult(cacheKey, entries);
       } else if (searchCache.get(cacheKey) === searchPromise) {
         searchCache.delete(cacheKey);
       }
@@ -486,6 +558,8 @@ async function httpGetJson(url, timeoutMs = 6000) {
           res.resume();
           return resolve(null);
         }
+        // a connection dropped mid-body fires neither 'end' nor 'timeout', only this
+        res.on('error', () => resolve(null));
         let data = '';
         let bytesRead = 0;
         res.on('data', chunk => {
@@ -536,7 +610,9 @@ async function dzArtistId(name) {
       const url = `https://api.deezer.com/search/artist?q=${encodeURIComponent(name.trim())}&limit=1`;
       const data = await httpGetJson(url, 6000);
       const id = data?.data?.[0]?.id ? String(data.data[0].id) : null;
-      dzArtistIdCache.set(clean, { id, expires: Date.now() + 24 * 3600 * 1000 });
+      // a failed request also lands here as null: retry that after 10 minutes, not a day
+      dzArtistIdCache.set(clean, { id, expires: Date.now() + (data ? 24 * 3600 * 1000 : 10 * 60 * 1000) });
+      trimCache(dzArtistIdCache, 500);
       return id;
     } catch (_) {
       if (dzArtistIdCache.get(clean)?.promise === lookupPromise) {
@@ -666,6 +742,7 @@ async function ytMixTracks(seed) {
       });
 
       ytMixCache.set(id, { expires: Date.now() + 30 * 60 * 1000, tracks: results });
+      trimCache(ytMixCache, 200);
       return results;
     } catch (_) {
       if (ytMixCache.get(id)?.promise === lookupPromise) {
@@ -834,7 +911,13 @@ async function resolveCandidate(c) {
     } catch (_) {}
 
     if (resolvedCache.get(key)?.promise === lookupPromise) {
-      resolvedCache.set(key, { expires: Date.now() + 24 * 3600 * 1000, track: resolved });
+      if (!resolved && !resolveBinary('yt-dlp')) {
+        // yt-dlp isn't installed yet (first run): nothing was really searched, so remember nothing
+        resolvedCache.delete(key);
+      } else {
+        // no match can also be a network blip: keep that for 10 minutes, a real match for a day
+        resolvedCache.set(key, { expires: Date.now() + (resolved ? 24 * 3600 * 1000 : 10 * 60 * 1000), track: resolved });
+      }
     }
     return resolved;
   })();
@@ -1006,10 +1089,12 @@ async function recommendVibeTracks(historyTracks, favoriteTracks, platform = 'yo
     });
 
     if (sortedSeedKeys) {
+      vibeCache.delete(sortedSeedKeys);
       vibeCache.set(sortedSeedKeys, {
         expires: Date.now() + 20 * 60 * 1000,
         tracks: finalTracks
       });
+      trimCache(vibeCache, 50);
     }
 
     return {
@@ -1109,6 +1194,7 @@ function directYoutubeSearch(query, filterSpam = false) {
     }, (res) => {
       let html = '';
       const dec = new StringDecoder('utf8');
+      res.on('error', () => resolve([]));
       res.on('data', chunk => { html += dec.write(chunk); });
       res.on('end', async () => {
         try {
@@ -1213,7 +1299,7 @@ async function cacheThumbnailToDisk(cleanId, thumbnailUrl) {
   const destPath = path.join(THUMBNAILS_DIR, `${cleanId}.jpg`);
   if (fs.existsSync(destPath)) return destPath;
   try {
-    const res = await fetch(thumbnailUrl);
+    const res = await fetchWithTimeout(thumbnailUrl);
     if (!res.ok) return null;
     const buffer = Buffer.from(await res.arrayBuffer());
     if (buffer.length > 500) {
@@ -1365,6 +1451,7 @@ async function prefetchTrack(trackUrl, trackId, platform, meta = null) {
       if (cleanId && cleanId !== cacheKey) {
         streamUrlCache.set(cleanId, { timestamp: Date.now(), data });
       }
+      trimCache(streamUrlCache, 300);
     }
   } catch (e) {
   } finally {
@@ -1373,16 +1460,19 @@ async function prefetchTrack(trackUrl, trackId, platform, meta = null) {
 }
 
 const YTM_SONGS_PARAMS = 'EgWKAQIIAWoMEA4QChADEAQQCRAF';
+// The "Videos" filter. Where YouTube Music has no song catalogue (it is licensed per country) the Songs
+// filter answers "No results" for every query; the official music videos are the next best thing.
+const YTM_VIDEOS_PARAMS = 'EgWKAQIQAWoMEAUQEBAEEBUQChAR';
 const YTM_CLIENT_VERSION = '1.20250101.01.00';
 let ytmFailUntil = 0;
 let ytmFailCount = 0;
 
-function ytmSearchRequest(query) {
+function ytmSearchRequest(query, params = YTM_SONGS_PARAMS) {
   return new Promise((resolve, reject) => {
     const body = JSON.stringify({
       context: { client: { clientName: 'WEB_REMIX', clientVersion: YTM_CLIENT_VERSION, hl: 'en', gl: 'US' } },
       query,
-      params: YTM_SONGS_PARAMS
+      params
     });
     const req = https.request({
       hostname: 'music.youtube.com',
@@ -1398,6 +1488,7 @@ function ytmSearchRequest(query) {
     }, (res) => {
       let data = '';
       res.setEncoding('utf8');
+      res.on('error', reject);
       res.on('data', (chunk) => { data += chunk; });
       res.on('end', () => {
         if (res.statusCode !== 200) {
@@ -1467,16 +1558,25 @@ function parseYtmSongs(json) {
   return out;
 }
 
+// Songs first; music videos when the songs search comes back empty
+async function searchYtmSongs(query) {
+  const songs = parseYtmSongs(await ytmSearchRequest(query));
+  if (songs.length) return songs;
+  const videos = parseYtmSongs(await ytmSearchRequest(query, YTM_VIDEOS_PARAMS));
+  // a video row reads "Artist • 1.2B views • 4:08": the middle part is not an album
+  return videos.map((v) => (/\bviews?$/i.test(v.album) ? { ...v, album: '' } : v));
+}
+
 async function searchYtmTracks(query, limit = 16) {
   const cacheKey = `ytm_vibe:${limit}:${String(query || '').trim().toLowerCase()}`;
   if (searchCache.has(cacheKey)) {
     return searchCache.get(cacheKey);
   }
   try {
-    const json = await ytmSearchRequest(query);
-    const songs = parseYtmSongs(json).slice(0, limit);
+    const songs = (await searchYtmSongs(query)).slice(0, limit);
     const tracks = songs.map(s => {
       ytArtistCache.set(s.id, s.artist);
+      trimCache(ytArtistCache, 2000);
       return {
         id: s.id,
         title: s.title,
@@ -1488,8 +1588,7 @@ async function searchYtmTracks(query, limit = 16) {
       };
     });
     if (tracks.length > 0) {
-      searchCache.set(cacheKey, tracks);
-      setTimeout(() => { searchCache.delete(cacheKey); }, 300000);
+      cacheSearchResult(cacheKey, tracks);
     }
     return tracks;
   } catch (e) {
@@ -1538,7 +1637,7 @@ async function handleSearch(req, res, query, platform = 'youtube', limit = 20) {
       const directTracks = await directYoutubeSearch(query);
       if (directTracks && directTracks.length > 0) {
         const result = { success: true, tracks: directTracks.slice(0, limit) };
-        searchCache.set(cacheKey, result);
+        cacheSearchResult(cacheKey, result);
 
         setTimeout(() => {
           if (directTracks[0] && directTracks[0].url) {
@@ -1554,17 +1653,17 @@ async function handleSearch(req, res, query, platform = 'youtube', limit = 20) {
   if (platform === 'ytmusic') {
     if (Date.now() >= ytmFailUntil) {
       try {
-        const json = await ytmSearchRequest(query);
-        const songs = parseYtmSongs(json).slice(0, limit);
+        const songs = (await searchYtmSongs(query)).slice(0, limit);
         if (songs.length > 0) {
           ytmFailCount = 0;
           const entries = await Promise.all(songs.map(async (s) => {
             ytArtistCache.set(s.id, s.artist);
+            trimCache(ytArtistCache, 2000);
             const isCached = await findCachedFile(s.id);
             return { id: s.id, title: s.title, artist: s.artist, duration: s.duration, thumbnail: s.thumbnail, url: `https://www.youtube.com/watch?v=${s.id}`, platform: 'youtube', isCached: !!isCached };
           }));
           const result = { success: true, tracks: entries };
-          searchCache.set(cacheKey, result);
+          cacheSearchResult(cacheKey, result);
           setTimeout(() => {
             if (entries[0] && entries[0].url) prefetchTrack(entries[0].url, entries[0].id, 'youtube').catch(() => {});
           }, 60);
@@ -1633,6 +1732,7 @@ async function handleSearch(req, res, query, platform = 'youtube', limit = 20) {
                 if (val) {
                   item._artist = val;
                   ytArtistCache.set(item.id, val);
+                  trimCache(ytArtistCache, 2000);
                 }
               }
             } catch (e) {}
@@ -1670,7 +1770,7 @@ async function handleSearch(req, res, query, platform = 'youtube', limit = 20) {
         };
       }));
       const result = { success: true, tracks: entries };
-      searchCache.set(cacheKey, result);
+      cacheSearchResult(cacheKey, result);
       setTimeout(() => {
         if (entries[0] && entries[0].url) prefetchTrack(entries[0].url, entries[0].id, 'youtube').catch(() => {});
       }, 60);
@@ -1728,7 +1828,7 @@ async function handleSearch(req, res, query, platform = 'youtube', limit = 20) {
     }));
 
     const result = { success: true, tracks: entries };
-    searchCache.set(cacheKey, result);
+    cacheSearchResult(cacheKey, result);
 
     setTimeout(() => {
       if (entries[0] && entries[0].url) prefetchTrack(entries[0].url, entries[0].id, platform).catch(() => {});
@@ -1899,6 +1999,7 @@ async function handleStreamInfo(req, res, trackUrl, trackId, platform = 'youtube
   resolveLookup(data);
   if (cacheKey) streamUrlCache.set(cacheKey, { timestamp: Date.now(), data });
   if (cleanId && cleanId !== cacheKey) streamUrlCache.set(cleanId, { timestamp: Date.now(), data });
+  trimCache(streamUrlCache, 300);
   if (cleanId) setTimeout(() => downloadTrackToDisk(trackUrl, cleanId, platform, meta), 10000);
 
   res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -1914,11 +2015,20 @@ async function handleStreamInfo(req, res, trackUrl, trackId, platform = 'youtube
   }
 }
 
+const artistInFlight = new Map();
+
 async function fetchArtistInfo(artistName) {
   const cleanName = (artistName || '').replace(/ - Topic|VEVO|Official|Records/gi, '').trim();
   const cacheKey = cleanName.toLowerCase();
   if (artistCache.has(cacheKey)) return artistCache.get(cacheKey);
+  // the same artist page requested again while its lookup runs shares that lookup
+  if (artistInFlight.has(cacheKey)) return artistInFlight.get(cacheKey);
+  const lookup = lookupArtistInfo(cleanName, cacheKey).finally(() => artistInFlight.delete(cacheKey));
+  artistInFlight.set(cacheKey, lookup);
+  return lookup;
+}
 
+async function lookupArtistInfo(cleanName, cacheKey) {
   let bio = '';
   let avatar = '';
   let isVerified = false;
@@ -1927,15 +2037,7 @@ async function fetchArtistInfo(artistName) {
 
   try {
     const dzUrl = `https://api.deezer.com/search/artist?q=${encodeURIComponent(cleanName)}`;
-    const dzData = await new Promise((resolve) => {
-      https.get(dzUrl, { headers: { 'User-Agent': 'Mozilla/5.0' }, timeout: 4000 }, (dRes) => {
-        let d = '';
-        dRes.on('data', c => d += c);
-        dRes.on('end', () => {
-          try { resolve(JSON.parse(d)); } catch (e) { resolve(null); }
-        });
-      }).on('error', () => resolve(null));
-    });
+    const dzData = await httpsJson(dzUrl, 4000);
 
     if (dzData && dzData.data && dzData.data.length > 0) {
       const topArtist = dzData.data[0];
@@ -1944,15 +2046,7 @@ async function fetchArtistInfo(artistName) {
       isVerified = (topArtist.nb_fan || 0) > 30000;
 
       if (topArtist.tracklist) {
-        const tlistData = await new Promise((resolve) => {
-          https.get(topArtist.tracklist, { headers: { 'User-Agent': 'Mozilla/5.0' }, timeout: 4000 }, (tRes) => {
-            let td = '';
-            tRes.on('data', c => td += c);
-            tRes.on('end', () => {
-              try { resolve(JSON.parse(td)); } catch (e) { resolve(null); }
-            });
-          }).on('error', () => resolve(null));
-        });
+        const tlistData = await httpsJson(topArtist.tracklist, 4000);
 
         if (tlistData && Array.isArray(tlistData.data)) {
           for (const item of tlistData.data) {
@@ -1978,15 +2072,7 @@ async function fetchArtistInfo(artistName) {
 
   try {
     const wikiUrl = `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(cleanName)}`;
-    const wikiData = await new Promise((resolve) => {
-      https.get(wikiUrl, { headers: { 'User-Agent': 'devsize/2.0' }, timeout: 3500 }, (wRes) => {
-        let d = '';
-        wRes.on('data', c => d += c);
-        wRes.on('end', () => {
-          try { resolve(JSON.parse(d)); } catch (e) { resolve(null); }
-        });
-      }).on('error', () => resolve(null));
-    });
+    const wikiData = await httpsJson(wikiUrl, 3500, 'devsize/2.0');
 
     if (wikiData && wikiData.extract) {
       bio = wikiData.extract;
@@ -2011,7 +2097,11 @@ async function fetchArtistInfo(artistName) {
     tracks: tracks.slice(0, 35)
   };
 
-  artistCache.set(cacheKey, result);
+  // an empty page usually means the lookups failed (offline): don't keep that until the app restarts
+  if (result.tracks.length || result.bio) {
+    artistCache.set(cacheKey, result);
+    trimCache(artistCache, 100);
+  }
   return result;
 }
 
@@ -2027,7 +2117,6 @@ async function handleLocalTrack(req, res, trackId) {
   try {
     const stat = await fs.promises.stat(filePath);
     const fileSize = stat.size;
-    const range = req.headers.range;
 
     const ext = path.extname(filePath).toLowerCase();
     const mimeTypes = {
@@ -2038,30 +2127,7 @@ async function handleLocalTrack(req, res, trackId) {
       '.aac': 'audio/aac'
     };
     const contentType = mimeTypes[ext] || 'audio/mpeg';
-
-    if (range) {
-      const parts = range.replace(/bytes=/, "").split("-");
-      const start = parseInt(parts[0], 10);
-      const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
-      const chunksize = (end - start) + 1;
-      const file = fs.createReadStream(filePath, { start, end });
-      const head = {
-        'Content-Range': `bytes ${start}-${end}/${fileSize}`,
-        'Accept-Ranges': 'bytes',
-        'Content-Length': chunksize,
-        'Content-Type': contentType,
-      };
-      res.writeHead(206, head);
-      streamFileToResponse(file, res);
-    } else {
-      const head = {
-        'Content-Length': fileSize,
-        'Content-Type': contentType,
-        'Accept-Ranges': 'bytes'
-      };
-      res.writeHead(200, head);
-      streamFileToResponse(fs.createReadStream(filePath), res);
-    }
+    sendFileWithRange(req, res, filePath, fileSize, contentType);
   } catch (e) {
     res.writeHead(500);
     res.end('Error reading local file');
@@ -2082,7 +2148,7 @@ const LIBRARY_MIME_TYPES = {
 };
 
 async function handleLibraryFile(req, res, trackId) {
-  const item = libraryIndex[trackId];
+  const item = hasOwn(libraryIndex, trackId) ? libraryIndex[trackId] : null;
   if (!item || !item.file) {
     res.writeHead(404);
     return res.end('File not found in library');
@@ -2092,34 +2158,10 @@ async function handleLibraryFile(req, res, trackId) {
   try {
     const stat = await fs.promises.stat(filePath);
     const fileSize = stat.size;
-    const range = req.headers.range;
 
     const ext = path.extname(filePath).toLowerCase();
     const contentType = LIBRARY_MIME_TYPES[ext] || 'audio/mpeg';
-
-    if (range) {
-      const parts = range.replace(/bytes=/, "").split("-");
-      const start = parseInt(parts[0], 10);
-      const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
-      const chunksize = (end - start) + 1;
-      const file = fs.createReadStream(filePath, { start, end });
-      const head = {
-        'Content-Range': `bytes ${start}-${end}/${fileSize}`,
-        'Accept-Ranges': 'bytes',
-        'Content-Length': chunksize,
-        'Content-Type': contentType,
-      };
-      res.writeHead(206, head);
-      streamFileToResponse(file, res);
-    } else {
-      const head = {
-        'Content-Length': fileSize,
-        'Content-Type': contentType,
-        'Accept-Ranges': 'bytes'
-      };
-      res.writeHead(200, head);
-      streamFileToResponse(fs.createReadStream(filePath), res);
-    }
+    sendFileWithRange(req, res, filePath, fileSize, contentType);
   } catch (e) {
     res.writeHead(404);
     res.end('File not found in library');
@@ -2140,33 +2182,9 @@ async function handleDownloadedTrack(req, res, name) {
   try {
     const stat = await fs.promises.stat(filePath);
     const fileSize = stat.size;
-    const range = req.headers.range;
 
     const contentType = LIBRARY_MIME_TYPES[ext] || 'audio/mpeg';
-
-    if (range) {
-      const parts = range.replace(/bytes=/, "").split("-");
-      const start = parseInt(parts[0], 10);
-      const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
-      const chunksize = (end - start) + 1;
-      const file = fs.createReadStream(filePath, { start, end });
-      const head = {
-        'Content-Range': `bytes ${start}-${end}/${fileSize}`,
-        'Accept-Ranges': 'bytes',
-        'Content-Length': chunksize,
-        'Content-Type': contentType,
-      };
-      res.writeHead(206, head);
-      streamFileToResponse(file, res);
-    } else {
-      const head = {
-        'Content-Length': fileSize,
-        'Content-Type': contentType,
-        'Accept-Ranges': 'bytes'
-      };
-      res.writeHead(200, head);
-      streamFileToResponse(fs.createReadStream(filePath), res);
-    }
+    sendFileWithRange(req, res, filePath, fileSize, contentType);
   } catch (e) {
     res.writeHead(404);
     res.end('File not found in downloads');
@@ -2219,13 +2237,23 @@ async function handleAudioProxy(req, res, targetUrl) {
       proxyReq.destroy(new Error('Proxy timeout'));
     });
 
+    let clientGone = false;
     proxyReq.on('error', (e) => {
+      if (clientGone) return;
       if (!res.headersSent) {
         res.writeHead(502);
         res.end('Proxy error');
       } else {
         try { res.destroy(); } catch (err) {}
       }
+    });
+
+    // the player drops a request on every seek; without this the upstream download keeps its
+    // connection open until the 60s idle timeout
+    res.on('close', () => {
+      if (res.writableFinished) return;
+      clientGone = true;
+      try { proxyReq.destroy(); } catch (e) {}
     });
 
     req.on('error', () => { try { proxyReq.destroy(); } catch (e) {} });
@@ -2365,7 +2393,7 @@ async function fetchOnlineCover(item, dest) {
     const results = (data && Array.isArray(data.results)) ? data.results : [];
     const hit = results.find(r => r && r.artworkUrl100 && norm(r.trackName).includes(norm(title)) && (!artist || norm(r.artistName).includes(norm(artist)) || norm(artist).includes(norm(r.artistName))));
     if (!hit) return false;
-    const res = await fetch(hit.artworkUrl100.replace('100x100', '600x600'));
+    const res = await fetchWithTimeout(hit.artworkUrl100.replace('100x100', '600x600'));
     if (!res.ok) return false;
     const buf = Buffer.from(await res.arrayBuffer());
     if (buf.length < 500) return false;
@@ -2411,13 +2439,14 @@ function queueLocalCovers(ids) {
 
 function handleLocalCover(req, res, parsedUrl) {
   const id = String(parsedUrl.query.id || '');
-  const file = /^[\w-]{1,64}$/.test(id) && libraryIndex[id] ? localCoverPath(id) : '';
+  const file = /^[\w-]{1,64}$/.test(id) && hasOwn(libraryIndex, id) ? localCoverPath(id) : '';
   if (!file || !fs.existsSync(file)) {
     res.writeHead(404);
     return res.end();
   }
   res.writeHead(200, { 'Content-Type': 'image/jpeg', 'Cache-Control': 'max-age=3600' });
-  fs.createReadStream(file).pipe(res);
+  // a read error (file gone since the exists check) must end the response, not crash the process
+  streamFileToResponse(fs.createReadStream(file), res);
 }
 
 async function handleDownload(req, res, trackUrl, title, artist, format = 'mp3', quality = '0', startParam = null, endParam = null, raw = false, trackId = null, streamUrlParam = null) {
@@ -2688,11 +2717,7 @@ function handleTmpFile(req, res, parsedUrl) {
     'Content-Type': 'audio/wav',
     'Content-Length': stat.size
   });
-  const stream = fs.createReadStream(filePath);
-  stream.pipe(res);
-  req.on('close', () => {
-    if (!res.writableEnded) stream.destroy();
-  });
+  streamFileToResponse(fs.createReadStream(filePath), res);
 }
 
 async function handleEncode(req, res, parsedUrl) {
@@ -2915,7 +2940,9 @@ const TOKEN_PROTECTED_ROUTES = new Set([
   '/api/offline-delete',
   '/api/clear-offline-library',
   '/api/save-custom-lyrics',
-  '/api/encode'
+  '/api/encode',
+  '/api/apple-import',
+  '/api/playlist-import'
 ]);
 
 function getServerToken() {
@@ -2959,7 +2986,11 @@ function getFetchedLyricsPath(title, artist) {
 
 async function handleLyrics(req, res, title, artist, allowOnline = true, duration = 0) {
   const cacheKey = `${artist}:${title}`;
-  const cached = lyricsCache.get(cacheKey);
+  let cached = lyricsCache.get(cacheKey);
+  if (cached && cached.expires && Date.now() > cached.expires) {
+    lyricsCache.delete(cacheKey);
+    cached = undefined;
+  }
   if (cached?.promise) {
     const outcome = await cached.promise;
     res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -3031,7 +3062,9 @@ async function handleLyrics(req, res, title, artist, allowOnline = true, duratio
       } catch (e) {}
     }
     if (lyricsCache.get(cacheKey) === inFlightEntry) {
-      lyricsCache.set(cacheKey, { text: rawLyrics, isCustom: false });
+      // "nothing found" is also what a network hiccup looks like: look again after 10 minutes
+      // instead of showing no lyrics for this song until the app restarts
+      lyricsCache.set(cacheKey, rawLyrics ? { text: rawLyrics, isCustom: false } : { text: rawLyrics, isCustom: false, expires: Date.now() + 10 * 60 * 1000 });
     }
     return sendLyrics(rawLyrics);
   } catch (err) {
@@ -3045,6 +3078,7 @@ async function handleLyrics(req, res, title, artist, allowOnline = true, duratio
     if (lyricsCache.get(cacheKey) === inFlightEntry) {
       lyricsCache.delete(cacheKey);
     }
+    trimCache(lyricsCache, 300);
   }
 }
 
@@ -3098,6 +3132,7 @@ function pathfinderRequest(accessToken, variables) {
     }, (r) => {
       try { logger.log(r.statusCode === 200 ? 'warn' : 'error', `api-partner.spotify.com status ${r.statusCode}`); } catch (_) {}
       let b = '';
+      r.on('error', reject);
       r.on('data', c => b += c);
       r.on('end', () => {
         if (r.statusCode !== 200) return reject(new Error(`Pathfinder status ${r.statusCode}`));
@@ -3196,6 +3231,7 @@ function fetchSpotifyEmbed(playlistId, ua) {
     }, (res) => {
       try { logger.log(res.statusCode === 200 ? 'warn' : 'error', `open.spotify.com status ${res.statusCode}`); } catch (_) {}
       let body = '';
+      res.on('error', reject);
       res.on('data', chunk => body += chunk);
       res.on('end', () => resolve({ status: res.statusCode, body }));
     });
@@ -3378,13 +3414,16 @@ function fetchHtmlWithRedirects(targetUrl, maxRedirects = 5, timeoutMs = 15000) 
         timeout: timeoutMs
       }, (res) => {
         if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+          res.resume(); // drain the redirect body so its socket is released
           if (++redirects > maxRedirects) {
             return reject(new Error('Too many redirects'));
           }
-          const nextUrl = new URL(res.headers.location, currentUrl).toString();
+          let nextUrl;
+          try { nextUrl = new URL(res.headers.location, currentUrl).toString(); } catch (e) { return reject(e); }
           return fetchUrl(nextUrl);
         }
         let body = '';
+        res.on('error', reject);
         res.on('data', c => body += c);
         res.on('end', () => resolve({ statusCode: res.statusCode, headers: res.headers, body }));
       });
@@ -3396,6 +3435,19 @@ function fetchHtmlWithRedirects(targetUrl, maxRedirects = 5, timeoutMs = 15000) 
 }
 
 async function handleAppleImport(req, res, inputUrl) {
+  // only real Apple Music pages: the playlist branch fetches this URL, and a pattern that matched anywhere
+  // in the string let a link like http://127.0.0.1/...music.apple.com/pl.x make Muriel fetch local addresses
+  let host = '';
+  inputUrl = String(inputUrl || '').trim();
+  if (inputUrl && !/^[a-z][a-z0-9+.-]*:\/\//i.test(inputUrl)) inputUrl = `https://${inputUrl}`; // pasted without https://
+  try {
+    const parsed = new URL(inputUrl);
+    if (parsed.protocol === 'https:' || parsed.protocol === 'http:') host = parsed.hostname.toLowerCase();
+  } catch (e) {}
+  if (host !== 'music.apple.com' && host !== 'itunes.apple.com') {
+    res.writeHead(400, { 'Content-Type': 'application/json' });
+    return res.end(JSON.stringify({ success: false, error: 'Not an Apple Music link' }));
+  }
   const albumMatch = (inputUrl || '').match(/music\.apple\.com\/(?:[a-z]{2}\/)?album\/(?:[^/]+\/)?(\d+)/i);
   if (albumMatch) {
     try {
@@ -3574,7 +3626,7 @@ async function handlePlaylistImport(req, res, inputUrl) {
 
   if (isSoundCloud && inputUrl.includes('/sets/')) {
     try {
-      const page = await fetch(inputUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } }).then(r => r.text());
+      const page = await fetchWithTimeout(inputUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } }).then(r => r.text());
       const hyd = page.match(/window\.__sc_hydration\s*=\s*(\[[\s\S]*?\]);\s*<\/script>/);
       if (hyd) {
         const list = JSON.parse(hyd[1]);
@@ -3584,7 +3636,7 @@ async function handlePlaylistImport(req, res, inputUrl) {
           const scripts = [...page.matchAll(/src="(https:\/\/a-v2\.sndcdn\.com\/assets\/[^"]+\.js)"/g)].map(x => x[1]);
           for (const s of scripts) {
             try {
-              const code = await fetch(s).then(r => r.text());
+              const code = await fetchWithTimeout(s).then(r => r.text());
               const cm = code.match(/client_id[:=]["']([a-zA-Z0-9]{32})["']/);
               if (cm) { cid = cm[1]; break; }
             } catch (_) {}
@@ -3595,7 +3647,7 @@ async function handlePlaylistImport(req, res, inputUrl) {
             const chunk = missing.slice(i, i + 50);
             try {
               const u = `https://api-v2.soundcloud.com/tracks?ids=${chunk.join(',')}&client_id=${cid}`;
-              const items = await fetch(u, { headers: { 'User-Agent': 'Mozilla/5.0' } }).then(r => r.json());
+              const items = await fetchWithTimeout(u, { headers: { 'User-Agent': 'Mozilla/5.0' } }).then(r => r.json());
               if (Array.isArray(items)) full.push(...items);
             } catch (_) {}
           }
@@ -3790,6 +3842,7 @@ function requestSpotifyToken(params) {
       timeout: 15000
     }, (resp) => {
       let body = '';
+      resp.on('error', reject);
       resp.on('data', c => body += c);
       resp.on('end', () => {
         try {
@@ -3861,6 +3914,7 @@ function spotifyApiGet(requestUrl, token) {
       timeout: 15000
     }, (resp) => {
       let body = '';
+      resp.on('error', reject);
       resp.on('data', c => body += c);
       resp.on('end', () => {
         resolve({ status: resp.statusCode, headers: resp.headers, body });
@@ -4027,24 +4081,29 @@ function callTranslate(text, to) {
     function tryNext() {
       if (idx >= clients.length) return resolve(null);
       const c = clients[idx++];
+      // a timeout destroys the request, which fires 'error' too: move on once per attempt, not twice
+      let done = false;
+      const next = () => { if (!done) { done = true; tryNext(); } };
       const u = `https://translate.googleapis.com/translate_a/single?client=${c}&sl=auto&tl=${encodeURIComponent(to)}&dt=t&q=${encodeURIComponent(text)}`;
       const req = https.get(u, { headers: { 'User-Agent': 'Mozilla/5.0' }, timeout: 8000 }, (res) => {
         let b = '';
+        res.on('error', next);
         res.on('data', chunk => b += chunk);
         res.on('end', () => {
-          if (res.statusCode !== 200) return tryNext();
+          if (res.statusCode !== 200) return next();
           try {
             const data = JSON.parse(b);
             if (data && Array.isArray(data[0])) {
               const joined = data[0].map(s => s[0]).join('').split('\n');
+              done = true;
               return resolve(joined);
             }
           } catch (e) {}
-          tryNext();
+          next();
         });
       });
-      req.on('error', tryNext);
-      req.on('timeout', () => { req.destroy(); tryNext(); });
+      req.on('error', next);
+      req.on('timeout', () => { req.destroy(); next(); });
     }
     tryNext();
   });
@@ -4074,14 +4133,22 @@ async function handleTranslate(req, res, lines, to = 'en') {
   for (const chunk of chunks) {
     const joined = chunk.join('\n');
     let chunkTrans = await callTranslate(joined, to);
-    if (!chunkTrans || chunkTrans.length !== chunk.length) {
+    if (!chunkTrans) {
+      // no answer at all: going line by line would wait up to 16s per line (minutes for one song)
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ success: false, error: 'Translation service unavailable' }));
+    }
+    if (chunkTrans.length !== chunk.length) {
+      // the lines came back merged or split: translate them one at a time, until the service stops answering
       chunkTrans = [];
+      let reachable = true;
       for (const line of chunk) {
-        if (!line.trim()) {
-          chunkTrans.push('');
+        if (!line.trim() || !reachable) {
+          chunkTrans.push(line.trim() ? line : '');
           continue;
         }
         const single = await callTranslate(line, to);
+        if (!single) reachable = false;
         chunkTrans.push((single && single[0]) ? single[0] : line);
       }
     }
@@ -4103,6 +4170,7 @@ const ITUNES_TO_DEEZER_GENRE = {
   'house': 113, 'techno': 106, 'indie pop': 85, 'german pop': 459, 'german hip hop': 116,
 };
 const discoverCache = new Map();
+const discoverInFlight = new Map();
 
 function setDiscoverCache(key, data) {
   discoverCache.delete(key);
@@ -4110,9 +4178,9 @@ function setDiscoverCache(key, data) {
   discoverCache.set(key, { at: Date.now(), data });
 }
 
-function httpsJson(target, timeout = 5000) {
+function httpsJson(target, timeout = 5000, userAgent = 'Mozilla/5.0') {
   return new Promise((resolve) => {
-    https.get(target, { headers: { 'User-Agent': 'Mozilla/5.0' }, timeout }, (r) => {
+    https.get(target, { headers: { 'User-Agent': userAgent }, timeout }, (r) => {
       let d = '';
       r.on('data', (c) => { d += c; });
       r.on('end', () => { try { resolve(JSON.parse(d)); } catch (e) { resolve(null); } });
@@ -4147,7 +4215,14 @@ async function buildDiscover(historyTracks, favoriteTracks) {
   const key = topArtists.map((a) => a.name.toLowerCase()).join('|') || 'none';
   const hit = discoverCache.get(key);
   if (hit && Date.now() - hit.at < 10 * 60 * 1000) return hit.data;
+  // one build is dozens of iTunes/Deezer calls: a second request while it runs shares it
+  if (discoverInFlight.has(key)) return discoverInFlight.get(key);
+  const job = fetchDiscover(key, topArtists, known).finally(() => discoverInFlight.delete(key));
+  discoverInFlight.set(key, job);
+  return job;
+}
 
+async function fetchDiscover(key, topArtists, known) {
   const sections = [];
   if (!topArtists.length) {
     const [chart, artists] = await Promise.all([httpsJson('https://api.deezer.com/chart/0/tracks?limit=20'), httpsJson('https://api.deezer.com/chart/0/artists?limit=12')]);
@@ -4244,6 +4319,7 @@ function fetchItunesJson(url) {
         return reject(new Error(`HTTP ${res.statusCode}`));
       }
       let raw = '';
+      res.on('error', reject);
       res.on('data', c => raw += c);
       res.on('end', () => {
         try {
@@ -4329,6 +4405,10 @@ async function handleAlbumSearch(req, res, parsedUrl) {
     }
 
     const responses = await Promise.all(urls.map(u => fetchItunesJson(u).catch(() => null)));
+    // every lookup failed (offline, iTunes down): report it instead of caching "no albums" for 15 minutes
+    if (responses.every(data => !data)) {
+      return sendResponse(502, { success: false, error: 'Album service unavailable' });
+    }
     const results = [];
     for (const data of responses) {
       if (data && Array.isArray(data.results)) {
@@ -4665,6 +4745,12 @@ const server = http.createServer(guardHandler(async (req, res) => {
   }
 
   const parsedUrl = url.parse(req.url, true);
+  // a repeated parameter (?id=a&id=b) arrives as an array, which every route would choke on; keep the last
+  // value like the phone build's url shim does
+  for (const key of Object.keys(parsedUrl.query)) {
+    const value = parsedUrl.query[key];
+    if (Array.isArray(value)) parsedUrl.query[key] = value[value.length - 1];
+  }
 
   if (TOKEN_PROTECTED_ROUTES.has(parsedUrl.pathname) && !tokenMatches(req.headers['x-muriel-token'])) {
     res.writeHead(403, { 'Content-Type': 'application/json' });
@@ -4682,9 +4768,14 @@ const server = http.createServer(guardHandler(async (req, res) => {
     req.on('data', chunk => { if (res.writableEnded) return; body += chunk; if (body.length > MAX_BODY_BYTES) { body = ''; req.removeAllListeners('data'); req.removeAllListeners('end'); res.writeHead(413, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ success: false, error: 'payload too large' })); req.resume(); } });
     req.on('end', () => {
       const payload = safeJsonParse(body, {});
-      const texts = payload.texts || payload.lines || [];
-      const targetLang = payload.targetLang || payload.to || 'en';
-      handleTranslate(req, res, texts, targetLang);
+      const raw = payload.texts || payload.lines || [];
+      // a null or number among the lines used to throw outside any handler and leave the request hanging
+      const texts = Array.isArray(raw) ? raw.map((t) => (typeof t === 'string' ? t : t == null ? '' : String(t))) : [];
+      const targetLang = typeof (payload.targetLang || payload.to) === 'string' ? (payload.targetLang || payload.to) : 'en';
+      handleTranslate(req, res, texts, targetLang).catch((e) => {
+        if (!res.headersSent) res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: false, error: e.message }));
+      });
     });
     return;
   }
@@ -4873,7 +4964,7 @@ const server = http.createServer(guardHandler(async (req, res) => {
   if (parsedUrl.pathname === '/api/search') {
     const q = parsedUrl.query.q || '';
     const platform = parsedUrl.query.platform || 'youtube';
-    const limit = parseInt(parsedUrl.query.limit || '20', 10);
+    const limit = Math.max(1, Math.min(50, parseInt(parsedUrl.query.limit || '20', 10) || 20));
     return handleSearch(req, res, q, platform, limit);
   }
 
@@ -4889,7 +4980,7 @@ const server = http.createServer(guardHandler(async (req, res) => {
 
   if (parsedUrl.pathname === '/api/discover' && req.method === 'POST') {
     let body = '';
-    req.on('data', chunk => body += chunk);
+    req.on('data', chunk => { if (res.writableEnded) return; body += chunk; if (body.length > MAX_BODY_BYTES) { body = ''; req.removeAllListeners('data'); req.removeAllListeners('end'); res.writeHead(413, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ success: false, error: 'payload too large' })); req.resume(); } });
     req.on('end', async () => {
       const payload = safeJsonParse(body, {});
       try {
@@ -4978,12 +5069,13 @@ const server = http.createServer(guardHandler(async (req, res) => {
         const fileRegex = /^local_[a-f0-9]{12}\.[a-z0-9]+$/;
         let addedCount = 0;
         for (const item of items) {
-          if (!item || !item.id || !item.file) continue;
+          // "__proto__" as a key would replace the index's prototype instead of adding a track
+          if (!item || typeof item.id !== 'string' || !item.id || item.id === '__proto__' || typeof item.file !== 'string') continue;
           if (!fileRegex.test(item.file)) continue;
           const fullPath = path.join(LIBRARY_DIR, item.file);
           if (!fs.existsSync(fullPath)) continue;
 
-          let rawName = (item.name || '').trim();
+          let rawName = String(item.name || '').trim();
           let cleanName = rawName.replace(/^\d+(?:[.\s-]+)\s*/, '').trim() || rawName || 'Untitled';
 
           const dashIdx = cleanName.indexOf(' - ');
@@ -5023,7 +5115,8 @@ const server = http.createServer(guardHandler(async (req, res) => {
       try {
         const payload = JSON.parse(body || '{}');
         const { id, duration } = payload;
-        if (id && libraryIndex[id] && typeof duration === 'number' && !isNaN(duration)) {
+        // own keys only: id "__proto__" used to write `duration` onto Object.prototype for the whole process
+        if (typeof id === 'string' && hasOwn(libraryIndex, id) && typeof duration === 'number' && !isNaN(duration)) {
           libraryIndex[id].duration = duration;
           saveLibraryIndex();
         }
@@ -5068,7 +5161,7 @@ const server = http.createServer(guardHandler(async (req, res) => {
       try {
         const payload = JSON.parse(body || '{}');
         const id = payload.id || parsedUrl.query.id || '';
-        if (id && libraryIndex[id]) {
+        if (typeof id === 'string' && hasOwn(libraryIndex, id)) {
           const item = libraryIndex[id];
           if (item.file) {
             const fullPath = path.join(LIBRARY_DIR, item.file);
@@ -5167,7 +5260,7 @@ const server = http.createServer(guardHandler(async (req, res) => {
     try { if (audioPath && fs.existsSync(audioPath)) await fs.promises.unlink(audioPath); } catch (e) {}
     try { if (fs.existsSync(thumbPath)) await fs.promises.unlink(thumbPath); } catch (e) {}
     delete trackMetadataIndex[cleanId];
-    try { fs.writeFileSync(METADATA_PATH, JSON.stringify(trackMetadataIndex, null, 2), 'utf-8'); } catch (e) {}
+    try { writeJsonFile(METADATA_PATH, trackMetadataIndex); } catch (e) {}
     res.writeHead(200, { 'Content-Type': 'application/json' });
     return res.end(JSON.stringify({ success: true }));
   }
@@ -5186,7 +5279,7 @@ const server = http.createServer(guardHandler(async (req, res) => {
         try { await fs.promises.unlink(path.join(THUMBNAILS_DIR, file)); } catch (e) {}
       }
       trackMetadataIndex = {};
-      try { fs.writeFileSync(METADATA_PATH, '{}', 'utf-8'); } catch (e) {}
+      try { writeJsonFile(METADATA_PATH, trackMetadataIndex); } catch (e) {}
     } catch (e) {}
     res.writeHead(200, { 'Content-Type': 'application/json' });
     return res.end(JSON.stringify({ success: true }));

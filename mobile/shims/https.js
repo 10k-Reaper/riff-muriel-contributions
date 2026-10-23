@@ -40,6 +40,10 @@ function request(a, b, c) {
         res.statusCode = r.status;
         res.headers = Object.fromEntries([...r.headers.entries()].map(([k, v]) => [k.toLowerCase(), v]));
         res.setEncoding = () => res;
+        // the body is already in memory: draining (non-2xx answers) and dropping (oversized ones) are no-ops,
+        // but server.js calls them, and a throw there skipped the resolve and hung the caller
+        res.resume = () => res;
+        res.destroy = () => res;
         res.pipe = (dest) => { dest.write(text); dest.end(); return dest; };
         if (cb) cb(res);
         req.emit('response', res);

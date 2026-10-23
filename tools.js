@@ -24,9 +24,11 @@ function ffmpegAsset() {
   return null;
 }
 
+// Without a timeout a stalled download kept the status at 'downloading' forever, and ensureTools()
+// refuses to start again while it says that. 60s without a single byte counts as failed.
 function get(url, redirects = 6) {
   return new Promise((resolve, reject) => {
-    https.get(url, { headers: { 'User-Agent': 'Muriel' } }, (res) => {
+    const req = https.get(url, { headers: { 'User-Agent': 'Muriel' }, timeout: 60000 }, (res) => {
       if ([301, 302, 303, 307, 308].includes(res.statusCode) && res.headers.location && redirects > 0) {
         res.resume();
         return resolve(get(new URL(res.headers.location, url).toString(), redirects - 1));
@@ -36,7 +38,10 @@ function get(url, redirects = 6) {
         return reject(new Error(`HTTP ${res.statusCode} for ${url}`));
       }
       resolve(res);
-    }).on('error', reject);
+    });
+    req.on('error', reject);
+    // destroying the request also errors a response that is already being read (downloadFile/getText)
+    req.on('timeout', () => req.destroy(new Error(`Download stalled: ${url}`)));
   });
 }
 
@@ -60,7 +65,7 @@ async function downloadFile(url, dest) {
       done += c.length;
       if (total) state.percent = Math.round((done / total) * 100);
     });
-    res.on('error', reject);
+    res.on('error', (e) => { out.destroy(); reject(e); });
     out.on('error', reject);
     out.on('finish', resolve);
     res.pipe(out);

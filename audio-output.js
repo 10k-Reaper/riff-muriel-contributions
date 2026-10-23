@@ -11,7 +11,8 @@ function getSystemAudioOutputInfo() {
           const descMatch = stdout.match(/node\.description\s*=\s*"([^"]+)"/);
           if (descMatch) name = descMatch[1].trim();
           const addrMatch = stdout.match(/api\.bluez5\.address\s*=\s*"([^"]+)"/);
-          if (addrMatch) btAddress = addrMatch[1].trim();
+          // it goes into a shell command below, so only a real MAC address is accepted
+          if (addrMatch && /^[0-9A-F]{2}(:[0-9A-F]{2}){5}$/i.test(addrMatch[1].trim())) btAddress = addrMatch[1].trim();
         }
 
         const getPactlFallback = () => new Promise((res) => {

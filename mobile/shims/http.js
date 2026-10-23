@@ -12,6 +12,9 @@ function dispatch({ url, method = 'GET', headers = {}, body = '' }) {
     req.method = method.toUpperCase();
     req.headers = { host: '127.0.0.1', ...Object.fromEntries(Object.entries(headers).map(([k, v]) => [k.toLowerCase(), v])) };
     req.pipe = (dest) => { if (body) dest.write(body); dest.end(); return dest; };
+    // server.js calls these on an oversized body (413) and an aborted upload; without them that path threw
+    req.resume = () => req;
+    req.destroy = () => req;
 
     const res = new EventEmitter();
     let chunks = '';
