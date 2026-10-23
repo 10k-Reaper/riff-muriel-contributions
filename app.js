@@ -1919,6 +1919,69 @@ document.addEventListener('DOMContentLoaded', async () => {
     d.addEventListener('animationend', () => d.remove());
   }, true);
 
+  // Holding a finger on a song opens its menu. iOS never sends 'contextmenu' for a held finger, and
+  // Android sends it mid-hold, where it fights hold-to-reorder, so the menu opens on release instead.
+  const TOUCH_HOLD_MS = 450;
+  (() => {
+    let hold = null;
+    const end = () => {
+      if (!hold) return;
+      clearTimeout(hold.timer);
+      hold.row.classList.remove('is-held');
+      document.removeEventListener('pointermove', move, true);
+      document.removeEventListener('pointerup', up, true);
+      document.removeEventListener('pointercancel', cancel, true);
+      hold = null;
+    };
+    const openMenu = (h) => {
+      // swallow the click this release turns into, it would start the song
+      const swallow = (ev) => { ev.stopImmediatePropagation(); ev.preventDefault(); };
+      document.addEventListener('click', swallow, true);
+      setTimeout(() => document.removeEventListener('click', swallow, true), 400);
+      const ev = new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: h.x, clientY: h.y });
+      ev.murielHold = true;
+      h.row.dispatchEvent(ev);
+    };
+    const move = (e) => {
+      if (!hold || e.pointerId !== hold.id || Math.hypot(e.clientX - hold.x, e.clientY - hold.y) <= 8) return;
+      hold.moved = true;
+      if (!hold.fired) end();
+    };
+    const up = (e) => {
+      if (!hold || e.pointerId !== hold.id) return;
+      const h = hold; end();
+      if (h.fired && !h.moved) openMenu(h);
+    };
+    // Android can cancel the pointer right after its own long-press event; that still counts as a hold
+    const cancel = (e) => {
+      if (!hold || e.pointerId !== hold.id) return;
+      const h = hold; end();
+      if (h.fired && h.native && !h.moved) openMenu(h);
+    };
+    document.addEventListener('pointerdown', (e) => {
+      if (e.pointerType !== 'touch') return;
+      const row = e.target.closest('.track-row');
+      if (!row || e.target.closest('button, input, select, a')) return;
+      end();
+      hold = { row, id: e.pointerId, x: e.clientX, y: e.clientY, moved: false, fired: false, native: false };
+      hold.timer = setTimeout(() => {
+        if (!hold) return;
+        hold.fired = true;
+        row.classList.add('is-held');
+        try { if (navigator.vibrate) navigator.vibrate(10); } catch (err) {}
+      }, TOUCH_HOLD_MS);
+      document.addEventListener('pointermove', move, true);
+      document.addEventListener('pointerup', up, true);
+      document.addEventListener('pointercancel', cancel, true);
+    }, true);
+    document.addEventListener('contextmenu', (e) => {
+      if (!hold || e.murielHold || !e.target.closest || !e.target.closest('.track-row')) return;
+      hold.native = true;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+    }, true);
+  })();
+
   function openTrackRenameDialog() {
     const currentTitle = state.currentTrack?.title || '';
     const currentArtist = state.currentTrack?.artist || '';
@@ -3233,6 +3296,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     state.isCustomLyrics = false;
 
     try {
+      // skipping through songs fired one lookup (several lrclib requests) per song and got rate limited
+      await new Promise(r => setTimeout(r, 350));
+      if (token !== state.loadToken) return;
       const onlineParam = getAdv('online_lyrics', true) ? '1' : '0';
       const dur = state.currentTrack && (state.currentTrack.title || '') === title ? Math.round(Number(state.currentTrack.duration) || 0) : 0;
       const res = await fetch(`http://127.0.0.1:${state.serverPort}/api/lyrics?title=${encodeURIComponent(title)}&artist=${encodeURIComponent(artist)}&online=${onlineParam}${dur ? `&duration=${dur}` : ''}`);
@@ -7090,8 +7156,10 @@ document.addEventListener('DOMContentLoaded', async () => {
           if (!item || !item.id) continue;
           await new Promise(resolve => {
             const url = `http://127.0.0.1:${state.serverPort}/api/library-file?id=${encodeURIComponent(item.id)}`;
-            const a = new Audio(url);
+            // set src after construction: new Audio(url) skips the phone bridge's src rewrite
+            const a = new Audio();
             a.preload = 'metadata';
+            a.src = url;
             let done = false;
             const finish = () => {
               if (done) return;
@@ -7268,6 +7336,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     let items = [];
     let draggedHeight = 0;
     let draggedStartTop = 0;
+    let isTouch = false;
 
     const scrollParent = container.closest('.main-content, .rail-drawer') || container;
 
@@ -7309,6 +7378,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     const onPointerDown = (e) => {
       if (e.button !== 0) return;
+      // a second finger must not hijack a row that is already being moved
+      if (draggedItem && isDragging) return;
+      clearTimeout(pressTimer);
       if (isFilterActive && isFilterActive()) return;
 
       const item = e.target.closest(itemSelector);
@@ -7322,10 +7394,11 @@ document.addEventListener('DOMContentLoaded', async () => {
       startY = e.clientY;
       activePointerId = e.pointerId;
       isDragging = false;
+      isTouch = e.pointerType === 'touch';
 
       pressTimer = setTimeout(() => {
         startDrag();
-      }, 250);
+      }, isTouch ? TOUCH_HOLD_MS : 250);
 
       window.addEventListener('pointermove', onPointerMove);
       window.addEventListener('pointerup', onPointerUp);
@@ -7335,10 +7408,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     const onPointerMove = (e) => {
       if (!draggedItem) return;
 
+      if (e.pointerId !== activePointerId) return;
       if (!isDragging) {
         const dist = Math.hypot(e.clientX - startX, e.clientY - startY);
         if (dist > 7) {
           clearTimeout(pressTimer);
+          // a finger that moves before the hold is scrolling the list, not dragging a row
+          if (isTouch) { onPointerUp(e); return; }
           startDrag();
         } else {
           return;
@@ -7404,7 +7480,10 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
     };
 
-    const onPointerUp = () => {
+    const onPointerUp = (e) => {
+      if (e && activePointerId !== null && e.pointerId !== activePointerId) return;
+      // the browser took the gesture over (it began a scroll): put the row back where it was
+      if (e && e.type === 'pointercancel') targetIndex = startIndex;
       clearTimeout(pressTimer);
       clearInterval(autoScrollTimer);
       window.removeEventListener('pointermove', onPointerMove);
@@ -7475,6 +7554,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     };
 
     container.addEventListener('pointerdown', onPointerDown);
+    // once a held row is lifted the finger moves it, so the list must not scroll underneath
+    container.addEventListener('touchmove', (e) => { if (isDragging) e.preventDefault(); }, { passive: false });
   }
 
   initListReordering({
@@ -7525,8 +7606,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   });
 
-  function createPlaylist(name, initialTracks = [], cover = '') {
-    if (!name || !name.trim()) return;
+  function createPlaylist(name, initialTracks = [], cover = '', { open = true } = {}) {
+    if (!name || !name.trim()) return null;
     const newPl = {
       id: 'pl_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7),
       name: name.trim(),
@@ -7540,7 +7621,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     state.playlists.push(newPl);
     localStorage.setItem('devsize_playlists', JSON.stringify(state.playlists));
     renderPlaylistsList();
-    openPlaylistDetail(newPl.id);
+    if (open) openPlaylistDetail(newPl.id);
+    return newPl;
   }
 
   function openPlaylistDetail(playlistId) {
@@ -7718,8 +7800,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   let trackToAddToPlaylist = null;
+  let manyToAddToPlaylist = null;
+  // tracks waiting for the playlist that "New playlist" in the add dialog is about to create
+  let tracksForNewPlaylist = null;
   function openAddToPlaylistModal(track, many = null) {
     trackToAddToPlaylist = track;
+    manyToAddToPlaylist = many;
     if (!el.playlistPickList) return;
 
     const trackPreviewEl = document.getElementById('add-playlist-track-preview');
@@ -8666,6 +8752,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   if (el.btnNewPlaylist) {
     el.btnNewPlaylist.addEventListener('click', () => {
+      tracksForNewPlaylist = null;
       if (el.newPlaylistInput) el.newPlaylistInput.value = '';
       if (el.createPlaylistModal) openModal(el.createPlaylistModal);
       if (el.newPlaylistInput) el.newPlaylistInput.focus();
@@ -8674,6 +8761,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   if (el.btnCancelNewPlaylist) {
     el.btnCancelNewPlaylist.addEventListener('click', () => {
+      tracksForNewPlaylist = null;
       if (el.createPlaylistModal) closeModal(el.createPlaylistModal);
     });
   }
@@ -8681,10 +8769,18 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (el.btnConfirmNewPlaylist) {
     el.btnConfirmNewPlaylist.addEventListener('click', () => {
       const name = el.newPlaylistInput ? el.newPlaylistInput.value : '';
-      if (name.trim()) {
+      if (!name.trim()) return;
+      const pending = tracksForNewPlaylist;
+      tracksForNewPlaylist = null;
+      if (pending && pending.length) {
+        // made from the add dialog: put the song(s) in and stay where the user was
+        const seen = new Set();
+        const pl = createPlaylist(name, pending.filter(t => t && t.id && !seen.has(t.id) && seen.add(t.id)), '', { open: false });
+        if (pl) showToast(`Added ${pl.tracks.length === 1 ? 'to' : pl.tracks.length + ' tracks to'} "${pl.name}"`, 'success');
+      } else {
         createPlaylist(name);
-        if (el.createPlaylistModal) closeModal(el.createPlaylistModal);
       }
+      if (el.createPlaylistModal) closeModal(el.createPlaylistModal);
     });
   }
 
@@ -8711,6 +8807,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   const btnCreatePlFromAdd = document.getElementById('btn-create-pl-from-add-modal');
   if (btnCreatePlFromAdd) {
     btnCreatePlFromAdd.addEventListener('click', () => {
+      tracksForNewPlaylist = manyToAddToPlaylist ? manyToAddToPlaylist.slice() : (trackToAddToPlaylist ? [trackToAddToPlaylist] : null);
       if (el.addToPlaylistModal) closeModal(el.addToPlaylistModal);
       if (el.createPlaylistModal) {
         if (el.newPlaylistInput) el.newPlaylistInput.value = '';

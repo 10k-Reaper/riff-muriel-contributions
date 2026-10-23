@@ -1346,12 +1346,10 @@ body.perf .my-wave-ambient-light {
   display: none !important;
 }
 
-#view-favorites .view-header {
-  display: none !important;
-}
-
-:is(#view-local, #view-history, #view-queue) .view-header {
+/* favorites keeps its Select and sort controls (the whole header used to be hidden, so neither could be reached) */
+:is(#view-favorites, #view-local, #view-history, #view-queue) .view-header {
   justify-content: flex-end;
+  gap: 8px;
   margin-bottom: 16px;
   padding-bottom: 0;
 }
