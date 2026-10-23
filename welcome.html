@@ -985,19 +985,15 @@
       to { transform: scale(3.5); opacity: 0; }
     }
   
-/* ---- Muriel logo: equalizer bars that spell an M at rest ---- */
-.logo-bars rect { transform-box: fill-box; transform-origin: 50% 100%; transition: transform 420ms cubic-bezier(0.2, 0, 0, 1); }
-@keyframes eqA { 0%, 100% { transform: scaleY(1); } 30% { transform: scaleY(0.45); } 60% { transform: scaleY(0.8); } 80% { transform: scaleY(0.6); } }
-@keyframes eqB { 0%, 100% { transform: scaleY(1); } 25% { transform: scaleY(1.3); } 55% { transform: scaleY(0.55); } 75% { transform: scaleY(1.15); } }
-@keyframes eqC { 0%, 100% { transform: scaleY(1); } 35% { transform: scaleY(1.9); } 65% { transform: scaleY(1.2); } 85% { transform: scaleY(2.1); } }
-.logo-bars.dancing .b1 { animation: eqA 1.10s ease-in-out infinite; }
-.logo-bars.dancing .b2 { animation: eqB 0.90s ease-in-out infinite -0.2s; }
-.logo-bars.dancing .b3 { animation: eqC 1.25s ease-in-out infinite -0.5s; }
-.logo-bars.dancing .b4 { animation: eqB 1.00s ease-in-out infinite -0.7s; }
-.logo-bars.dancing .b5 { animation: eqA 0.95s ease-in-out infinite -0.35s; }
-    .muriel-icon.logo-bars { overflow: visible; }
-    .muriel-icon.logo-bars rect { animation-duration: 1.6s !important; }
-    @media (prefers-reduced-motion: reduce) { .logo-bars rect { animation: none !important; } }
+/* ---- Muriel logo: a sparkle that twinkles while music plays ---- */
+.logo-star path { transform-box: fill-box; transform-origin: 50% 50%; }
+@keyframes sparkleMain { 0% { transform: rotate(0deg) scale(1); } 50% { transform: rotate(45deg) scale(0.78); } 100% { transform: rotate(90deg) scale(1); } }
+@keyframes sparkleBlink { 0%, 100% { transform: scale(1); opacity: 1; } 45% { transform: scale(0.25); opacity: 0.35; } 62% { transform: scale(1.15); opacity: 1; } }
+.logo-star.dancing .s1 { animation: sparkleMain 2.6s cubic-bezier(0.45, 0, 0.55, 1) infinite; }
+.logo-star.dancing .s2 { animation: sparkleBlink 1.3s ease-in-out infinite -0.4s; }
+    .muriel-icon.logo-star { overflow: visible; }
+    .muriel-icon.logo-star .s1 { animation-duration: 3.4s !important; }
+    @media (prefers-reduced-motion: reduce) { .logo-star path { animation: none !important; } }
   </style>
 </head>
 <body>
@@ -1026,7 +1022,7 @@
             <g class="shape-spin"><path class="shape-path" id="shapePath" d=""/></g>
           </svg>
           <div class="icon-tint">
-            <svg class="muriel-icon logo-bars dancing" viewBox="0 0 1024 1024" fill="#FFFFFF" role="img" aria-label="Muriel"><rect class="b1" x="128" y="184" width="120" height="656" rx="60"/><rect class="b2" x="298" y="356" width="120" height="484" rx="60"/><rect class="b3" x="452" y="516" width="120" height="324" rx="60"/><rect class="b4" x="606" y="356" width="120" height="484" rx="60"/><rect class="b5" x="776" y="184" width="120" height="656" rx="60"/></svg>
+            <svg class="muriel-icon logo-star dancing" viewBox="0 0 1024 1024" fill="#FFFFFF" role="img" aria-label="Muriel"><path class="s1" d="M500 160Q543.2 476.8 860 520Q543.2 563.2 500 880Q456.8 563.2 140 520Q456.8 476.8 500 160Z"/><path class="s2" d="M780 154Q791.5 238.5 876 250Q791.5 261.5 780 346Q768.5 261.5 684 250Q768.5 238.5 780 154Z"/></svg>
           </div>
         </div>
         <h1 class="muriel-title">

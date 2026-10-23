@@ -407,7 +407,7 @@ html.is-mobile .home-pane-label { min-width: 0; padding: 6px 4px; white-space: n
 
 /* ---------- Power saving: phones skip continuous decorative motion and live blur ---------- */
 html.is-mobile .np-ambient i { animation: none !important; will-change: auto; }
-html.is-mobile :is(.bg-mesh-layer, #mesh-gradient, .shape-pill, .shape-egg, .shape-triangle, .cover-container.spinning, .logo-bars rect, #sleep-timer-status.active::before) { animation: none !important; }
+html.is-mobile :is(.bg-mesh-layer, #mesh-gradient, .shape-pill, .shape-egg, .shape-triangle, .cover-container.spinning, .logo-star path, #sleep-timer-status.active::before) { animation: none !important; }
 html.is-mobile *, html.is-mobile *::before, html.is-mobile *::after { -webkit-backdrop-filter: none !important; backdrop-filter: none !important; }
 html.is-mobile #visualizer-container, html.is-mobile #mini-visualizer { display: none !important; }
 
