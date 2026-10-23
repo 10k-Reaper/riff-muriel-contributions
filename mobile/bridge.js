@@ -92,9 +92,11 @@ async function resolveLocalUrl(u) {
 window.fetch = async (input, init = {}) => {
   const url = typeof input === 'string' ? input : input && input.url;
   if (!url || !url.startsWith(BASE)) return pageFetch(input, init);
+  const started = Date.now();
   let r = await call(url, init);
-  // loading a song can fail on a passing YouTube/network hiccup; one quiet retry fixes most of them
-  if (r.status >= 500 && url.includes('/api/stream-info')) {
+  // loading a song can fail on a passing YouTube/network hiccup; one quiet retry fixes most of them.
+  // A slow failure already went through every download route, so repeating it only burns data and battery.
+  if (r.status >= 500 && url.includes('/api/stream-info') && Date.now() - started < 6000) {
     murielLog('warn', `stream-info failed (${r.status}), retrying: ${r.body.slice(0, 120)}`);
     await new Promise((res) => setTimeout(res, 1200));
     r = await call(url, init);

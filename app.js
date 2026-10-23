@@ -2162,6 +2162,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         hasDrawnPausedFrame = false;
       }
 
+      // phones: with the player sheet closed nothing this loop draws is on screen (the mini player
+      // follows timeupdate), so stop until the sheet or TV lyrics open again
+      if (isPhoneApp && !state.isRightPanelOpen && !state.isTvKaraokeOpen) {
+        animationFrameId = null;
+        return;
+      }
+
       animationFrameId = requestAnimationFrame(renderLoop);
 
       const fpsCap = document.body.classList.contains('perf') ? 30 : isPhoneApp ? 20 : (parseInt(localStorage.getItem('muriel_fps_cap') || '0', 10) || 0);
@@ -4293,6 +4300,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (!el.tvKaraoke || !el.lyricsContainer) return;
     if (state.isTvKaraokeOpen) return;
     state.isTvKaraokeOpen = true;
+    if (!animationFrameId) { hasDrawnPausedFrame = false; startVisualizers(); }
 
     lyricsContainerParent = el.lyricsContainer.parentElement;
     lyricsContainerSibling = el.lyricsContainer.nextSibling;
@@ -5743,7 +5751,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       container.innerHTML = `
         <div class="search-artist-card" role="button" tabindex="0">
           <div class="search-artist-avatar-wrap">
-            ${avatarUrl ? `<img class="search-artist-avatar" src="${escapeHtml(avatarUrl)}" alt="${escapeHtml(artist.name)}" />` : '<div style="width:100%;height:100%;background:var(--md-sys-color-surface-container);"></div>'}
+            ${avatarUrl ? `<img class="search-artist-avatar" loading="lazy" decoding="async" src="${escapeHtml(avatarUrl)}" alt="${escapeHtml(artist.name)}" />` : '<div style="width:100%;height:100%;background:var(--md-sys-color-surface-container);"></div>'}
           </div>
           <div class="search-artist-info">
             <span class="search-artist-name">${escapeHtml(artist.name)}</span>
@@ -5942,7 +5950,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const coverEl = document.getElementById('album-detail-cover');
     if (coverEl) {
       coverEl.innerHTML = album.cover
-        ? `<img src="${escapeHtml(album.cover)}" alt="${escapeHtml(album.title)}" style="width:100%;height:100%;aspect-ratio:1;border-radius:20px;object-fit:cover;box-shadow:none;" />`
+        ? `<img loading="lazy" decoding="async" src="${escapeHtml(album.cover)}" alt="${escapeHtml(album.title)}" style="width:100%;height:100%;aspect-ratio:1;border-radius:20px;object-fit:cover;box-shadow:none;" />`
         : '<div style="width:100%;height:100%;aspect-ratio:1;border-radius:20px;background:var(--md-sys-color-surface-container);"></div>';
     }
 
@@ -8259,6 +8267,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   const drawerTabs = document.querySelectorAll('.drawer-tab');
   function syncDrawerUI() {
     const open = state.isRightPanelOpen;
+    if (open && !animationFrameId) { hasDrawnPausedFrame = false; startVisualizers(); }
     if (el.rightPanel) el.rightPanel.classList.toggle('hidden', !open);
     drawerTabs.forEach(t => t.classList.toggle('active', t.dataset.drawerTab === state.drawerTab));
     const now = document.getElementById('drawer-now');
@@ -14161,7 +14170,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const thumbUrl = (typeof getTrackThumbUrl === 'function' ? getTrackThumbUrl(track) : '') || track.thumbnail || track.cover || track.image || '';
     card.innerHTML = `
       <div class="my-wave-track-cover-wrap">
-        <img class="my-wave-track-cover" src="${escapeHtml(thumbUrl)}" alt="" onerror="this.src='data:image/svg+xml;utf8,<svg xmlns=\\'http://www.w3.org/2000/svg\\' width=\\'280\\' height=\\'280\\' fill=\\'%23555\\'><rect width=\\'100%\\' height=\\'100%\\'/></svg>'">
+        <img class="my-wave-track-cover" loading="lazy" decoding="async" src="${escapeHtml(thumbUrl)}" alt="" onerror="this.src='data:image/svg+xml;utf8,<svg xmlns=\\'http://www.w3.org/2000/svg\\' width=\\'280\\' height=\\'280\\' fill=\\'%23555\\'><rect width=\\'100%\\' height=\\'100%\\'/></svg>'">
         <div class="my-wave-track-play-overlay">
           <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
         </div>
