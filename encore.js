@@ -218,6 +218,15 @@
         <div class="enc-actions"><button type="button" class="enc-go" data-play>Play my top songs</button><button type="button" class="enc-ghost" data-share>Share</button></div></div>`,
     ].filter(Boolean);
   }
+  // big titles shrink until their longest word fits, so "PinkPantheress" doesn't break mid-word on a phone
+  function fitTitles(root) {
+    root.querySelectorAll('.enc-title').forEach((el) => {
+      el.style.maxWidth = '100%'; el.style.overflowWrap = 'normal';
+      let size = parseFloat(getComputedStyle(el).fontSize) || 48;
+      for (let i = 0; i < 30 && el.scrollWidth > el.clientWidth + 1 && size > 22; i++) { size -= 2; el.style.fontSize = `${size}px`; }
+      el.style.overflowWrap = '';
+    });
+  }
   const pickers = (p) => `<div class="enc-periods">${Object.entries(PERIODS).map(([k, v]) => `<button type="button" data-period="${k}" class="${k === p ? 'active' : ''}">${v}</button>`).join('')}</div>`;
 
   function countUp(el) {
@@ -264,6 +273,7 @@
       <button type="button" class="enc-close" aria-label="Close"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
       ${slides.join('')}`;
     overlay.style.setProperty('--slide-ms', `${SLIDE_MS}ms`);
+    fitTitles(overlay);
     show(0);
   }
 
