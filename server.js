@@ -42,15 +42,42 @@ function isPrivateIp(address) {
     return ipv4IsPrivate(p[0], p[1]);
   }
   if (kind === 6) {
-    const h = address.toLowerCase();
-    if (h === '::' || h === '::1') return true;
-    if (h.startsWith('fe8') || h.startsWith('fe9') || h.startsWith('fea') || h.startsWith('feb')) return true;
-    if (h.startsWith('fc') || h.startsWith('fd')) return true;
-    const mapped = h.match(/^::ffff:(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
-    if (mapped) return ipv4IsPrivate(Number(mapped[1]), Number(mapped[2]));
+    const w = ipv6Words(address);
+    if (!w) return true;
+    const zeros = (from, to) => w.slice(from, to).every((x) => x === 0);
+    if (zeros(0, 8)) return true; // ::
+    if (zeros(0, 7) && w[7] === 1) return true; // ::1
+    if ((w[0] & 0xffc0) === 0xfe80) return true; // link-local
+    if ((w[0] & 0xfe00) === 0xfc00) return true; // unique local
+    if ((w[0] & 0xff00) === 0xff00) return true; // multicast
+    // forms that carry an IPv4 address: ::ffff:a.b.c.d (also written ::ffff:7f00:1), ::a.b.c.d, NAT64 64:ff9b::/96,
+    // 6to4 2002:AABB:CCDD::. new URL() normalises [::ffff:127.0.0.1] to [::ffff:7f00:1], which used to pass as public.
+    const v4 = (hi) => ipv4IsPrivate(hi >> 8, hi & 255);
+    if (zeros(0, 5) && (w[5] === 0xffff || w[5] === 0)) return v4(w[6]);
+    if (w[0] === 0x64 && w[1] === 0xff9b && zeros(2, 6)) return v4(w[6]);
+    if (w[0] === 0x2002) return v4(w[1]);
     return false;
   }
   return true;
+}
+
+// "::ffff:7f00:1" or "::ffff:127.0.0.1" -> eight 16-bit numbers, or null
+function ipv6Words(address) {
+  let a = String(address).toLowerCase().replace(/%.*$/, '');
+  const dotted = a.match(/^(.*:)(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+  if (dotted) {
+    const b = dotted.slice(2).map(Number);
+    if (b.some((n) => n > 255)) return null;
+    a = `${dotted[1]}${((b[0] << 8) | b[1]).toString(16)}:${((b[2] << 8) | b[3]).toString(16)}`;
+  }
+  const halves = a.split('::');
+  if (halves.length > 2) return null;
+  const head = halves[0] ? halves[0].split(':') : [];
+  const tail = halves.length === 2 && halves[1] ? halves[1].split(':') : [];
+  const fill = halves.length === 2 ? 8 - head.length - tail.length : 0;
+  if (fill < 0 || (halves.length === 1 && head.length !== 8)) return null;
+  const words = [...head, ...new Array(fill).fill('0'), ...tail].map((x) => parseInt(x, 16));
+  return words.length === 8 && words.every((x) => Number.isInteger(x) && x >= 0 && x <= 0xffff) ? words : null;
 }
 
 function normalizeNumericHost(h) {
@@ -71,18 +98,23 @@ function normalizeNumericHost(h) {
 }
 
 async function isPrivateHost(hostname) {
+  return !(await publicAddressOf(hostname));
+}
+
+// The address to connect to for a public host, or null when the host is (or resolves to) anything private.
+async function publicAddressOf(hostname) {
   let host = (hostname || '').toLowerCase().replace(/^\[|\]$/g, '');
-  if (!host) return true;
-  if (host === 'localhost' || host.endsWith('.localhost') || host.endsWith('.local') || host.endsWith('.internal')) return true;
+  if (!host) return null;
+  if (host === 'localhost' || host.endsWith('.localhost') || host.endsWith('.local') || host.endsWith('.internal')) return null;
   const numeric = normalizeNumericHost(host);
   if (numeric) host = numeric;
-  if (net.isIP(host)) return isPrivateIp(host);
+  if (net.isIP(host)) return isPrivateIp(host) ? null : { address: host, family: net.isIP(host) };
   try {
     const addrs = await dns.promises.lookup(host, { all: true });
-    if (!addrs.length) return true;
-    return addrs.some((a) => isPrivateIp(a.address));
+    if (!addrs.length || addrs.some((a) => isPrivateIp(a.address))) return null;
+    return addrs[0];
   } catch (e) {
-    return true;
+    return null;
   }
 }
 
@@ -214,6 +246,7 @@ const downloadingSet = new Set();
 const downloadingPromises = new Map(); // cleanId -> promise of the running download, so callers can wait on it
 const prefetchingSet = new Set();
 const downloadInFlight = new Map();
+const downloadProcs = new Map(); // cleanId -> the yt-dlp process caching it (phones cancel it on skip)
 
 // Search results go stale (isCached flags, new uploads) and every query adds a key, so they expire after
 // five minutes and the cache keeps at most 500 of them.
@@ -434,7 +467,6 @@ async function searchSoundcloud(query, limit = 14) {
       '--flat-playlist',
       '--skip-download',
       '--no-warnings',
-      '--no-check-certificates'
     ];
     try {
       const raw = await executeYtDlp(args, 18000);
@@ -699,7 +731,6 @@ async function ytMixTracks(seed) {
         '--flat-playlist',
         '--dump-single-json',
         '--no-warnings',
-        '--no-check-certificates',
         '--playlist-end',
         '25',
         '--extractor-args',
@@ -1299,6 +1330,9 @@ async function cacheThumbnailToDisk(cleanId, thumbnailUrl) {
   const destPath = path.join(THUMBNAILS_DIR, `${cleanId}.jpg`);
   if (fs.existsSync(destPath)) return destPath;
   try {
+    // the URL comes from the request: never let it point the server at the local network
+    const u = new URL(thumbnailUrl);
+    if ((u.protocol !== 'https:' && u.protocol !== 'http:') || await isPrivateHost(u.hostname)) return null;
     const res = await fetchWithTimeout(thumbnailUrl);
     if (!res.ok) return null;
     const buffer = Buffer.from(await res.arrayBuffer());
@@ -1326,7 +1360,6 @@ async function downloadTrackToDisk(trackUrl, trackId, platform, meta = {}) {
   const args = [
     '--no-config',
     '--no-playlist',
-    '--no-check-certificates',
     '--no-warnings',
     '-x',
     '--audio-format', 'opus',
@@ -1357,7 +1390,9 @@ async function downloadTrackToDisk(trackUrl, trackId, platform, meta = {}) {
 
   const job = new Promise((resolve) => {
     const proc = spawn(cmd.bin, cmd.args, { windowsHide: true });
+    downloadProcs.set(cleanId, proc);
     proc.on('close', async (code) => {
+      if (downloadProcs.get(cleanId) === proc) downloadProcs.delete(cleanId);
       const found = findTemp();
       if (code === 0 && found) {
         try {
@@ -1424,7 +1459,6 @@ async function prefetchTrack(trackUrl, trackId, platform, meta = null) {
       '-g',
       '--no-warnings',
       '--no-playlist',
-      '--no-check-certificates',
       '--prefer-free-formats',
       '-f',
       'bestaudio/best'
@@ -1445,7 +1479,7 @@ async function prefetchTrack(trackUrl, trackId, platform, meta = null) {
         isLocal: false,
         streamUrl: streamUrl,
         isHls: isHls,
-        proxyUrl: `http://127.0.0.1:${PORT}/api/audio-proxy?url=${encodeURIComponent(streamUrl)}`
+        proxyUrl: withToken(`http://127.0.0.1:${PORT}/api/audio-proxy?url=${encodeURIComponent(streamUrl)}`)
       };
       streamUrlCache.set(cacheKey, { timestamp: Date.now(), data });
       if (cleanId && cleanId !== cacheKey) {
@@ -1787,7 +1821,6 @@ async function handleSearch(req, res, query, platform = 'youtube', limit = 20) {
     '--flat-playlist',
     '--skip-download',
     '--no-warnings',
-    '--no-check-certificates'
   ];
 
   if (platform === 'youtube') {
@@ -1905,7 +1938,7 @@ async function handleStreamInfo(req, res, trackUrl, trackId, platform = 'youtube
     const data = {
       success: true,
       isLocal: true,
-      streamUrl: `http://127.0.0.1:${PORT}/api/local-track?id=${encodeURIComponent(cleanId)}`
+      streamUrl: withToken(`http://127.0.0.1:${PORT}/api/local-track?id=${encodeURIComponent(cleanId)}`)
     };
     res.writeHead(200, { 'Content-Type': 'application/json' });
     return res.end(JSON.stringify(data));
@@ -1916,7 +1949,7 @@ async function handleStreamInfo(req, res, trackUrl, trackId, platform = 'youtube
       success: true,
       isLocal: true,
       isDownload: true,
-      streamUrl: `http://127.0.0.1:${PORT}/api/downloaded-track?name=${encodeURIComponent(downloadedName)}`
+      streamUrl: withToken(`http://127.0.0.1:${PORT}/api/downloaded-track?name=${encodeURIComponent(downloadedName)}`)
     };
     res.writeHead(200, { 'Content-Type': 'application/json' });
     return res.end(JSON.stringify(data));
@@ -1926,6 +1959,8 @@ async function handleStreamInfo(req, res, trackUrl, trackId, platform = 'youtube
   if (cacheKey && (streamUrlCache.has(cacheKey) || (cleanId && streamUrlCache.has(cleanId)))) {
     const cached = streamUrlCache.get(cacheKey) || (cleanId ? streamUrlCache.get(cleanId) : null);
     if (cached?.promise) {
+      // someone else wants this song too: a skip by the first requester must not cancel the download
+      cached.waiters = (cached.waiters || 0) + 1;
       const outcome = await cached.promise;
       res.writeHead(outcome.success ? 200 : 500, { 'Content-Type': 'application/json' });
       return res.end(JSON.stringify(outcome));
@@ -1948,7 +1983,16 @@ async function handleStreamInfo(req, res, trackUrl, trackId, platform = 'youtube
   }
 
   if (STREAM_VIA_CACHE) {
+    // the app gave up on this song (the listener skipped on): stop downloading it, and don't start fallbacks
+    let gone = false;
+    req.on('close', () => {
+      if (res.writableEnded || inFlightEntry.waiters) return;
+      gone = true;
+      const proc = downloadProcs.get(cleanId);
+      if (proc) { try { proc.kill(); } catch (e) {} }
+    });
     await downloadTrackToDisk(trackUrl, cleanId, platform, meta);
+    if (gone) { resolveLookup({ success: false, error: 'cancelled' }); if (cacheKey && streamUrlCache.get(cacheKey) === inFlightEntry) streamUrlCache.delete(cacheKey); return; }
     if (!await findCachedFile(cleanId) && platform === 'youtube' && (title || artist)) {
       for (const alt of await alternativeUploads(cleanId, title, artist, duration)) {
         try { logger.log('warn', `stream: ${cleanId} unavailable, trying another upload ${alt}`); } catch (_) {}
@@ -1963,7 +2007,7 @@ async function handleStreamInfo(req, res, trackUrl, trackId, platform = 'youtube
     // settle the in-flight entry so concurrent lookups for this track don't wait forever,
     // and drop it so later prefetches don't mistake it for a cached stream URL
     const outcome = await findCachedFile(cleanId)
-      ? { success: true, isLocal: true, streamUrl: `http://127.0.0.1:${PORT}/api/local-track?id=${encodeURIComponent(cleanId)}` }
+      ? { success: true, isLocal: true, streamUrl: withToken(`http://127.0.0.1:${PORT}/api/local-track?id=${encodeURIComponent(cleanId)}`) }
       : { success: false, error: STREAM_FAILED };
     resolveLookup(outcome);
     if (cacheKey && streamUrlCache.get(cacheKey) === inFlightEntry) streamUrlCache.delete(cacheKey);
@@ -1975,7 +2019,7 @@ async function handleStreamInfo(req, res, trackUrl, trackId, platform = 'youtube
 
   if (isSafeMediaUrl(trackUrl)) {
     try {
-      const args = ['--no-config', '-g', '--no-warnings', '--no-playlist', '--no-check-certificates', '--prefer-free-formats', '-f', 'bestaudio/best'];
+      const args = ['--no-config', '-g', '--no-warnings', '--no-playlist', '--prefer-free-formats', '-f', 'bestaudio/best'];
       if (platform === 'youtube') {
         args.push('--extractor-args', 'youtube:player_client=android');
       }
@@ -1991,7 +2035,7 @@ async function handleStreamInfo(req, res, trackUrl, trackId, platform = 'youtube
   if (!streamUrl && platform === 'youtube' && (title || artist)) {
     for (const alt of await alternativeUploads(cleanId, title, artist, duration)) {
       try {
-        const raw = await executeYtDlp(['--no-config', '-g', '--no-warnings', '--no-playlist', '--no-check-certificates', '--prefer-free-formats', '-f', 'bestaudio/best', '--extractor-args', 'youtube:player_client=android', '--', alt], 18000);
+        const raw = await executeYtDlp(['--no-config', '-g', '--no-warnings', '--no-playlist', '--prefer-free-formats', '-f', 'bestaudio/best', '--extractor-args', 'youtube:player_client=android', '--', alt], 18000);
         streamUrl = raw.trim().split('\n').map(l => l.trim()).find(l => l.startsWith('http')) || null;
         if (streamUrl) break;
       } catch (e) {
@@ -2003,7 +2047,7 @@ async function handleStreamInfo(req, res, trackUrl, trackId, platform = 'youtube
   if (!streamUrl && (title || artist || trackUrl)) {
     try {
       const q = `${artist} ${title}`.trim() || trackUrl;
-      const scArgs = ['--no-config', '-g', '--no-warnings', '--no-playlist', '--no-check-certificates', '--prefer-free-formats', '-f', 'bestaudio/best', `scsearch1:${q}`];
+      const scArgs = ['--no-config', '-g', '--no-warnings', '--no-playlist', '--prefer-free-formats', '-f', 'bestaudio/best', `scsearch1:${q}`];
       const scRaw = await executeYtDlp(scArgs, 15000);
       const scLines = scRaw.trim().split('\n').map(l => l.trim()).filter(l => l.startsWith('http'));
       if (scLines.length > 0) streamUrl = scLines[0];
@@ -2029,7 +2073,7 @@ async function handleStreamInfo(req, res, trackUrl, trackId, platform = 'youtube
     isLocal: false,
     streamUrl: streamUrl,
     isHls: isHls,
-    proxyUrl: `http://127.0.0.1:${PORT}/api/audio-proxy?url=${encodeURIComponent(streamUrl)}`
+    proxyUrl: withToken(`http://127.0.0.1:${PORT}/api/audio-proxy?url=${encodeURIComponent(streamUrl)}`)
   };
 
   resolveLookup(data);
@@ -2245,7 +2289,13 @@ async function handleAudioProxy(req, res, targetUrl) {
       res.writeHead(400);
       return res.end('Unsupported protocol');
     }
-    if (await isPrivateHost(parsed.hostname)) {
+    // media only: a page that got hold of this route shouldn't be able to POST through it
+    if (req.method !== 'GET' && req.method !== 'HEAD') {
+      res.writeHead(405);
+      return res.end('Method not allowed');
+    }
+    const target = await publicAddressOf(parsed.hostname);
+    if (!target) {
       res.writeHead(403);
       return res.end('Blocked target');
     }
@@ -2257,6 +2307,8 @@ async function handleAudioProxy(req, res, targetUrl) {
     }
 
     const proxyReq = client.request(targetUrl, {
+      // connect to the address checked above instead of resolving the name a second time
+      lookup: (hostname, opts, cb) => (opts && opts.all ? cb(null, [target]) : cb(null, target.address, target.family)),
       method: req.method,
       headers: forward
     }, (proxyRes) => {
@@ -2524,7 +2576,9 @@ async function handleDownload(req, res, trackUrl, title, artist, format = 'mp3',
   const tempName = isRaw ? ('raw_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8) + '.wav') : null;
   const outFilename = isRaw ? tempName : `${cleanArtist} - ${cleanTitle}.${ext}`;
   const outPath = isRaw ? path.join(tmpDir, tempName) : path.join(downloadsDir, outFilename);
-  const tempTemplate = isRaw ? path.join(tmpDir, tempName.replace(/\.wav$/, '.%(ext)s')) : path.join(downloadsDir, `${cleanArtist} - ${cleanTitle}.%(ext)s`);
+  // a % in a title would be read by yt-dlp as a template field: %% writes a plain %
+  const tplSafe = (x) => String(x).replace(/%/g, '%%');
+  const tempTemplate = isRaw ? path.join(tmpDir, tempName.replace(/\.wav$/, '.%(ext)s')) : path.join(downloadsDir, `${tplSafe(cleanArtist)} - ${tplSafe(cleanTitle)}.%(ext)s`);
 
   let targetUrl = trackUrl;
   if (!isSafeMediaUrl(targetUrl) || targetUrl.includes('deezer.com')) {
@@ -2558,6 +2612,20 @@ async function handleDownload(req, res, trackUrl, title, artist, format = 'mp3',
   };
 
   try {
+  // Phones have no ffmpeg: fetch the song the way playback does (into the cache) and copy that file into
+  // Downloads under its real extension. Before, the response named a .mp3 while an .aac was written, cached
+  // songs were downloaded again, and a cancelled download kept running next to its retry.
+  if (STREAM_VIA_CACHE && !isRaw) {
+    const cacheId = cleanId || cleanTrackId(`dl_${crypto.createHash('sha1').update(`${cleanArtist}|${cleanTitle}`).digest('hex').slice(0, 12)}`);
+    if (!await findCachedFile(cacheId)) await downloadTrackToDisk(targetUrl, cacheId, 'youtube', { title, artist });
+    const cached = await findCachedFile(cacheId);
+    if (!cached) return sendDownloadResponse(500, { success: false, error: STREAM_FAILED });
+    const savedName = `${cleanArtist} - ${cleanTitle}${path.extname(cached)}`;
+    await fs.promises.mkdir(downloadsDir, { recursive: true });
+    await fs.promises.copyFile(cached, path.join(downloadsDir, savedName));
+    downloadsIndex = null;
+    return sendDownloadResponse(200, { success: true, filename: savedName, directory: downloadsDir });
+  }
   const cachedFile = cleanId ? await findCachedFile(cleanId) : null;
   if (cachedFile) {
     const ffmpegBin = resolveBinary('ffmpeg');
@@ -2647,7 +2715,6 @@ async function handleDownload(req, res, trackUrl, title, artist, format = 'mp3',
 
   const args = [
     '--no-playlist',
-    '--no-check-certificates',
     '--no-warnings',
     '-x',
     '--audio-format', ext,
@@ -2687,7 +2754,6 @@ async function handleDownload(req, res, trackUrl, title, artist, format = 'mp3',
     try {
       const fallbackArgs = [
         '--no-playlist',
-        '--no-check-certificates',
         '--no-warnings',
         '-x',
         '--audio-format', ext,
@@ -2980,6 +3046,15 @@ const TOKEN_PROTECTED_ROUTES = new Set([
   '/api/apple-import',
   '/api/playlist-import'
 ]);
+
+// Every route needs the token: any web page the user visits can send requests to 127.0.0.1, so a route without
+// it was usable by any site (an open proxy into the home network, reading Downloads, what's playing).
+// Only the Spotify login redirect (it comes from the browser) and the CLI's lyrics feed go without; the feed
+// refuses any request a web page makes (those carry an Origin header).
+const PUBLIC_ROUTES = new Set(['/api/spotify-callback', '/api/lyrics-stream']);
+const routeNeedsToken = (pathname) => pathname.startsWith('/api/') && !PUBLIC_ROUTES.has(pathname);
+// <audio>/<img> can't send headers, so the media URLs the server hands out carry the token as ?t=
+const withToken = (u) => `${u}${u.includes('?') ? '&' : '?'}t=${encodeURIComponent(SERVER_TOKEN)}`;
 
 function getServerToken() {
   return SERVER_TOKEN;
@@ -3713,7 +3788,6 @@ async function handlePlaylistImport(req, res, inputUrl) {
   const args = [
     '--dump-single-json',
     '--no-warnings',
-    '--no-check-certificates',
     '--playlist-end',
     '5000'
   ];
@@ -4788,7 +4862,11 @@ const server = http.createServer(guardHandler(async (req, res) => {
     if (Array.isArray(value)) parsedUrl.query[key] = value[value.length - 1];
   }
 
-  if (TOKEN_PROTECTED_ROUTES.has(parsedUrl.pathname) && !tokenMatches(req.headers['x-muriel-token'])) {
+  if ((TOKEN_PROTECTED_ROUTES.has(parsedUrl.pathname) || routeNeedsToken(parsedUrl.pathname)) && !tokenMatches(req.headers['x-muriel-token']) && !tokenMatches(parsedUrl.query.t)) {
+    res.writeHead(403, { 'Content-Type': 'application/json' });
+    return res.end(JSON.stringify({ success: false, error: 'forbidden' }));
+  }
+  if (parsedUrl.pathname === '/api/lyrics-stream' && req.headers.origin) {
     res.writeHead(403, { 'Content-Type': 'application/json' });
     return res.end(JSON.stringify({ success: false, error: 'forbidden' }));
   }
@@ -5059,7 +5137,7 @@ const server = http.createServer(guardHandler(async (req, res) => {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     return res.end(JSON.stringify({ 
       cached: !!cachedFile, 
-      streamUrl: cachedFile ? `http://127.0.0.1:${PORT}/api/local-track?id=${encodeURIComponent(cleanId)}` : null 
+      streamUrl: cachedFile ? withToken(`http://127.0.0.1:${PORT}/api/local-track?id=${encodeURIComponent(cleanId)}`) : null 
     }));
   }
 
@@ -5175,7 +5253,7 @@ const server = http.createServer(guardHandler(async (req, res) => {
         title: item.title,
         artist: item.artist,
         duration: Number(item.duration) || 0,
-        thumbnail: fs.existsSync(localCoverPath(item.id)) ? `http://127.0.0.1:${PORT}/api/local-cover?id=${encodeURIComponent(item.id)}` : ''
+        thumbnail: fs.existsSync(localCoverPath(item.id)) ? withToken(`http://127.0.0.1:${PORT}/api/local-cover?id=${encodeURIComponent(item.id)}`) : ''
       }));
     res.writeHead(200, { 'Content-Type': 'application/json' });
     return res.end(JSON.stringify(list));
@@ -5249,7 +5327,7 @@ const server = http.createServer(guardHandler(async (req, res) => {
             artist: meta.artist || 'Unknown artist',
             duration: meta.duration || 0,
             thumbnail: meta.thumbnail || '',
-            localThumbnail: fs.existsSync(path.join(THUMBNAILS_DIR, `${cleanId}.jpg`)) ? `http://127.0.0.1:${PORT}/api/local-thumbnail?id=${cleanId}` : (meta.thumbnail || ''),
+            localThumbnail: fs.existsSync(path.join(THUMBNAILS_DIR, `${cleanId}.jpg`)) ? withToken(`http://127.0.0.1:${PORT}/api/local-thumbnail?id=${cleanId}`) : (meta.thumbnail || ''),
             platform: meta.platform || 'youtube',
             fileSize: stat.size,
             lastPlayed: meta.lastPlayed || stat.mtimeMs,

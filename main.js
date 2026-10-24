@@ -2,7 +2,7 @@ const { app, BrowserWindow, dialog, ipcMain, screen, shell, Tray, Menu, nativeIm
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
-const { pathToFileURL } = require('url');
+const { pathToFileURL, fileURLToPath } = require('url');
 const { spawn } = require('child_process');
 const crypto = require('crypto');
 const { LIBRARY_DIR, DATA_DIR, resolveBinary, tutorialDone, markTutorialDone, readStartupConfig, writeStartupConfig } = require('./platform');
@@ -244,10 +244,19 @@ function runGUI() {
       });
     }
 
+    // links leave the app only as https pages: file:, smb:, UNC paths and app handlers can start programs
     mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-      shell.openExternal(url);
+      try { if (new URL(url).protocol === 'https:') shell.openExternal(url); } catch (e) {}
       return { action: 'deny' };
     });
+    // the window only ever shows Muriel's own pages; anything else would get the preload API and the server token
+    const isAppPage = (u) => {
+      try {
+        const x = new URL(u);
+        return x.protocol === 'file:' && path.resolve(fileURLToPath(x)).startsWith(path.resolve(__dirname) + path.sep);
+      } catch (e) { return false; }
+    };
+    mainWindow.webContents.on('will-navigate', (e, url) => { if (!isAppPage(url)) e.preventDefault(); });
 
     mainWindow.on('minimize', () => {
       if (mainWindow && !mainWindow.isDestroyed()) {
@@ -444,6 +453,13 @@ function runGUI() {
         };
       });
 
+      // set-data-dir / set-download-dir accept only the folder the user just picked in the dialog, not any
+      // path a script in the window passes in (with "move", the old folder's Muriel files get deleted)
+      let pickedDataDir = null;
+      let pickedDownloadDir = null;
+      const isPicked = (picked, dir) => !!picked && path.resolve(String(dir)) === path.resolve(picked);
+      const isNetworkPath = (dir) => /^(\\\\|\/\/)/.test(String(dir));
+
       ipcMain.handle('pick-data-dir', async () => {
         const platform = require('./platform');
         const r = await dialog.showOpenDialog(mainWindow, {
@@ -451,7 +467,8 @@ function runGUI() {
           defaultPath: platform.DATA_DIR,
           properties: ['openDirectory', 'createDirectory']
         });
-        return r.canceled ? null : r.filePaths[0];
+        pickedDataDir = r.canceled ? null : r.filePaths[0];
+        return pickedDataDir;
       });
 
       ipcMain.handle('set-data-dir', async (event, payload) => {
@@ -459,6 +476,9 @@ function runGUI() {
         const target = payload && payload.dir ? path.resolve(String(payload.dir)) : null;
         const move = !!(payload && payload.move);
         if (!target) return { ok: false, error: 'No folder selected' };
+        if (!isPicked(pickedDataDir, target)) return { ok: false, error: 'Pick the folder with the folder button' };
+        // tools in <data>/bin are run from there, so a network share as music folder would run remote programs
+        if (isNetworkPath(target)) return { ok: false, error: 'Choose a folder on this computer' };
 
         const current = path.resolve(platform.DATA_DIR);
         if (target === current) return { ok: true, dir: target, moved: false };
@@ -478,18 +498,20 @@ function runGUI() {
           return { ok: false, error: 'That folder is not writable' };
         }
 
+        // only Muriel's own files move (and get deleted afterwards): the old folder may hold other things too
         if (move) {
           try {
-            await platform.copyDirContents(current, target);
+            await platform.copyDirContents(current, target, undefined, platform.MURIEL_DATA_ENTRIES);
           } catch (e) {
             return { ok: false, error: 'Could not move files: ' + e.message };
           }
         }
 
         platform.setDataDir(target);
+        pickedDataDir = null;
 
         if (move) {
-          try { await platform.removeDirContents(current); } catch (e) {}
+          try { await platform.removeDirContents(current, undefined, platform.MURIEL_DATA_ENTRIES); } catch (e) {}
         }
 
         return { ok: true, dir: target, moved: move };
@@ -517,7 +539,8 @@ function runGUI() {
           defaultPath: platform.resolveDownloadDir() || defaultDownloadsDir() || undefined,
           properties: ['openDirectory', 'createDirectory']
         });
-        return r.canceled ? null : r.filePaths[0];
+        pickedDownloadDir = r.canceled ? null : r.filePaths[0];
+        return pickedDownloadDir;
       });
 
       ipcMain.handle('set-download-dir', async (event, payload) => {
@@ -529,6 +552,7 @@ function runGUI() {
         }
         const target = payload && payload.dir ? path.resolve(String(payload.dir)) : null;
         if (!target) return { ok: false, error: 'No folder selected' };
+        if (!isPicked(pickedDownloadDir, target)) return { ok: false, error: 'Pick the folder with the folder button' };
         try {
           fs.mkdirSync(target, { recursive: true });
           fs.accessSync(target, fs.constants.W_OK);

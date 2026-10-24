@@ -88,3 +88,43 @@ test('apple import only fetches Apple Music pages', async () => {
   }
   assert.deepEqual(outbound, []);
 });
+
+test('every route but the Spotify redirect and the CLI feed needs the app token', async () => {
+  for (const route of ['/api/downloaded-track?name=a.mp3', '/api/local-track?id=abc', '/api/local-thumbnail?id=abc', '/api/audio-output-info',
+    '/api/audio-proxy?url=https%3A%2F%2Fexample.com%2Fa.mp3', '/api/hot', '/api/albums/search?q=a', '/api/artist-albums?name=a']) {
+    const r = await call('GET', route, { token: false });
+    assert.equal(r.status, 403, route);
+  }
+  // <audio> and <img> can't send headers: the token may come as ?t=
+  const viaQuery = await call('GET', `/api/local-track?id=abc&t=${encodeURIComponent(getServerToken())}`, { token: false });
+  assert.notEqual(viaQuery.status, 403);
+  const wrong = await call('GET', '/api/local-track?id=abc&t=nope', { token: false });
+  assert.equal(wrong.status, 403);
+  assert.deepEqual(outbound, []);
+});
+
+test('the lyrics feed refuses requests from web pages', async () => {
+  const fromPage = await new Promise((resolve) => {
+    http.get({ host: '127.0.0.1', port, path: '/api/lyrics-stream', headers: { Origin: 'https://evil.example' } }, (res) => { res.destroy(); resolve(res.statusCode); });
+  });
+  assert.equal(fromPage, 403);
+  const sandboxed = await new Promise((resolve) => {
+    http.get({ host: '127.0.0.1', port, path: '/api/lyrics-stream', headers: { Origin: 'null' } }, (res) => { res.destroy(); resolve(res.statusCode); });
+  });
+  assert.equal(sandboxed, 403);
+  const cli = await new Promise((resolve) => {
+    const req = http.get({ host: '127.0.0.1', port, path: '/api/lyrics-stream' }, (res) => { resolve(res.statusCode); req.destroy(); });
+  });
+  assert.equal(cli, 200);
+});
+
+test('the audio proxy only fetches public addresses, and only with GET', async () => {
+  for (const target of ['http://127.0.0.1/', 'http://[::ffff:127.0.0.1]/', 'http://[::ffff:7f00:1]/', 'http://[::ffff:c0a8:101]/',
+    'http://[::ffff:a9fe:a9fe]/latest/meta-data/', 'http://[64:ff9b::7f00:1]/', 'http://[2002:c0a8:101::1]/', 'http://[::7f00:1]/', 'http://[fd00::1]/', 'http://2130706433/']) {
+    const r = await call('GET', `/api/audio-proxy?url=${encodeURIComponent(target)}`);
+    assert.equal(r.status, 403, target);
+  }
+  const post = await call('POST', `/api/audio-proxy?url=${encodeURIComponent('https://example.com/a.mp3')}`, { body: 'x=1' });
+  assert.equal(post.status, 405);
+  assert.deepEqual(outbound, []);
+});

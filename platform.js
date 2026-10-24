@@ -93,11 +93,15 @@ function markTutorialDone() {
   return false;
 }
 
-async function copyDirContents(fromDir, toDir, skipNames = new Set(['config.json'])) {
+// what Muriel itself keeps in its music folder (moving the folder copies and then deletes only these)
+const MURIEL_DATA_ENTRIES = ['tracks', 'custom-lyrics', 'lyrics', 'thumbnails', 'library', 'bin', 'plugins', 'logs', 'metadata.json', 'library.json', 'startup.json', 'spotify-auth.enc', '.murieltutorial'];
+
+// `only`: names to take at the top level (deeper levels take everything under them)
+async function copyDirContents(fromDir, toDir, skipNames = new Set(['config.json']), only = null) {
   await fs.promises.mkdir(toDir, { recursive: true });
   const entries = await fs.promises.readdir(fromDir, { withFileTypes: true });
   for (const entry of entries) {
-    if (skipNames.has(entry.name)) continue;
+    if (skipNames.has(entry.name) || (only && !only.includes(entry.name))) continue;
     const src = path.join(fromDir, entry.name);
     const dest = path.join(toDir, entry.name);
     if (entry.isDirectory()) await copyDirContents(src, dest, skipNames);
@@ -105,10 +109,10 @@ async function copyDirContents(fromDir, toDir, skipNames = new Set(['config.json
   }
 }
 
-async function removeDirContents(dir, skipNames = new Set(['config.json'])) {
+async function removeDirContents(dir, skipNames = new Set(['config.json']), only = null) {
   const entries = await fs.promises.readdir(dir, { withFileTypes: true });
   for (const entry of entries) {
-    if (skipNames.has(entry.name)) continue;
+    if (skipNames.has(entry.name) || (only && !only.includes(entry.name))) continue;
     const target = path.join(dir, entry.name);
     if (entry.isDirectory()) {
       await removeDirContents(target, skipNames);
@@ -184,5 +188,5 @@ module.exports = {
   findInPath, resolveBinary, ytDlpCommand,
   tutorialDone, markTutorialDone,
   readStartupConfig, writeStartupConfig,
-  readConfig, resolveDataDir, setDataDir, resolveDownloadDir, setDownloadDir, copyDirContents, removeDirContents
+  readConfig, resolveDataDir, setDataDir, resolveDownloadDir, setDownloadDir, copyDirContents, removeDirContents, MURIEL_DATA_ENTRIES
 };

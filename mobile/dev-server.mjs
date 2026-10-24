@@ -1,7 +1,7 @@
 // Dev harness: serves www/ and a /__proxy that stands in for CapacitorHttp (no CORS) in a desktop browser.
 import { createServer } from 'node:http';
 import { readFile, stat } from 'node:fs/promises';
-import { extname, join, resolve, dirname } from 'node:path';
+import { extname, join, resolve, dirname, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const www = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'www');
@@ -27,10 +27,15 @@ createServer(async (req, res) => {
     } catch (e) { res.writeHead(502); res.end(String(e)); }
     return;
   }
-  const p = join(www, u.pathname === '/' ? 'index.html' : decodeURIComponent(u.pathname));
+  let p;
+  try { p = resolve(join(www, u.pathname === '/' ? 'index.html' : decodeURIComponent(u.pathname))); } catch { p = ''; }
+  // only files inside www/ (".." in the path used to reach the whole disk), and headers only once the read worked
+  if (!p.startsWith(www + sep)) { res.writeHead(404); return res.end('not found'); }
   try {
-    await stat(p);
+    if (!(await stat(p)).isFile()) throw new Error('not a file');
+    const body = await readFile(p);
     res.writeHead(200, { 'Content-Type': TYPES[extname(p)] || 'application/octet-stream' });
-    res.end(await readFile(p));
+    res.end(body);
   } catch { res.writeHead(404); res.end('not found'); }
-}).listen(port, () => console.log(`muriel mobile dev: http://localhost:${port}`));
+// this machine only: the proxy and the files are not for the rest of the network
+}).listen(port, '127.0.0.1', () => console.log(`muriel mobile dev: http://127.0.0.1:${port}`));

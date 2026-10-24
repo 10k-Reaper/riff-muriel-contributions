@@ -130,6 +130,13 @@ async function installYtDlp() {
   fs.renameSync(tmp, target);
 }
 
+function sha256OfFile(file) {
+  return new Promise((resolve, reject) => {
+    const h = crypto.createHash('sha256');
+    fs.createReadStream(file).on('error', reject).on('data', (c) => h.update(c)).on('end', () => resolve(h.digest('hex')));
+  });
+}
+
 async function installFfmpeg() {
   const asset = ffmpegAsset();
   if (!asset) throw new Error('No ffmpeg build for this system. Install ffmpeg with your package manager (for macOS: brew install ffmpeg).');
@@ -137,11 +144,14 @@ async function installFfmpeg() {
   const sums = await getText(`${base}/checksums.sha256`);
   const want = expectedHash(sums, asset.name);
   if (!want) throw new Error(`No checksum published for ${asset.name}`);
-  const archive = path.join(os.tmpdir(), `muriel-${asset.name}`);
-  const got = await downloadFile(`${base}/${asset.name}`, archive);
-  if (got !== want) { fs.rmSync(archive, { force: true }); throw new Error('ffmpeg checksum mismatch'); }
+  // a private folder (0700) instead of a fixed name in the shared temp dir, which another local user could
+  // create or swap before tar reads it; the hash is checked again on what is actually on disk
+  const dlDir = fs.mkdtempSync(path.join(os.tmpdir(), 'muriel-ffmpeg-dl-'));
+  const archive = path.join(dlDir, asset.name);
   const work = fs.mkdtempSync(path.join(os.tmpdir(), 'muriel-ffmpeg-'));
   try {
+    const got = await downloadFile(`${base}/${asset.name}`, archive);
+    if (got !== want || await sha256OfFile(archive) !== want) throw new Error('ffmpeg checksum mismatch');
     // On Windows, a Git/MSYS GNU tar earlier in PATH reads "C:\..." as host:path and can't open zips;
     // the bsdtar that ships in System32 handles both.
     const tar = IS_WIN ? path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'tar.exe') : 'tar';
@@ -156,7 +166,7 @@ async function installFfmpeg() {
     }
   } finally {
     fs.rmSync(work, { recursive: true, force: true });
-    fs.rmSync(archive, { force: true });
+    fs.rmSync(dlDir, { recursive: true, force: true });
   }
 }
 

@@ -221,13 +221,17 @@ test('aborting a proxied stream closes the upstream connection', async () => {
   const realRequest = http.request;
   dns.promises.lookup = async (host, opts) => (host === 'stream.test' ? [{ address: '93.184.216.34', family: 4 }] : realLookup(host, opts));
   http.request = function (target, ...rest) {
-    if (String(target).includes('stream.test')) target = String(target).replace('stream.test', `127.0.0.1:${upstream.address().port}`);
+    if (String(target).includes('stream.test')) {
+      target = String(target).replace('stream.test', `127.0.0.1:${upstream.address().port}`);
+      // the proxy pins the address it checked (93.184.216.34 here); the stand-in upstream lives on 127.0.0.1
+      if (rest[0] && typeof rest[0] === 'object') { const { lookup, ...opts } = rest[0]; rest[0] = opts; }
+    }
     return realRequest.call(this, target, ...rest);
   };
   try {
     for (let i = 0; i < 3; i++) {
       await new Promise((resolve) => {
-        const req = http.get({ host: '127.0.0.1', port, path: `/api/audio-proxy?url=${encodeURIComponent('http://stream.test/song.mp3')}` }, (res) => {
+        const req = http.get({ host: '127.0.0.1', port, path: `/api/audio-proxy?url=${encodeURIComponent('http://stream.test/song.mp3')}`, headers: { 'x-muriel-token': getServerToken() } }, (res) => {
           let got = 0;
           res.on('data', (c) => { got += c.length; if (got > 40000) { req.destroy(); resolve(); } });
         });
