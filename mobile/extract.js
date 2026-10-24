@@ -153,13 +153,17 @@ const scEntry = (t) => ({
   webpage_url: t.permalink_url,
 });
 
+// SoundCloud Go+ songs only stream a 30-second preview without a subscription
+const isPreview = (t) => t.policy === 'SNIP' || ((t.media && t.media.transcodings) || []).some((x) => x.snipped);
+
 async function soundcloudSearch(query, limit) {
   const r = await scApi(`/search/tracks?q=${encodeURIComponent(query)}&limit=${limit}`);
-  return (r.collection || []).filter((t) => t.kind === 'track').map(scEntry);
+  return (r.collection || []).filter((t) => t.kind === 'track' && !isPreview(t)).map(scEntry);
 }
 
 async function soundcloudAudio(pageUrl) {
   const t = await scApi(`/resolve?url=${encodeURIComponent(pageUrl)}`);
+  if (isPreview(t)) throw new Error('SoundCloud only has a 30-second preview of this song');
   const list = (t.media && t.media.transcodings) || [];
   const tc = list.find((x) => x.format.protocol === 'progressive') || list[0];
   if (!tc) throw new Error('no SoundCloud stream');

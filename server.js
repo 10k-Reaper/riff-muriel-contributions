@@ -215,6 +215,26 @@ function readJsonFile(file) {
 
 let trackMetadataIndex = readJsonFile(METADATA_PATH);
 
+// The SoundCloud fallback used to cache 30-second previews as the whole song (see soundcloudFallback), and a
+// cached song plays from disk from then on. Drop those, so the song is looked up again.
+function dropCachedPreviews() {
+  let changed = false;
+  for (const [id, m] of Object.entries(trackMetadataIndex)) {
+    if (!m || m.platform !== 'soundcloud') continue;
+    const want = Number(m.duration) || 0;
+    const size = Number(m.fileSize) || 0;
+    // a full song is about 16 KB a second (128 kbps); a 30-second preview of a 3-minute one is a sixth of that
+    if (want < 60 || !size || size > want * 16000 * 0.6) continue;
+    for (const ext of ['.opus', '.webm', '.m4a', '.mp3', '.aac']) {
+      try { fs.unlinkSync(path.join(CACHE_DIR, `${id}${ext}`)); } catch (e) {}
+    }
+    delete trackMetadataIndex[id];
+    changed = true;
+  }
+  if (changed) try { writeJsonFile(METADATA_PATH, trackMetadataIndex); } catch (e) {}
+}
+try { dropCachedPreviews(); } catch (e) {}
+
 function saveTrackMetadata(cleanId, meta) {
   // "__proto__" survives cleanTrackId and would swap the index's prototype instead of adding an entry
   if (!cleanId || cleanId === '__proto__') return;
@@ -492,7 +512,8 @@ async function searchSoundcloud(query, limit = 14) {
           url: trackUrl,
           platform: 'soundcloud'
         };
-      });
+      // SoundCloud Go+ previews (always exactly 30 s) only ever play the first 30 seconds
+      }).filter((t) => !(t.duration >= 29.5 && t.duration <= 30.5));
 
       if (entries.length > 0) {
         cacheSearchResult(cacheKey, entries);
@@ -1911,6 +1932,23 @@ const STREAM_FAILED = "Couldn't play this song. Try another version from search"
 // YouTube refuses some uploads outright ("This video is not available": blocked in the listener's country,
 // taken down, age-gated). The same song is usually up several more times, so before giving up (or falling back
 // to SoundCloud) the stream lookup tries up to two other uploads of about the same length.
+// SoundCloud, for a song YouTube won't give us. For big-label songs its top search result is often a
+// 30-second preview (SoundCloud Go+): that was played as the whole song and stopped at 0:29. Only a full
+// upload of about the same length counts, and remixes / sped-up versions only when the song is one.
+const VERSION_WORDS = /\b(remix|sped[ -]?up|slowed|nightcore|reverb|8d|bass[ -]?boost(ed)?|cover|flip|mashup|instrumental|karaoke|loop)\b/i;
+async function soundcloudFallback(title, artist, duration) {
+  const query = `${artist || ''} ${title || ''}`.trim();
+  if (!query) return null;
+  const want = Number(duration) || 0;
+  const wantsVersion = VERSION_WORDS.test(title || '');
+  const found = await searchSoundcloud(query, 8).catch(() => []);
+  const pick = (found || []).find((t) => t && t.url
+    && t.duration > 31 // previews are exactly 30 s
+    && (!want || Math.abs(t.duration - want) <= Math.max(12, want * 0.08))
+    && (wantsVersion || !VERSION_WORDS.test(t.title || '')));
+  return pick ? pick.url : null;
+}
+
 async function alternativeUploads(cleanId, title, artist, duration) {
   const query = `${artist || ''} ${title || ''}`.trim();
   if (!query) return [];
@@ -2002,7 +2040,8 @@ async function handleStreamInfo(req, res, trackUrl, trackId, platform = 'youtube
     }
     if (!await findCachedFile(cleanId) && (title || artist)) {
       // same SoundCloud fallback as the streaming path below
-      await downloadTrackToDisk(`scsearch1:${`${artist} ${title}`.trim()}`, cleanId, 'soundcloud', meta);
+      const sc = await soundcloudFallback(title, artist, duration);
+      if (sc) await downloadTrackToDisk(sc, cleanId, 'soundcloud', meta);
     }
     // settle the in-flight entry so concurrent lookups for this track don't wait forever,
     // and drop it so later prefetches don't mistake it for a cached stream URL
@@ -2044,10 +2083,11 @@ async function handleStreamInfo(req, res, trackUrl, trackId, platform = 'youtube
     }
   }
 
-  if (!streamUrl && (title || artist || trackUrl)) {
+  if (!streamUrl && (title || artist)) {
     try {
-      const q = `${artist} ${title}`.trim() || trackUrl;
-      const scArgs = ['--no-config', '-g', '--no-warnings', '--no-playlist', '--prefer-free-formats', '-f', 'bestaudio/best', `scsearch1:${q}`];
+      const sc = await soundcloudFallback(title, artist, duration);
+      if (!sc) throw new Error('no full-length SoundCloud upload');
+      const scArgs = ['--no-config', '-g', '--no-warnings', '--no-playlist', '--prefer-free-formats', '-f', 'bestaudio/best', '--', sc];
       const scRaw = await executeYtDlp(scArgs, 15000);
       const scLines = scRaw.trim().split('\n').map(l => l.trim()).filter(l => l.startsWith('http'));
       if (scLines.length > 0) streamUrl = scLines[0];
