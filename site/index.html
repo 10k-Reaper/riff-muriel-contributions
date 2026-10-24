@@ -3,112 +3,189 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>Muriel · free music player for iPhone, Android & Windows</title>
-  <meta name="description" content="Muriel is a free, ad-free music player for iPhone, Android and Windows. Stream and download from YouTube, YouTube Music and SoundCloud, with synced lyrics and offline mode.">
-  <meta name="theme-color" content="#0b0b0e">
-  <meta property="og:title" content="Muriel">
-  <meta property="og:description" content="Free music player for iPhone, Android & Windows. No ads, no account.">
-  <meta property="og:image" content="icon.png">
+  <title>Muriel · free music player</title>
+  <meta name="description" content="Muriel is a free, ad-free music player for iPhone, Android, Windows, Mac and Linux. Stream from YouTube, YouTube Music and SoundCloud, sing along with synced lyrics and keep songs offline.">
+  <meta name="theme-color" content="#09070a">
+  <meta name="color-scheme" content="dark">
+  <meta property="og:title" content="Muriel · free music player">
+  <meta property="og:description" content="No ads. No account. YouTube, YouTube Music and SoundCloud with synced lyrics, on every device.">
+  <meta property="og:image" content="https://cloverscripts.github.io/riff-muriel/icon.png">
   <link rel="icon" href="icon.png">
   <link rel="apple-touch-icon" href="icon.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Google+Sans:wght@400;500;700&display=swap" rel="stylesheet">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Unbounded:wght@500;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <div class="glow"><i></i><i></i></div>
+  <div class="aura" aria-hidden="true"><i></i><i></i><i></i></div>
 
-  <nav>
+  <nav class="top">
     <div class="wrap">
       <a class="brand" href="#">
-        <svg class="star" viewBox="0 0 1024 1024" fill="#fff" aria-hidden="true"><path class="s1" d="M500 160Q543.2 476.8 860 520Q543.2 563.2 500 880Q456.8 563.2 140 520Q456.8 476.8 500 160Z"/><path class="s2" d="M780 154Q791.5 238.5 876 250Q791.5 261.5 780 346Q768.5 261.5 684 250Q768.5 238.5 780 154Z"/></svg>
-        Muriel
+        <svg class="spark" viewBox="0 0 1024 1024" aria-hidden="true"><defs><linearGradient id="chrome-nav" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff"/><stop offset=".45" stop-color="#c9ced8"/><stop offset=".52" stop-color="#5d6270"/><stop offset=".58" stop-color="#eef0f4"/><stop offset="1" stop-color="#9aa0ad"/></linearGradient></defs><path class="s1" fill="url(#chrome-nav)" d="M500 160Q543.2 476.8 860 520Q543.2 563.2 500 880Q456.8 563.2 140 520Q456.8 476.8 500 160Z"/><path class="s2" fill="url(#chrome-nav)" d="M780 154Q791.5 238.5 876 250Q791.5 261.5 780 346Q768.5 261.5 684 250Q768.5 238.5 780 154Z"/></svg>
+        <span>Muriel</span>
       </a>
-      <div class="links"><a href="#features">Features</a><a href="#download">Download</a><a href="#faq">FAQ</a><a href="https://github.com/cloverscripts/riff-muriel">GitHub</a></div>
+      <div class="links">
+        <a href="#features">Features</a><a href="#download">Download</a><a href="#faq">FAQ</a>
+        <a class="gh" href="https://github.com/cloverscripts/riff-muriel"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 .5a11.5 11.5 0 0 0-3.64 22.41c.58.1.79-.25.79-.56v-2c-3.2.7-3.88-1.37-3.88-1.37-.52-1.33-1.28-1.69-1.28-1.69-1.05-.71.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.7 1.26 3.36.96.1-.75.4-1.26.73-1.55-2.55-.29-5.24-1.28-5.24-5.69 0-1.26.45-2.29 1.19-3.1-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.17 1.18a11 11 0 0 1 5.77 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.11 3.05.74.81 1.19 1.84 1.19 3.1 0 4.42-2.7 5.39-5.26 5.68.41.36.78 1.06.78 2.14v3.17c0 .31.21.67.8.56A11.5 11.5 0 0 0 12 .5z"/></svg>GitHub</a>
+      </div>
     </div>
   </nav>
 
   <header class="wrap hero">
-    <div>
-      <span class="badge"><b></b><span id="build-info">Latest build</span></span>
-      <h1>Your music.<br><span>No ads. No account.</span></h1>
-      <p class="lead">Muriel is a free music player for iPhone, Android and Windows. Stream from YouTube, YouTube Music and SoundCloud, sing along with synced lyrics and keep songs offline.</p>
+    <div class="hero-copy">
+      <p class="eyebrow"><span class="dot"></span><span id="build-info">Free · open source · new builds every week</span></p>
+      <h1><span class="chrome">Every song.</span><br><span class="chrome">Zero ads.</span></h1>
+      <p class="lead">Muriel plays YouTube, YouTube Music and SoundCloud with synced lyrics, offline songs and no account. On iPhone, Android, Windows, Mac and Linux.</p>
       <div class="cta">
-        <a class="btn primary" id="main-dl" href="#download">Download</a>
-        <a class="btn" href="#features">See features</a>
+        <a class="btn primary" id="main-dl" href="#download">Download Muriel</a>
+        <a class="btn ghost" href="#features">What it does</a>
       </div>
-      <p class="meta" id="main-dl-meta">Free · open source · based on Riff</p>
     </div>
-    <div class="phones">
-      <div class="phone back"><img src="shots/home.png" alt="Muriel home screen"></div>
-      <div class="phone front"><img src="shots/player.png" alt="Muriel now playing with synced lyrics"></div>
+    <div class="hero-art" aria-hidden="true">
+      <svg class="twinkle t1" viewBox="0 0 100 100"><path d="M50 0Q56 44 100 50Q56 56 50 100Q44 56 0 50Q44 44 50 0Z"/></svg>
+      <svg class="twinkle t2" viewBox="0 0 100 100"><path d="M50 0Q56 44 100 50Q56 56 50 100Q44 56 0 50Q44 44 50 0Z"/></svg>
+      <svg class="twinkle t3" viewBox="0 0 100 100"><path d="M50 0Q56 44 100 50Q56 56 50 100Q44 56 0 50Q44 44 50 0Z"/></svg>
+      <div class="device back"><img src="shots/home.webp" alt="" width="393" height="852"></div>
+      <div class="device front"><img src="shots/player.webp" alt="" width="393" height="852"></div>
     </div>
   </header>
 
-  <section id="features" class="wrap">
-    <h2 class="sec-title">Everything a music app should do</h2>
-    <p class="sec-sub">Built on Riff, tuned for phones, and light enough to keep running in the background.</p>
-    <div class="grid">
-      <div class="card"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg></div><h3>YouTube, YT Music & SoundCloud</h3><p>Search all three and play anything. No premium, no limits on skips.</p></div>
-      <div class="card"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h10M4 18h7"/><circle cx="18" cy="17" r="2.5"/><path d="M20.5 17V10"/></svg></div><h3>Synced lyrics</h3><p>Word-by-word karaoke, translation, and a fullscreen sing-along mode.</p></div>
-      <div class="card"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"><path d="M12 3v12m0 0-4-4m4 4 4-4M4 19h16"/></svg></div><h3>Offline</h3><p>Songs you play are kept on your phone, so they keep working on the train or in airplane mode.</p></div>
-      <div class="card"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"><path d="M12 2l2.4 7.4H22l-6.2 4.5 2.4 7.4L12 16.8l-6.2 4.5 2.4-7.4L2 9.4h7.6z"/></svg></div><h3>Made for you</h3><p>Recommendations from your genres and similar artists, right on the home screen.</p></div>
-      <div class="card"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"><path d="M3 6h12M3 12h12M3 18h7"/><circle cx="17" cy="18" r="2.5"/><path d="M19.5 18V9l2-1"/></svg></div><h3>Playlists & import</h3><p>Make playlists or import them from Spotify, YouTube, YT Music and SoundCloud links.</p></div>
-      <div class="card"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"><rect x="5" y="2" width="14" height="20" rx="3"/><path d="M11 18h2"/></svg></div><h3>Background & lock screen</h3><p>Keeps playing with the screen off, with controls on your lock screen.</p></div>
+  <section class="counter" aria-labelledby="count-label">
+    <div class="wrap">
+      <div class="count-card">
+        <p class="live"><span class="pulse"></span><span id="live-text">Live from GitHub</span></p>
+        <div class="odo" id="odo" aria-hidden="true"><span class="odo-wait">—</span></div>
+        <p class="sr" id="count-sr" aria-live="polite"></p>
+        <h2 id="count-label">downloads and counting</h2>
+        <div class="split" id="split" aria-hidden="true"></div>
+        <ul class="legend" id="legend"></ul>
+      </div>
     </div>
   </section>
 
-  <section class="wrap">
-    <h2 class="sec-title">Looks good too</h2>
-    <p class="sec-sub">Smooth animations, colours from the cover, and a player you can swipe through.</p>
-    <div class="shots">
-      <div class="phone"><img src="shots/home.png" alt="Home with recommendations" loading="lazy"></div>
-      <div class="phone"><img src="shots/player.png" alt="Now playing with lyrics" loading="lazy"></div>
-      <div class="phone"><img src="shots/search.png" alt="Search results" loading="lazy"></div>
+  <div class="marquee" aria-hidden="true">
+    <div class="track">
+      <span>YouTube</span><b>✦</b><span>YouTube Music</span><b>✦</b><span>SoundCloud</span><b>✦</b><span>Synced lyrics</span><b>✦</b><span>Offline</span><b>✦</b><span>Muriel Encore</span><b>✦</b><span>Spotify import</span><b>✦</b><span>No ads</span><b>✦</b><span>No account</span><b>✦</b>
+      <span>YouTube</span><b>✦</b><span>YouTube Music</span><b>✦</b><span>SoundCloud</span><b>✦</b><span>Synced lyrics</span><b>✦</b><span>Offline</span><b>✦</b><span>Muriel Encore</span><b>✦</b><span>Spotify import</span><b>✦</b><span>No ads</span><b>✦</b><span>No account</span><b>✦</b>
+    </div>
+  </div>
+
+  <section id="features" class="wrap">
+    <h2 class="title">A music app that<br><span class="chrome">just plays music</span></h2>
+    <div class="bento">
+      <article class="tile lyrics">
+        <div class="tile-text">
+          <h3>Lyrics you can sing</h3>
+          <p>Word-by-word karaoke, translations, a fullscreen sing-along mode, and an editor to write and sync your own.</p>
+        </div>
+        <div class="peek"><img src="shots/player.webp" alt="Now playing with synced lyrics" loading="lazy" width="393" height="852"></div>
+      </article>
+      <article class="tile">
+        <div class="ic"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg></div>
+        <h3>Three sources, one search</h3>
+        <p>YouTube, YouTube Music and SoundCloud. No premium, no skip limits.</p>
+      </article>
+      <article class="tile">
+        <div class="ic"><svg viewBox="0 0 24 24"><path d="M12 3v12m0 0-4-4m4 4 4-4M4 19h16"/></svg></div>
+        <h3>Works offline</h3>
+        <p>Songs you play stay on your phone, so they keep going on the train or in airplane mode.</p>
+      </article>
+      <article class="tile encore">
+        <div class="tile-text">
+          <h3>Muriel Encore</h3>
+          <p>Your own year-in-music recap, any day of the year: top songs, artists, minutes and streaks. Plus your top 3 on repeat right on Home.</p>
+        </div>
+        <div class="peek"><img src="shots/foryou.webp" alt="On repeat, Encore and popular artists on the home screen" loading="lazy" width="393" height="852"></div>
+      </article>
+      <article class="tile">
+        <div class="ic"><svg viewBox="0 0 24 24"><path d="M12 2l2.4 7.4H22l-6.2 4.5 2.4 7.4L12 16.8l-6.2 4.5 2.4-7.4L2 9.4h7.6z"/></svg></div>
+        <h3>My Wave & For you</h3>
+        <p>Endless picks from your genres and the artists you play most.</p>
+      </article>
+      <article class="tile">
+        <div class="ic"><svg viewBox="0 0 24 24"><path d="M3 6h12M3 12h12M3 18h7"/><circle cx="17" cy="18" r="2.5"/><path d="M19.5 18V9l2-1"/></svg></div>
+        <h3>Bring your library</h3>
+        <p>Import from Spotify, Apple Music and YouTube, YT Music or SoundCloud playlist links.</p>
+      </article>
+      <article class="tile wide">
+        <div class="ic"><svg viewBox="0 0 24 24"><rect x="5" y="2" width="14" height="20" rx="3"/><path d="M11 18h2"/></svg></div>
+        <h3>Screen off, still playing</h3>
+        <p>Background playback with controls on your lock screen.</p>
+      </article>
+      <article class="tile wide">
+        <div class="ic"><svg viewBox="0 0 24 24"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/></svg></div>
+        <h3>Desktop extras</h3>
+        <p>EQ, effects, crossfade, sleep timer, mini player, downloads as MP3 or FLAC, and plugins.</p>
+      </article>
+    </div>
+  </section>
+
+  <section class="wrap screens-sec">
+    <h2 class="title">Swipe through it</h2>
+    <div class="screens" tabindex="0" aria-label="Screenshots">
+      <figure><div class="device"><img src="shots/home.webp" alt="Home with Hot picks" loading="lazy" width="393" height="852"></div><figcaption>Home</figcaption></figure>
+      <figure><div class="device"><img src="shots/player.webp" alt="Now playing with lyrics" loading="lazy" width="393" height="852"></div><figcaption>Now playing</figcaption></figure>
+      <figure><div class="device"><img src="shots/foryou.webp" alt="On repeat and Encore" loading="lazy" width="393" height="852"></div><figcaption>On repeat</figcaption></figure>
+      <figure><div class="device"><img src="shots/search.webp" alt="Search results" loading="lazy" width="393" height="852"></div><figcaption>Search</figcaption></figure>
+      <figure><div class="device"><img src="shots/queue.webp" alt="Up next queue" loading="lazy" width="393" height="852"></div><figcaption>Queue</figcaption></figure>
     </div>
   </section>
 
   <section id="download" class="wrap">
-    <h2 class="sec-title">Download Muriel</h2>
-    <p class="sec-sub">Always the newest build, straight from GitHub.</p>
+    <h2 class="title">Get <span class="chrome">Muriel</span></h2>
+    <p class="sub">Always the newest build, straight from GitHub.</p>
     <div class="dl">
-      <div class="card" data-os="android">
-        <div class="os"><svg viewBox="0 0 24 24" fill="#3ddc84"><path d="M6 18c0 .55.45 1 1 1h1v3.5a1.5 1.5 0 0 0 3 0V19h2v3.5a1.5 1.5 0 0 0 3 0V19h1c.55 0 1-.45 1-1V8H6v10zM3.5 8A1.5 1.5 0 0 0 2 9.5v7a1.5 1.5 0 0 0 3 0v-7A1.5 1.5 0 0 0 3.5 8zm17 0A1.5 1.5 0 0 0 19 9.5v7a1.5 1.5 0 0 0 3 0v-7A1.5 1.5 0 0 0 20.5 8zm-4.97-5.84 1.3-1.3a.5.5 0 1 0-.71-.71l-1.48 1.48A5.84 5.84 0 0 0 12 1c-.96 0-1.86.23-2.66.63L7.85.15a.5.5 0 1 0-.71.71l1.31 1.31A5.97 5.97 0 0 0 6 7h12a5.97 5.97 0 0 0-2.47-4.84zM10 5H9V4h1v1zm5 0h-1V4h1v1z"/></svg><h3>Android</h3></div>
-        <ol><li>Tap the button and download <b>Muriel.apk</b>.</li><li>Open it. If Android asks, allow installs from your browser.</li><li>Tap <b>Install</b>. Updates install over it and keep your music.</li></ol>
+      <article class="card" data-os="android">
+        <div class="os"><svg viewBox="0 0 24 24" fill="#3ddc84"><path d="M6 18c0 .55.45 1 1 1h1v3.5a1.5 1.5 0 0 0 3 0V19h2v3.5a1.5 1.5 0 0 0 3 0V19h1c.55 0 1-.45 1-1V8H6v10zM3.5 8A1.5 1.5 0 0 0 2 9.5v7a1.5 1.5 0 0 0 3 0v-7A1.5 1.5 0 0 0 3.5 8zm17 0A1.5 1.5 0 0 0 19 9.5v7a1.5 1.5 0 0 0 3 0v-7A1.5 1.5 0 0 0 20.5 8zm-4.97-5.84 1.3-1.3a.5.5 0 1 0-.71-.71l-1.48 1.48A5.84 5.84 0 0 0 12 1c-.96 0-1.86.23-2.66.63L7.85.15a.5.5 0 1 0-.71.71l1.31 1.31A5.97 5.97 0 0 0 6 7h12a5.97 5.97 0 0 0-2.47-4.84zM10 5H9V4h1v1zm5 0h-1V4h1v1z"/></svg><h3>Android</h3><span class="n" data-count="android"></span></div>
+        <ol><li>Download <b>Muriel.apk</b> on your phone.</li><li>Open it. If Android asks, allow installs from your browser.</li><li>Tap <b>Install</b>. Updates install over it and keep your music.</li></ol>
         <a class="btn primary" id="dl-android" href="https://github.com/cloverscripts/riff-muriel/releases/download/android-latest/Muriel.apk">Download APK <small id="size-android"></small></a>
-      </div>
-      <div class="card" data-os="windows">
-        <div class="os"><svg viewBox="0 0 24 24" fill="#4cc2ff"><path d="M3 5.1 10.4 4v7.1H3zM11.3 3.9 21 2.5v8.6h-9.7zM3 12h7.4v7.1L3 18zm8.3 0H21v8.6l-9.7-1.4z"/></svg><h3>Windows</h3></div>
+      </article>
+      <article class="card" data-os="ios">
+        <div class="os"><svg viewBox="0 0 24 24" fill="#f5f5f7"><path d="M16.37 12.6c-.02-2.2 1.8-3.26 1.88-3.31a4.05 4.05 0 0 0-3.2-1.73c-1.36-.14-2.66.8-3.35.8-.7 0-1.76-.78-2.9-.76a4.3 4.3 0 0 0-3.62 2.2c-1.55 2.68-.4 6.65 1.11 8.83.74 1.06 1.62 2.26 2.77 2.22 1.11-.04 1.53-.72 2.88-.72 1.34 0 1.72.72 2.9.7 1.2-.02 1.96-1.08 2.69-2.15a9.6 9.6 0 0 0 1.22-2.5 3.9 3.9 0 0 1-2.38-3.58zM14.15 6.13A3.9 3.9 0 0 0 15.07 3a3.97 3.97 0 0 0-2.57 1.33 3.7 3.7 0 0 0-.94 2.98 3.28 3.28 0 0 0 2.59-1.18z"/></svg><h3>iPhone</h3><span class="n" data-count="ios"></span></div>
+        <ol><li>Install <a href="https://sidestore.io">SideStore</a> once (needs a computer one time).</li><li>Tap <b>Add to SideStore</b>. Muriel installs and keeps itself updated.</li></ol>
+        <a class="btn primary" id="dl-sidestore" href="#">Add to SideStore</a>
+        <a class="btn ghost" id="dl-ipa" href="https://github.com/cloverscripts/riff-muriel/releases/download/ios-latest/Muriel.ipa">Download .ipa <small id="size-ios"></small></a>
+        <p class="note">No SideStore? Install the .ipa with <a href="https://sideloadly.io">Sideloadly</a> from your computer. iPhones only run signed apps, so one of these is needed.</p>
+      </article>
+      <article class="card" data-os="windows">
+        <div class="os"><svg viewBox="0 0 24 24" fill="#4cc2ff"><path d="M3 5.1 10.4 4v7.1H3zM11.3 3.9 21 2.5v8.6h-9.7zM3 12h7.4v7.1L3 18zm8.3 0H21v8.6l-9.7-1.4z"/></svg><h3>Windows</h3><span class="n" data-count="windows"></span></div>
         <ol><li>Download <b>Muriel.exe</b>. It's portable, no installer.</li><li>Run it. If SmartScreen appears: <b>More info → Run anyway</b>.</li></ol>
         <a class="btn primary" id="dl-windows" href="https://github.com/cloverscripts/riff-muriel/releases/download/windows-latest/Muriel.exe">Download for Windows <small id="size-windows"></small></a>
-        <p class="note">Or install with a desktop shortcut in PowerShell:</p>
+        <p class="note">Or install it with a desktop shortcut from PowerShell:</p>
         <div class="copy"><code id="ps-line">$ProgressPreference='SilentlyContinue'; $p="$env:LOCALAPPDATA\Programs\Muriel"; ni -ItemType Directory -Force $p | Out-Null; iwr https://github.com/cloverscripts/riff-muriel/releases/download/windows-latest/Muriel.exe -OutFile "$p\Muriel.exe"; Unblock-File "$p\Muriel.exe"; $s=(New-Object -ComObject WScript.Shell).CreateShortcut("$([Environment]::GetFolderPath('Desktop'))\Muriel.lnk"); $s.TargetPath="$p\Muriel.exe"; $s.IconLocation="$p\Muriel.exe,0"; $s.Save()</code><button type="button" data-copy="ps-line">Copy</button></div>
-      </div>
-      <div class="card" data-os="ios">
-        <div class="os"><svg viewBox="0 0 24 24" fill="#f5f5f7"><path d="M16.37 12.6c-.02-2.2 1.8-3.26 1.88-3.31a4.05 4.05 0 0 0-3.2-1.73c-1.36-.14-2.66.8-3.35.8-.7 0-1.76-.78-2.9-.76a4.3 4.3 0 0 0-3.62 2.2c-1.55 2.68-.4 6.65 1.11 8.83.74 1.06 1.62 2.26 2.77 2.22 1.11-.04 1.53-.72 2.88-.72 1.34 0 1.72.72 2.9.7 1.2-.02 1.96-1.08 2.69-2.15a9.6 9.6 0 0 0 1.22-2.5 3.9 3.9 0 0 1-2.38-3.58zM14.15 6.13A3.9 3.9 0 0 0 15.07 3a3.97 3.97 0 0 0-2.57 1.33 3.7 3.7 0 0 0-.94 2.98 3.28 3.28 0 0 0 2.59-1.18z"/></svg><h3>iPhone</h3></div>
-        <ol><li>Install <a href="https://sidestore.io" style="text-decoration:underline">SideStore</a> once (needs a computer one time).</li><li>Tap <b>Add to SideStore</b>. Muriel installs and keeps itself updated.</li></ol>
-        <a class="btn primary" id="dl-sidestore" href="#">Add to SideStore</a>
-        <a class="btn" id="dl-ipa" href="https://github.com/cloverscripts/riff-muriel/releases/download/ios-latest/Muriel.ipa">Download .ipa <small id="size-ios"></small></a>
-        <p class="note">No SideStore? Install the .ipa with <a href="https://sideloadly.io" style="text-decoration:underline">Sideloadly</a> from your PC. iPhones only run signed apps, so one of these is needed.</p>
-      </div>
+      </article>
+      <article class="card" data-os="desktop">
+        <div class="os"><svg viewBox="0 0 24 24" fill="none" stroke="#e7c6ff" stroke-width="1.8" stroke-linecap="round"><rect x="2.5" y="4" width="19" height="13" rx="2"/><path d="M8 21h8M12 17v4"/></svg><h3>Mac & Linux</h3><span class="n" data-count="desktop"></span></div>
+        <ol><li>Pick your download below (<b id="rel-version">v1.1.2</b>).</li><li>Mac: if it's blocked, open <b>System Settings → Privacy &amp; Security → Open Anyway</b>.</li></ol>
+        <div class="row">
+          <a class="btn primary" id="dl-mac-arm" href="https://github.com/cloverscripts/riff-muriel/releases/download/v1.1.2/Muriel-1.1.2-mac-arm64.dmg">Mac (Apple chip)</a>
+          <a class="btn ghost" id="dl-mac-x64" href="https://github.com/cloverscripts/riff-muriel/releases/download/v1.1.2/Muriel-1.1.2-mac-x64.dmg">Mac (Intel)</a>
+        </div>
+        <a class="btn ghost" id="dl-linux" href="https://github.com/cloverscripts/riff-muriel/releases/download/v1.1.2/muriel-1.1.2-linux-x86_64.AppImage">Linux AppImage <small id="size-linux"></small></a>
+        <p class="note">Linux in one line (needs FUSE 2, e.g. <code>fuse2</code> or <code>libfuse2</code>):</p>
+        <div class="copy"><code id="linux-line">mkdir -p ~/Applications && curl -L -o ~/Applications/Muriel.AppImage https://github.com/cloverscripts/riff-muriel/releases/download/v1.1.2/muriel-1.1.2-linux-x86_64.AppImage && chmod +x ~/Applications/Muriel.AppImage && ~/Applications/Muriel.AppImage</code><button type="button" data-copy="linux-line">Copy</button></div>
+      </article>
     </div>
   </section>
 
   <section id="faq" class="wrap">
-    <h2 class="sec-title">FAQ</h2>
-    <div class="faq" style="margin-top:30px">
-      <details><summary>Is Muriel really free?</summary><p>Yes. No ads, no account, no subscription. It's open source and based on <a href="https://github.com/rootscripts/riff" style="text-decoration:underline">Riff</a> by rootscripts (MIT).</p></details>
+    <h2 class="title">Questions</h2>
+    <div class="faq">
+      <details><summary>Is Muriel really free?</summary><p>Yes. No ads, no account, no subscription. It's open source and based on <a href="https://github.com/rootscripts/riff">Riff</a> by rootscripts (MIT).</p></details>
+      <details><summary>Where does the download counter come from?</summary><p>Straight from GitHub: it adds up every download of every Muriel file there and refreshes while this page is open. Downloads from before the counter existed are included where GitHub still had them.</p></details>
       <details><summary>Why can't I just tap "install" on iPhone?</summary><p>iOS only runs apps signed with a certificate from Apple. Muriel doesn't use leaked certificates (those get revoked and can push anything to your phone), so on iPhone it installs through SideStore or Sideloadly with your own Apple ID.</p></details>
       <details><summary>Why does my iPhone app stop opening after 7 days?</summary><p>Apps signed with a free Apple ID expire after 7 days. SideStore refreshes them automatically on your phone; with Sideloadly, just install again.</p></details>
-      <details><summary>Does music keep playing with the screen off?</summary><p>Yes, on iPhone and Android, with play/pause/skip on the lock screen.</p></details>
+      <details><summary>Does music keep playing with the screen off?</summary><p>Yes, on iPhone and Android, with play, pause and skip on the lock screen.</p></details>
       <details><summary>Where are my downloaded songs?</summary><p>Inside Muriel (Library → Offline). On iPhone they're also in the Files app under Muriel.</p></details>
     </div>
   </section>
 
   <footer>
     <div class="wrap">
-      <span>Muriel · by cloverscripts · based on Riff by rootscripts (MIT)</span>
-      <span><a href="https://github.com/cloverscripts/riff-muriel">Source on GitHub</a></span>
+      <span>Muriel by cloverscripts · based on Riff by rootscripts (MIT)</span>
+      <a href="https://github.com/cloverscripts/riff-muriel">Source on GitHub</a>
     </div>
   </footer>
   <script src="app.js"></script>

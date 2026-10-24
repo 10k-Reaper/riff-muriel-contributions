@@ -3,7 +3,7 @@ name: Website
 # Publishes site/ (the download page) to GitHub Pages.
 on:
   push:
-    branches: [muriel, main]
+    branches: [main]
     paths: ['site/**', '.github/workflows/pages.yml']
   workflow_dispatch:
 
