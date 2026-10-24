@@ -27,24 +27,44 @@ module.exports = function mediaControls() {
       duration,
       position: Math.min(a.currentTime || 0, duration || Infinity),
       playing: !!c.state.isPlaying,
+      // between two songs nothing plays, but Muriel still has to stay in the foreground (see MediaControlsPlugin)
+      loading: !c.state.isPlaying && !!c.state.trackLoading,
       rate: a.playbackRate || 1,
     }).catch(() => {});
   }
   // several events arrive together on a song change; send once
   const update = () => { if (!pending) pending = setTimeout(send, 80); };
 
+  // Some phones stop apps in the background to save battery, music or not. For the "Play in the background"
+  // row in Settings (mobile-ui.js), and asked once by itself when the first song starts.
+  const background = window.MurielBackground = {
+    allowed: () => plugin.backgroundStatus().then((r) => !!(r && r.unrestricted)).catch(() => true),
+    // resolves with the answer once the system dialog is closed
+    allow: () => plugin.allowBackground().then((r) => !!(r && r.unrestricted)).catch(() => false),
+  };
+  const ASKED = 'muriel_bg_asked';
+  const askOnce = () => {
+    if (localStorage.getItem(ASKED) || document.hidden) return;
+    localStorage.setItem(ASKED, '1');
+    background.allowed().then((ok) => { if (!ok) background.allow(); });
+  };
+
   function hook() {
     const c = core();
     if (!c || !c.audio) return;
     window.addEventListener('muriel:track', update);
+    window.addEventListener('muriel:loading', update);
     ['playing', 'pause', 'seeked', 'ratechange', 'durationchange', 'ended'].forEach((ev) => c.audio.addEventListener(ev, update));
+    c.audio.addEventListener('playing', askOnce, { once: true });
     plugin.addListener('action', ({ action, position } = {}) => {
       const st = core().state;
       if (action === 'play') { if (!st.isPlaying) core().togglePlay(); }
       else if (action === 'pause') { if (st.isPlaying) core().togglePlay(); }
       else if (action === 'next') core().next();
       else if (action === 'prev') core().prev();
-      else if (action === 'seek' && Number.isFinite(position)) { core().seek(position); update(); }
+      else if (action === 'seek' && Number.isFinite(position)) core().seek(position);
+      // the native side already counts play / next / previous as playing; if nothing started, it hears so
+      update();
     });
   }
   if (window.MurielCore) hook(); else window.addEventListener('muriel:ready', hook, { once: true });

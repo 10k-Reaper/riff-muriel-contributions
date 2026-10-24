@@ -3061,9 +3061,18 @@ document.addEventListener('DOMContentLoaded', async () => {
   let advancing = false; // true while playNext starts the next song
   let skipOnFailToken = -1; // loadToken of the song that gets skipped if it fails
   let failStreak = 0;
+  // true from the moment a song is asked for until it plays (or fails for good). Nothing is audible in
+  // between, so the phone apps keep themselves running on this (mobile/background-audio.js, media-controls.js).
+  function setTrackLoading(on) {
+    if (!!state.trackLoading === on) return;
+    state.trackLoading = on;
+    window.dispatchEvent(new Event('muriel:loading'));
+  }
+  // every failure path asks this; a false answer means nothing else will be loaded, so loading is over
   function skipUnplayable(token, track) {
-    if (token !== skipOnFailToken || token !== state.loadToken) return false;
-    if (state.queue.length < 2 || failStreak >= Math.min(5, state.queue.length - 1)) { failStreak = 0; return false; }
+    if (token !== state.loadToken) return false;
+    if (token !== skipOnFailToken) { setTrackLoading(false); return false; }
+    if (state.queue.length < 2 || failStreak >= Math.min(5, state.queue.length - 1)) { failStreak = 0; setTrackLoading(false); return false; }
     failStreak++;
     showToast(`Couldn't play "${(track && track.title) || 'this song'}", playing the next one`, 'info');
     setTimeout(() => { if (token === state.loadToken) playNext(); }, 1200);
@@ -3131,6 +3140,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     state.loadToken++;
     const currentToken = state.loadToken;
     if (advancing || SKIP_CONTEXTS.has(context)) skipOnFailToken = currentToken;
+    setTrackLoading(true);
 
     if (state.currentAbortController) {
       state.currentAbortController.abort();
@@ -5246,6 +5256,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   function pauseSmooth() {
     const curToken = ++smoothFadeToken;
     state.isPlaying = false;
+    setTrackLoading(false);
     updatePlayPauseButton(false, false);
     document.body.classList.remove('is-playing');
     if (el.coverContainer) el.coverContainer.classList.remove('spinning');
@@ -5339,6 +5350,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         // AbortError just means a newer load replaced this one.
         if (curToken === smoothFadeToken && e && e.name !== 'AbortError' && el.nativeAudio.paused) {
           state.isPlaying = false;
+          setTrackLoading(false);
           document.body.classList.remove('is-playing');
           updatePlayPauseButton(false, false);
           if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
@@ -5464,11 +5476,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (nextIdx >= state.queue.length) {
       if (state.myWaveActive && typeof extendMyWaveQueue === 'function') {
         const tok = state.loadToken;
+        setTrackLoading(true); // the next songs are still being picked
+        const done = () => { if (tok === state.loadToken) setTrackLoading(false); };
         extendMyWaveQueue().then(added => {
           if (added && tok === state.loadToken && state.queueIndex + 1 < state.queue.length) {
             playNext();
-          }
-        });
+          } else done();
+        }, done);
         return;
       }
       nextIdx = 0;
@@ -5553,6 +5567,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     el.nativeAudio.addEventListener('playing', () => {
       failStreak = 0;
       state.isPlaying = true;
+      setTrackLoading(false);
       document.body.classList.add('is-playing');
       updatePlayPauseButton(true, false);
       // warm up the next two songs (staggered) so skipping or a slow network never leaves a gap

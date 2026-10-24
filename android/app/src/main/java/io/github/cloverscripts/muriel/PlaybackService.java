@@ -8,7 +8,9 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.pm.ServiceInfo;
 import android.os.Build;
+import android.os.Handler;
 import android.os.IBinder;
+import android.os.Looper;
 
 import androidx.core.app.ServiceCompat;
 
@@ -23,8 +25,21 @@ public class PlaybackService extends Service {
     static final String ACTION_NEXT = "io.github.cloverscripts.muriel.NEXT";
     static final String ACTION_PREV = "io.github.cloverscripts.muriel.PREV";
     static final String ACTION_DISMISS = "io.github.cloverscripts.muriel.DISMISS";
+    // set when started with startForegroundService(): Android then insists on startForeground()
+    static final String EXTRA_FOREGROUND = "foreground";
+    // Paused, Muriel stays in the foreground this much longer. Android doesn't let an app in the background
+    // come back into the foreground on its own, so the next song, or the music coming back after a call,
+    // would otherwise stay silent (Android 15+ even stops it).
+    static final long PAUSED_FOREGROUND_MS = 10 * 60 * 1000;
 
     static volatile boolean running;
+
+    private final Handler handler = new Handler(Looper.getMainLooper());
+    private boolean foreground;
+    private final Runnable leaveForeground = () -> {
+        ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_DETACH);
+        foreground = false;
+    };
 
     static PendingIntent intent(Context ctx, String action, int requestCode) {
         Intent i = new Intent(ctx, PlaybackService.class).setAction(action);
@@ -36,30 +51,36 @@ public class PlaybackService extends Service {
         running = true;
         String action = intent != null ? intent.getAction() : null;
         MediaControlsPlugin plugin = MediaControlsPlugin.instance;
-        if (ACTION_TOGGLE.equals(action) && plugin != null) plugin.send(MediaControlsPlugin.playing ? "pause" : "play", -1);
-        else if (ACTION_NEXT.equals(action) && plugin != null) plugin.send("next", -1);
-        else if (ACTION_PREV.equals(action) && plugin != null) plugin.send("prev", -1);
+        if (ACTION_TOGGLE.equals(action) && plugin != null) {
+            if (MediaControlsPlugin.playing) plugin.send("pause", -1); else plugin.start("play");
+        }
+        else if (ACTION_NEXT.equals(action) && plugin != null) plugin.start("next");
+        else if (ACTION_PREV.equals(action) && plugin != null) plugin.start("prev");
         else if (ACTION_DISMISS.equals(action)) { stopSelf(); return START_NOT_STICKY; }
-        show();
+        show(intent != null && intent.getBooleanExtra(EXTRA_FOREGROUND, false));
         return START_NOT_STICKY;
     }
 
-    // foreground while playing; paused, the notification stays but can be swiped away
-    private void show() {
+    // foreground while playing and for a while after a pause; then the notification stays but can be swiped away
+    private void show(boolean mustStartForeground) {
         Notification n = MediaControlsPlugin.notification;
         if (n == null) { stopSelf(); return; }
+        boolean playing = MediaControlsPlugin.playing;
+        handler.removeCallbacks(leaveForeground);
         try {
-            if (MediaControlsPlugin.playing) {
+            if (!foreground && (playing || mustStartForeground)) {
                 int type = Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q ? ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK : 0;
                 ServiceCompat.startForeground(this, MediaControlsPlugin.NOTIFICATION_ID, n, type);
+                foreground = true;
             } else {
-                ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_DETACH);
+                // also how the notification of a service already in the foreground is updated
                 getSystemService(NotificationManager.class).notify(MediaControlsPlugin.NOTIFICATION_ID, n);
             }
         } catch (Exception e) {
             // not allowed to go foreground right now (Android 12+ from the background): just show it
             try { getSystemService(NotificationManager.class).notify(MediaControlsPlugin.NOTIFICATION_ID, n); } catch (Exception ignored) {}
         }
+        if (foreground && !playing) handler.postDelayed(leaveForeground, PAUSED_FOREGROUND_MS);
     }
 
     // the app was swiped away: the music stopped with it, so the controls go too
@@ -74,6 +95,7 @@ public class PlaybackService extends Service {
     @Override
     public void onDestroy() {
         running = false;
+        handler.removeCallbacks(leaveForeground);
         ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE);
         super.onDestroy();
     }

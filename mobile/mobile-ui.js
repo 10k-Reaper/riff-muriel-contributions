@@ -259,6 +259,28 @@
     trRow.parentElement.insertBefore(row, trRow);
   }
 
+  // Android: let Muriel off battery optimization so the phone doesn't stop it in the background (media-controls.js)
+  if (window.MurielBackground && trRow) {
+    const bg = window.MurielBackground;
+    const row = document.createElement('div');
+    row.className = 'setting-item';
+    row.innerHTML = `
+      <div class="setting-item-top" style="align-items: center;">
+        <div style="display: flex; flex-direction: column; gap: 2px;">
+          <span class="setting-name">Play in the background</span>
+          <span style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">Some phones stop apps to save battery, even while music plays. Allow Muriel to keep running.</span>
+        </div>
+        <button class="btn-pill-primary" type="button">Allow</button>
+      </div>`;
+    const btn = row.querySelector('button');
+    const refresh = () => bg.allowed().then((ok) => { btn.textContent = ok ? 'Allowed' : 'Allow'; btn.disabled = ok; });
+    btn.addEventListener('click', () => bg.allow().then(refresh));
+    // some phones send you to the battery list in Settings instead of asking
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) refresh(); });
+    refresh();
+    trRow.parentElement.insertBefore(row, trRow);
+  }
+
   // artist bio is clamped to 3 lines on phones; tapping it expands / collapses
   const bio = document.getElementById('artist-profile-bio');
   if (bio) bio.addEventListener('click', () => bio.classList.toggle('expanded'));
