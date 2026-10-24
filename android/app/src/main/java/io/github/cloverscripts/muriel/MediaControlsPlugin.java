@@ -42,6 +42,7 @@ import java.util.concurrent.Executors;
 public class MediaControlsPlugin extends Plugin {
     static final String CHANNEL = "playback";
     static final int NOTIFICATION_ID = 7041;
+    static final int ART_SIZE = 320;
 
     // read by PlaybackService
     static volatile MediaControlsPlugin instance;
@@ -198,8 +199,17 @@ public class MediaControlsPlugin extends Plugin {
             BitmapFactory.decodeByteArray(bytes, 0, bytes.length, bounds);
             BitmapFactory.Options opts = new BitmapFactory.Options();
             opts.inSampleSize = 1;
-            while (Math.max(bounds.outWidth, bounds.outHeight) / (opts.inSampleSize * 2) >= 512) opts.inSampleSize *= 2;
-            return BitmapFactory.decodeByteArray(bytes, 0, bytes.length, opts);
+            while (Math.max(bounds.outWidth, bounds.outHeight) / (opts.inSampleSize * 2) >= ART_SIZE) opts.inSampleSize *= 2;
+            opts.inPreferredConfig = Bitmap.Config.RGB_565;
+            Bitmap decoded = BitmapFactory.decodeByteArray(bytes, 0, bytes.length, opts);
+            if (decoded == null) return null;
+            // the cover is handed to the system twice (session + notification); a big one is over the
+            // 1 MB limit of such a call, so keep it small
+            float k = Math.min(1f, ART_SIZE / (float) Math.max(decoded.getWidth(), decoded.getHeight()));
+            if (k >= 1f) return decoded;
+            Bitmap scaled = Bitmap.createScaledBitmap(decoded, Math.round(decoded.getWidth() * k), Math.round(decoded.getHeight() * k), true);
+            if (scaled != decoded) decoded.recycle();
+            return scaled;
         } catch (Exception e) {
             return null;
         } finally {
