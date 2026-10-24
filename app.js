@@ -3055,6 +3055,21 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   const shuffleBag = { queue: null, played: new Set(), next: [] }; // see pickShuffleIndex
 
+  // A song that can't be played used to stop a whole playlist. When playing through a list (or after Next)
+  // it is skipped instead; several failures in a row (offline, say) still stop.
+  const SKIP_CONTEXTS = new Set(['playlist', 'favorites', 'album', 'queue', 'history', 'local', 'artist']);
+  let advancing = false; // true while playNext starts the next song
+  let skipOnFailToken = -1; // loadToken of the song that gets skipped if it fails
+  let failStreak = 0;
+  function skipUnplayable(token, track) {
+    if (token !== skipOnFailToken || token !== state.loadToken) return false;
+    if (state.queue.length < 2 || failStreak >= Math.min(5, state.queue.length - 1)) { failStreak = 0; return false; }
+    failStreak++;
+    showToast(`Couldn't play "${(track && track.title) || 'this song'}", playing the next one`, 'info');
+    setTimeout(() => { if (token === state.loadToken) playNext(); }, 1200);
+    return true;
+  }
+
   async function playTrack(track, queueList = null, startIndex = -1, context = null) {
     if (!track || !el.nativeAudio) return;
     resetLevelWatcher();
@@ -3115,6 +3130,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     state.loadToken++;
     const currentToken = state.loadToken;
+    if (advancing || SKIP_CONTEXTS.has(context)) skipOnFailToken = currentToken;
 
     if (state.currentAbortController) {
       state.currentAbortController.abort();
@@ -3237,7 +3253,7 @@ document.addEventListener('DOMContentLoaded', async () => {
           document.body.classList.remove('is-playing');
           updatePlayPauseButton(false, false);
           if (el.trackLoadingOverlay) el.trackLoadingOverlay.classList.add('hidden');
-          showToast('Could not play this song. Try again or skip.', 'error');
+          if (!skipUnplayable(currentToken, track)) showToast('Could not play this song. Try again or skip.', 'error');
         });
       } else {
         el.nativeAudio.src = data.streamUrl;
@@ -3251,7 +3267,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         console.warn('Track playback notice:', err);
         updatePlayPauseButton(false, false);
         if (el.trackLoadingOverlay) el.trackLoadingOverlay.classList.add('hidden');
-        showToast(err.message || 'Could not load audio stream', 'error');
+        if (!skipUnplayable(currentToken, track)) showToast(err.message || 'Could not load audio stream', 'error');
       }
     }
   }
@@ -5383,6 +5399,11 @@ document.addEventListener('DOMContentLoaded', async () => {
       const i = q.indexOf(shuffleBag.next.shift());
       if (i >= 0 && i !== state.queueIndex) return i;
     }
+    // the song chosen (and downloaded) in advance by planShuffleNext
+    const planned = shuffleBag.planned;
+    shuffleBag.planned = null;
+    const pi = planned ? q.indexOf(planned) : -1;
+    if (pi >= 0 && pi !== state.queueIndex && !shuffleBag.played.has(planned)) return pi;
     if (q.length < 2) return 0;
     let pool = [];
     q.forEach((t, i) => { if (i !== state.queueIndex && !shuffleBag.played.has(t)) pool.push(i); });
@@ -5393,6 +5414,21 @@ document.addEventListener('DOMContentLoaded', async () => {
     return pool[Math.floor(Math.random() * pool.length)];
   }
 
+  // Shuffle picks the next song while this one plays, so it can be downloaded in time: songs are fetched
+  // ahead, and a gap between songs could let iOS suspend Muriel with the screen locked.
+  function planShuffleNext() {
+    const q = state.queue;
+    if (q.length < 2) return null;
+    const pending = shuffleBag.next.find(t => q.indexOf(t) >= 0 && t !== q[state.queueIndex]);
+    if (pending) return pending;
+    if (shuffleBag.planned && q.indexOf(shuffleBag.planned) >= 0 && shuffleBag.planned !== q[state.queueIndex]) return shuffleBag.planned;
+    const played = shuffleBag.queue === q ? shuffleBag.played : new Set();
+    let pool = q.filter((t, i) => i !== state.queueIndex && !played.has(t));
+    if (!pool.length) pool = q.filter((t, i) => i !== state.queueIndex);
+    shuffleBag.planned = pool[Math.floor(Math.random() * pool.length)] || null;
+    return shuffleBag.planned;
+  }
+
   function recordPlayedIndex(idx) {
     if (typeof idx !== 'number' || idx < 0) return;
     const h = state.queueHistory;
@@ -5401,6 +5437,11 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   function playNext() {
+    advancing = true;
+    try { playNextSong(); } finally { advancing = false; }
+  }
+
+  function playNextSong() {
     if (state.queue.length === 0) return;
 
     if (!state._isNaturalEnding && state.myWaveActive && state.currentTrack) {
@@ -5487,6 +5528,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       state.isPlaying = false;
       document.body.classList.remove('is-playing');
       updatePlayPauseButton(false, false);
+      if (skipUnplayable(state.loadToken, state.currentTrack)) return;
       if (state.currentTrack.platform === 'local') showToast('File missing from library');
       else showToast('Could not play this song. Try again or skip.', 'error');
     });
@@ -5509,12 +5551,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     el.nativeAudio.addEventListener('playing', () => {
+      failStreak = 0;
       state.isPlaying = true;
       document.body.classList.add('is-playing');
       updatePlayPauseButton(true, false);
       // warm up the next two songs (staggered) so skipping or a slow network never leaves a gap
-      [1, 2].forEach((ahead, k) => {
-        const nextTrack = state.queue && state.queue[state.queueIndex + ahead];
+      const upcoming = state.isShuffle ? [planShuffleNext()] : [1, 2].map(ahead => state.queue && state.queue[state.queueIndex + ahead]);
+      upcoming.forEach((nextTrack, k) => {
         if (nextTrack && nextTrack.url && nextTrack.platform !== 'local') {
           setTimeout(() => {
             fetch(`http://127.0.0.1:${state.serverPort}/api/prefetch?url=${encodeURIComponent(nextTrack.url)}&id=${encodeURIComponent(nextTrack.id || '')}&platform=${nextTrack.platform || state.platform}&title=${encodeURIComponent(nextTrack.title || '')}&artist=${encodeURIComponent(nextTrack.artist || '')}&duration=${encodeURIComponent(nextTrack.duration || 0)}&thumbnail=${encodeURIComponent(nextTrack.thumbnail || '')}`).catch(() => {});

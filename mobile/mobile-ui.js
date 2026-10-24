@@ -229,6 +229,10 @@
     storageGroup.append(limitRow, logRow);
   }
 
+  // the desktop placeholder doesn't fit beside the source buttons on a phone
+  const searchInput = document.getElementById('search-input');
+  if (searchInput) searchInput.placeholder = 'Search songs, artists…';
+
   // iPhone: lyrics on the lock screen and in the Dynamic Island (mobile/live-activity.js)
   const trRow = document.getElementById('btn-tr-enabled') && document.getElementById('btn-tr-enabled').closest('.setting-item');
   if (window.MurielLiveActivity && trRow) {

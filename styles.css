@@ -431,6 +431,8 @@ body.is-playing .shape-triangle {
   position: relative;
   display: flex;
   align-items: center;
+  min-width: 0;
+  overflow: hidden;
   background: var(--md-sys-color-surface-container);
   border-radius: var(--md-shape-corner-full);
   padding: 0 16px;
@@ -458,7 +460,13 @@ body.is-playing .shape-triangle {
 }
 
 .search-box input {
-  flex: 1;
+  /* an input keeps its default width (about 20 characters) unless told it may shrink: on phones the text ran
+     out of the rounded box and under the source buttons beside it */
+  flex: 1 1 0;
+  min-width: 0;
+  width: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   background: transparent;
   border: none;
   outline: none;
@@ -471,6 +479,7 @@ body.is-playing .shape-triangle {
 }
 
 .search-clear-btn {
+  flex-shrink: 0;
   background: none;
   border: none;
   color: var(--md-sys-color-on-surface-variant);

@@ -47,6 +47,8 @@ html.is-mobile .top-nav.search-pos-middle .search-box-wrapper {
   max-width: none !important;
 }
 html.is-mobile .search-box { width: 100% !important; height: 42px !important; }
+/* the full placeholder never fits next to the source buttons on a phone */
+html.is-mobile .search-box input::placeholder { text-overflow: ellipsis; }
 
 /* ---------- main area ---------- */
 html.is-mobile .app-layout {
