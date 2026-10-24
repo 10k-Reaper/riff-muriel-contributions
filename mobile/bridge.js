@@ -199,4 +199,5 @@ if (Capacitor.getPlatform() === 'android') {
 ready = start();
 window.electronAPI = electronAPI({ ready, port: PORT, fs, fileUrlFor });
 require('./live-activity')();
+require('./media-controls')();
 document.documentElement.classList.add('is-mobile');
