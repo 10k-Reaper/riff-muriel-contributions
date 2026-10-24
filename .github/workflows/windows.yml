@@ -4,7 +4,7 @@ name: Windows build
 # rolling "windows-latest" release.
 on:
   push:
-    branches: [muriel, main]
+    branches: [main]
     paths-ignore: ['**.md', 'LICENSE', 'ios/**', 'android/**']
   workflow_dispatch:
 
@@ -20,6 +20,8 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - uses: actions/setup-node@v4
         with:
@@ -45,10 +47,15 @@ jobs:
           path: Muriel.exe
 
       - name: Publish to the windows-latest release
+        if: github.ref == 'refs/heads/main'
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          # only the newest commit on main replaces the public build (a re-run of an older run would
+          # otherwise put an older build back)
+          head="$(gh api "repos/$GITHUB_REPOSITORY/commits/main" --jq .sha)"
+          if [ "$head" != "$GITHUB_SHA" ]; then echo "main is at ${head::7} now; not publishing ${GITHUB_SHA::7}"; exit 0; fi
           gh release delete windows-latest --cleanup-tag --yes 2>/dev/null || true
           gh release create windows-latest Muriel.exe \
             --prerelease \
