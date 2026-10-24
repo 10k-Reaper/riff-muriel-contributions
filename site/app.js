@@ -1,8 +1,8 @@
-// Picks the right download for the visitor's device and shows live numbers from the GitHub releases:
-// the download counter, file sizes, the latest desktop version and how old the newest build is.
+// Muriel's site. Picks the right download for the visitor's device and shows live numbers from GitHub:
+// the download counter, file sizes, the latest desktop version, how old the newest build is, and stars.
 (() => {
   const REPO = 'cloverscripts/riff-muriel';
-  const API = `https://api.github.com/repos/${REPO}/releases?per_page=100`;
+  const API = `https://api.github.com/repos/${REPO}`;
   const SOURCE_URL = `https://github.com/${REPO}/releases/download/ios-latest/sidestore.json`;
   const REFRESH_MS = 90 * 1000; // GitHub allows 60 unauthenticated requests an hour per visitor
   const $ = (id) => document.getElementById(id);
@@ -11,27 +11,69 @@
     set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} },
   };
 
-  // ---- your device first ----
+  // ---- your device ----
   const ua = navigator.userAgent;
   const touchMac = navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1;
+  const linuxDesktop = /Linux|X11/.test(ua) && !/Android|Mac/.test(ua);
   const os = /iPhone|iPad|iPod/.test(ua) || touchMac ? 'ios'
     : /Android/i.test(ua) ? 'android'
     : /Windows/i.test(ua) ? 'windows'
     : /Macintosh|Linux|X11/i.test(ua) ? 'desktop' : null;
+  const OS_NAME = { android: 'Android', ios: 'iPhone', windows: 'Windows', desktop: linuxDesktop ? 'Linux' : 'Mac' };
   $('dl-sidestore').href = `sidestore://source?url=${encodeURIComponent(SOURCE_URL)}`;
-  const main = $('main-dl');
-  const mainLabel = { android: 'Download for Android', windows: 'Download for Windows', ios: 'Get it on iPhone', desktop: /Linux|X11/.test(ua) && !/Mac/.test(ua) ? 'Download for Linux' : 'Download for Mac' };
-  if (os) {
-    main.textContent = mainLabel[os];
-    if (os === 'android' || os === 'windows') main.href = $(`dl-${os}`).href;
-    const card = document.querySelector(`.dl .card[data-os="${os}"]`);
-    if (card) { card.classList.add('mine'); card.parentElement.prepend(card); }
+
+  // where "Download" goes: the file itself where one tap installs, otherwise the right tab
+  function mainHref() {
+    if (os === 'android') return $('dl-android').href;
+    if (os === 'windows') return $('dl-windows').href;
+    if (os === 'desktop') return (linuxDesktop ? $('dl-linux') : $('dl-mac-arm')).href;
+    return '#download';
   }
+  function updateMainLinks() {
+    const href = mainHref();
+    ['main-dl', 'np-play', 'np-get'].forEach((id) => { $(id).href = href; });
+  }
+  if (os) {
+    $('main-dl-label').textContent = `Download for ${OS_NAME[os]}`;
+    $('main-dl').setAttribute('aria-label', `Download Muriel for ${OS_NAME[os]}`);
+    $('np-title').textContent = `Muriel for ${OS_NAME[os]}`;
+    $('np-get').textContent = os === 'ios' ? 'Get it' : 'Download';
+  }
+  updateMainLinks();
+
+  // ---- platform tabs ----
+  const tabs = [...document.querySelectorAll('[role="tab"]')];
+  function selectTab(name, focus) {
+    tabs.forEach((t) => {
+      const on = t.dataset.os === name;
+      t.setAttribute('aria-selected', on ? 'true' : 'false');
+      t.tabIndex = on ? 0 : -1;
+      $(t.getAttribute('aria-controls')).hidden = !on;
+      if (on && focus) t.focus();
+    });
+  }
+  tabs.forEach((t, i) => {
+    t.addEventListener('click', () => selectTab(t.dataset.os));
+    t.addEventListener('keydown', (e) => {
+      const step = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;
+      if (!step) return;
+      e.preventDefault();
+      selectTab(tabs[(i + step + tabs.length) % tabs.length].dataset.os, true);
+    });
+  });
+  const mineTab = tabs.find((t) => t.dataset.os === os);
+  if (mineTab) mineTab.classList.add('mine');
+  selectTab(os || 'android');
+  // the sidebar's library opens the matching tab
+  document.querySelectorAll('[data-os-link]').forEach((b) => b.addEventListener('click', () => {
+    selectTab(b.dataset.osLink);
+    $('download').scrollIntoView({ behavior: 'smooth' });
+  }));
 
   // ---- download counter ----
   // The phone and Windows builds are "rolling" releases that every build replaces, and GitHub resets a
   // file's count when it is replaced. Each build therefore writes the total so far into its release
-  // notes (see .github/carry-downloads.sh); SEED covers releases made before that existed.
+  // notes (see .github/carry-downloads.sh); seed covers releases made before that existed.
   const ROLLING = {
     'android-latest': { file: 'Muriel.apk', platform: 'android', seed: 3530 },
     'ios-latest': { file: 'Muriel.ipa', platform: 'ios', seed: 1640 },
@@ -39,7 +81,7 @@
   };
   const PLATFORMS = [
     ['android', 'Android', 'var(--android)'],
-    ['ios', 'iPhone', 'var(--ios)'],
+    ['ios', 'iPhone', 'var(--ios-c)'],
     ['windows', 'Windows', 'var(--windows)'],
     ['mac', 'Mac', 'var(--mac)'],
     ['linux', 'Linux', 'var(--linux)'],
@@ -113,14 +155,14 @@
     const total = Object.values(per).reduce((a, b) => a + b, 0);
     setOdometer(total);
     $('count-sr').textContent = `${fmt(total)} downloads`;
-    $('split').innerHTML = PLATFORMS.filter(([k]) => per[k] > 0)
-      .map(([k, , color]) => `<span style="flex-grow:${per[k]};background:${color}" title="${k}"></span>`).join('');
-    $('legend').innerHTML = PLATFORMS.filter(([k]) => per[k] > 0)
-      .map(([k, label, color]) => `<li><i style="background:${color}"></i>${label} <b>${fmt(per[k])}</b></li>`).join('');
+    const ranked = PLATFORMS.filter(([k]) => per[k] > 0).sort((a, b) => per[b[0]] - per[a[0]]);
+    const top = ranked.length ? per[ranked[0][0]] : 1;
+    $('ranks').innerHTML = ranked.map(([k, label, color]) => `<li style="--c:${color}"><b>${label}</b><span class="c">${fmt(per[k])}</span><span class="bar"><i style="width:${Math.max(2, (per[k] / top) * 100)}%"></i></span></li>`).join('');
     const cardCounts = { android: per.android, ios: per.ios, windows: per.windows, desktop: per.mac + per.linux };
     document.querySelectorAll('[data-count]').forEach((el) => {
       const n = cardCounts[el.dataset.count];
-      el.textContent = n ? `${fmt(n)} downloads` : '';
+      if (!el.dataset.fallback) el.dataset.fallback = el.textContent;
+      el.textContent = n ? `${fmt(n)} downloads` : el.dataset.fallback;
     });
   }
 
@@ -156,7 +198,8 @@
       $('linux-line').textContent = `mkdir -p ~/Applications && curl -L -o ~/Applications/Muriel.AppImage ${appImage.browser_download_url} && chmod +x ~/Applications/Muriel.AppImage && ~/Applications/Muriel.AppImage`;
     }
     $('rel-version').textContent = rel.tag_name;
-    if (os === 'desktop') main.href = (/Linux|X11/.test(ua) && !/Mac/.test(ua) ? $('dl-linux') : $('dl-mac-arm')).href;
+    $('np-sub').textContent = `${rel.tag_name} · free, no ads`;
+    updateMainLinks();
   }
 
   // ---- live updates ----
@@ -167,7 +210,7 @@
   async function refresh() {
     lastFetch = Date.now();
     try {
-      const res = await fetch(API, { headers: { Accept: 'application/vnd.github+json' } });
+      const res = await fetch(`${API}/releases?per_page=100`, { headers: { Accept: 'application/vnd.github+json' } });
       if (!res.ok) throw new Error(String(res.status));
       const releases = await res.json();
       const per = countDownloads(releases);
@@ -181,6 +224,7 @@
       $('live-text').textContent = cached || odo.dataset.text ? 'Live updates paused for now' : 'Couldn’t reach GitHub';
       document.querySelector('.pulse').classList.add('off');
       if (!odo.dataset.text) odo.innerHTML = '<span class="odo-wait">—</span>';
+      if (!$('ranks').children.length) $('ranks').innerHTML = '<li class="wait">Couldn’t load the numbers right now.</li>';
     }
     clearTimeout(timer);
     if (!document.hidden) timer = setTimeout(refresh, REFRESH_MS);
@@ -191,6 +235,53 @@
     else { clearTimeout(timer); timer = setTimeout(refresh, REFRESH_MS - (Date.now() - lastFetch)); }
   });
   refresh();
+
+  // stars, once per visit
+  const showStars = (n) => document.querySelectorAll('.stars-n').forEach((el) => { el.textContent = fmt(n); });
+  const cachedStars = store.get('muriel_site_stars');
+  if (cachedStars) showStars(cachedStars);
+  fetch(API, { headers: { Accept: 'application/vnd.github+json' } })
+    .then((r) => (r.ok ? r.json() : null))
+    .then((j) => { if (j && Number.isFinite(j.stargazers_count)) { showStars(j.stargazers_count); store.set('muriel_site_stars', j.stargazers_count); } })
+    .catch(() => {});
+
+  // ---- the player bar: the page is the "song" ----
+  const sections = [...document.querySelectorAll('#top, #features, #screens, #download, #faq')];
+  const nameOf = (s) => s.dataset.secName || s.id;
+  const navLinks = [...document.querySelectorAll('.side-nav a')];
+  function currentIndex() {
+    const line = window.innerHeight * 0.35;
+    let idx = 0;
+    sections.forEach((s, i) => { if (s.getBoundingClientRect().top <= line) idx = i; });
+    return idx;
+  }
+  let ticking = false;
+  function onScroll() {
+    ticking = false;
+    const max = document.documentElement.scrollHeight - window.innerHeight;
+    const p = max > 0 ? Math.min(1, window.scrollY / max) : 0;
+    $('scroll-prog').style.width = `${p * 100}%`;
+    $('prog-line').style.width = `${p * 100}%`;
+    const i = currentIndex();
+    $('sec-now').textContent = nameOf(sections[i]);
+    $('sec-left').textContent = i < sections.length - 1 ? nameOf(sections[i + 1]) : 'The end';
+    navLinks.forEach((a) => a.classList.toggle('on', a.dataset.sec === sections[i].id));
+  }
+  window.addEventListener('scroll', () => { if (!ticking) { ticking = true; requestAnimationFrame(onScroll); } }, { passive: true });
+  window.addEventListener('resize', onScroll, { passive: true });
+  onScroll();
+  const jump = (d) => {
+    const i = Math.max(0, Math.min(sections.length - 1, currentIndex() + d));
+    sections[i].scrollIntoView({ behavior: 'smooth' });
+  };
+  $('sec-prev').addEventListener('click', () => jump(-1));
+  $('sec-next').addEventListener('click', () => jump(1));
+
+  // screenshot shelf arrows
+  const shelf = $('shelf');
+  document.querySelectorAll('[data-scroll]').forEach((b) => b.addEventListener('click', () => {
+    shelf.scrollBy({ left: Number(b.dataset.scroll) * shelf.clientWidth * 0.8, behavior: 'smooth' });
+  }));
 
   document.querySelectorAll('[data-copy]').forEach((b) => b.addEventListener('click', async () => {
     try {
