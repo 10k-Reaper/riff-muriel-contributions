@@ -21,3 +21,12 @@ test('dedupe uses the comparator, not raw ids', () => {
 test('dedupe returns an empty list for non-arrays', () => {
   assert.deepStrictEqual(dedupeTracks(null, sameById), []);
 });
+
+test('dedupe with a key function keeps the same copies without comparing pairs', () => {
+  const list = Array.from({ length: 6000 }, (_, i) => ({ id: `t${i % 4000}` }));
+  const noPairs = () => { throw new Error('compared a pair'); };
+  const kept = dedupeTracks(list, noPairs, (t) => t.id);
+  assert.strictEqual(kept.length, 4000);
+  assert.deepStrictEqual(kept.slice(0, 3).map((t) => t.id), ['t0', 't1', 't2']);
+  assert.deepStrictEqual(kept.map((t) => t.id), dedupeTracks(list.slice(0, 4000), sameById).map((t) => t.id));
+});

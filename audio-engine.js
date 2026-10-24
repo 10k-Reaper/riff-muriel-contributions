@@ -242,7 +242,6 @@
           this.normLimiter.connect(this.analyserNode);
           this.analyserNode.connect(this.fadeGain);
           this.fadeGain.connect(this.ctx.destination);
-          this.eqHigh.connect(this.levelAnalyser);
 
           this.graphInitialized = true;
           this._updateRouting();
@@ -312,6 +311,9 @@
 
       this.bus.connect(this.dryGain);
       this.dryGain.connect(this.masterGain);
+      // the level meter for "Normalize volume" listens on the bus: tapped off the EQ chain it heard nothing
+      // while the EQ was flat (the default), so normalizing never kicked in
+      if (this.levelAnalyser) this.bus.connect(this.levelAnalyser);
 
       if (isDistortionOn) {
         this.bus.connect(this.distortionNode);

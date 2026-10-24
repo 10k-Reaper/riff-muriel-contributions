@@ -1,6 +1,7 @@
 // Muriel Encore: counts what you actually listen to (a play counts after 30s, or half of a short song) and
 // plays it back: the "On repeat" top 3 on the home page and a story-style recap you can open any time.
-// Everything stays on the device (localStorage, ~a few KB per month of listening).
+// Everything stays on the device (localStorage). Listening older than ~13 months is folded into one
+// all-time total per song (compact below), so the data stays small however long Muriel is used.
 (() => {
   const KEY = 'muriel_listens_v1';
   const COUNT_AFTER = 30;
@@ -8,7 +9,8 @@
   const PERIODS = { week: 'This week', month: 'This month', year: 'This year', all: 'All time' };
 
   // ---------- storage ----------
-  // { v, tracks: { key: {t,a,th,id,p,u,d} }, days: { 'YYYY-MM-DD': { k: { key: [plays, seconds] }, h: [24] } } }
+  // { v, tracks: { key: {t,a,th,id,p,u,d} }, days: { 'YYYY-MM-DD': { k: { key: [plays, seconds] }, h: [24] } },
+  //   old: { k: { key: [plays, seconds] }, h: [24], days, secs } }  (days folded away by compact)
   let db;
   try { db = JSON.parse(localStorage.getItem(KEY) || 'null'); } catch (e) { db = null; }
   if (!db || db.v !== 1 || typeof db.days !== 'object') db = { v: 1, tracks: {}, days: {} };
@@ -17,6 +19,37 @@
   const saveSoon = () => { if (!saveTimer) saveTimer = setTimeout(save, 5000); };
 
   const pad = (n) => String(n).padStart(2, '0');
+
+  // Days were kept forever (up to ~1 MB a year for a heavy listener) in the ~5 MB of browser storage that
+  // favorites, playlists and the queue share; once full, saving anything failed. Days older than keepDays
+  // fold into db.old (only "All time" reads it), songs nothing refers to are dropped, and songs in the
+  // folded bucket that were never fully played keep only their minutes.
+  const KEEP_DAYS = 400;
+  function compact(keepDays = KEEP_DAYS) {
+    const d0 = new Date(Date.now() - keepDays * 864e5);
+    const cutoff = `${d0.getFullYear()}-${pad(d0.getMonth() + 1)}-${pad(d0.getDate())}`;
+    let changed = false;
+    for (const [d, b] of Object.entries(db.days)) {
+      if (d >= cutoff) continue;
+      const old = db.old || (db.old = { k: {}, h: new Array(24).fill(0), days: 0, secs: 0 });
+      let any = false;
+      for (const [k, [n, sec]] of Object.entries(b.k || {})) {
+        if (n || sec > 20) any = true;
+        if (!n) { old.secs += sec; continue; }
+        const e = old.k[k] || (old.k[k] = [0, 0]);
+        e[0] += n; e[1] += sec;
+      }
+      (b.h || []).forEach((n, i) => { old.h[i] += n; });
+      if (any) old.days += 1;
+      delete db.days[d];
+      changed = true;
+    }
+    const used = new Set(Object.keys((db.old && db.old.k) || {}));
+    for (const b of Object.values(db.days)) for (const k of Object.keys(b.k || {})) used.add(k);
+    for (const k of Object.keys(db.tracks)) if (!used.has(k)) { delete db.tracks[k]; changed = true; }
+    if (changed) save();
+    return changed;
+  }
   const dayKey = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
   const keyOf = (t) => {
     if (!t) return '';
@@ -122,6 +155,16 @@
       (b.h || []).forEach((n, i) => { hours[i] += n; });
       if (any) activeDays.push(d);
     }
+    let foldedDays = 0;
+    if (period === 'all' && db.old) {
+      for (const [k, [n, sec]] of Object.entries(db.old.k)) {
+        const e = per[k] || (per[k] = { key: k, plays: 0, secs: 0 });
+        e.plays += n; e.secs += sec; plays += n; secs += sec;
+      }
+      secs += db.old.secs || 0;
+      (db.old.h || []).forEach((n, i) => { hours[i] += n; });
+      foldedDays = db.old.days || 0;
+    }
     const songs = Object.values(per).filter((e) => e.plays > 0 && db.tracks[e.key])
       .sort((x, y) => y.plays - x.plays || y.secs - x.secs)
       .map((e) => { const t = db.tracks[e.key]; return { ...e, ...cleanTitle(t.t, t.a), raw: t }; });
@@ -136,7 +179,7 @@
     activeDays.sort();
     let streak = 0, run = 0, prev = null;
     activeDays.forEach((d) => { const t = Date.parse(d); run = prev !== null && t - prev <= 26 * 3600e3 ? run + 1 : 1; streak = Math.max(streak, run); prev = t; });
-    return { period, plays, minutes: Math.round(secs / 60), songs, artists: Object.values(artists).sort((x, y) => y.plays - x.plays), hours, days: activeDays.length, streak };
+    return { period, plays, minutes: Math.round(secs / 60), songs, artists: Object.values(artists).sort((x, y) => y.plays - x.plays), hours, days: activeDays.length + foldedDays, streak };
   }
   const toTrack = (s) => ({ id: s.raw.id, title: s.raw.t, artist: s.raw.a, thumbnail: s.raw.th, platform: s.raw.p, url: s.raw.u, duration: s.raw.d });
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -282,9 +325,14 @@
     overlay = document.createElement('div');
     overlay.className = 'encore';
     overlay.setAttribute('role', 'dialog');
+    overlay.setAttribute('aria-modal', 'true');
     overlay.setAttribute('aria-label', 'Muriel Encore');
+    overlay.tabIndex = -1;
+    returnFocus = document.activeElement;
     document.body.appendChild(overlay);
     render(period);
+    // focus inside, so Space/Enter and Tab don't land on the page behind
+    try { overlay.focus({ preventScroll: true }); } catch (e) {}
     requestAnimationFrame(() => overlay && overlay.classList.add('open'));
     overlay.addEventListener('click', (e) => {
       const t = e.target;
@@ -306,16 +354,20 @@
     else if (e.key === 'ArrowRight') { e.preventDefault(); show(slide + 1); }
     else if (e.key === 'ArrowLeft') { e.preventDefault(); show(slide - 1); }
   }
+  let returnFocus = null;
   function close() {
     if (!overlay) return;
     clearTimeout(timer); cancelAnimationFrame(raf);
     document.removeEventListener('keydown', onKey, true);
     const o = overlay; overlay = null;
+    if (returnFocus && returnFocus.focus && document.contains(returnFocus)) { try { returnFocus.focus({ preventScroll: true }); } catch (e) {} }
+    returnFocus = null;
     o.classList.remove('open');
     setTimeout(() => o.remove(), 300);
   }
 
-  window.MurielEncore = { open, stats, close };
+  window.MurielEncore = { open, stats, close, compact };
+  try { compact(); } catch (e) {}
   const histBtn = document.getElementById('btn-open-encore');
   if (histBtn) histBtn.addEventListener('click', () => open('month'));
   if (window.MurielCore) hook(); else window.addEventListener('muriel:ready', hook, { once: true });

@@ -1,4 +1,3 @@
-
 (() => {
   try {
     if (typeof window === 'undefined' || window.__riffFetchPatched) return;
@@ -20,6 +19,27 @@
         }
       } catch (e) {}
       return origFetch(input, init);
+    };
+  } catch (e) {}
+})();
+
+// localStorage (~5 MB) holds favorites, playlists, history, the queue and Encore. When it was full, every
+// setItem threw: a song tap failed before the stream was even requested and new favorites vanished on restart.
+// Free what can be rebuilt (the phone debug log, old Encore days) and retry; if it still doesn't fit, report
+// it once a minute instead of throwing into whatever the app was doing.
+(() => {
+  try {
+    const orig = Storage.prototype.setItem;
+    let reportedAt = 0;
+    Storage.prototype.setItem = function setItem(key, value) {
+      try { return orig.call(this, key, value); } catch (e) {
+        if (!e || (e.name !== 'QuotaExceededError' && e.code !== 22 && e.code !== 1014)) throw e;
+        try { if (key !== 'muriel_debug_log') this.removeItem('muriel_debug_log'); } catch (_) {}
+        try { if (window.MurielEncore && window.MurielEncore.compact) window.MurielEncore.compact(90); } catch (_) {}
+        try { return orig.call(this, key, value); } catch (e2) {
+          if (Date.now() - reportedAt > 60000) { reportedAt = Date.now(); window.dispatchEvent(new CustomEvent('muriel:storage-full', { detail: key })); }
+        }
+      }
     };
   } catch (e) {}
 })();
@@ -608,7 +628,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (lastMedia.g === g && now - lastMedia.t < 350) return;
     lastMedia = { g, t: now };
     if (cmd === 'toggle') togglePlayPause();
-    else if (cmd === 'play') { if (!state.isPlaying) playSmooth(); }
+    // togglePlayPause also handles a restored session that has no audio loaded yet (lock screen / headset play)
+    else if (cmd === 'play') { if (!state.isPlaying) togglePlayPause(); }
     else if (cmd === 'pause') { if (state.isPlaying) pauseSmooth(); }
     else if (cmd === 'next') playNext();
     else if (cmd === 'prev') playPrev();
@@ -1572,6 +1593,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                           audioSettingsModal: document.getElementById('audio-settings-modal'),
                           btnCloseSettings: document.getElementById('btn-close-settings'),
                           sleepTimerStatus: document.getElementById('sleep-timer-status'),
+                          btnResetAudio: document.getElementById('btn-reset-audio'),
                           commandPalette: document.getElementById('command-palette'),
                           commandPaletteInput: document.getElementById('command-palette-input'),
                           commandPaletteResults: document.getElementById('command-palette-results'),
@@ -2041,6 +2063,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   function resetLevelWatcher() { levelAvgDb = -120; if (audioEngine && audioEngine.setNormalizeGainDb) audioEngine.setNormalizeGainDb(0); }
   // the phone app has no Web Audio graph (see mobile-ui.js), so nothing to measure there
   const isPhoneApp = document.documentElement.classList.contains('is-mobile');
+  window.addEventListener('muriel:storage-full', () => showToast('Storage is full: some changes could not be saved', 'error'));
+  // <audio>/<img> can't send the token header the fetch wrapper adds, so local-server media URLs carry it
+  const tokenUrl = (u) => {
+    const t = window.electronAPI && window.electronAPI.serverToken;
+    return t ? `${u}${u.includes('?') ? '&' : '?'}t=${encodeURIComponent(t)}` : u;
+  };
   if (!isPhoneApp) setInterval(() => {
     if (!normalizeEnabled()) {
       if (levelAvgDb > -120) resetLevelWatcher();
@@ -2620,6 +2648,16 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   function syncSettingsSlidersToState() {
     const s = state.audioSettings;
+    // the engine dropdown is plain markup that always said hqmusic-3, whatever engine was saved or reset to
+    const engine = state.hqSettings && state.hqSettings.engine;
+    if (engine) {
+      if (el.hqEngineSelect) el.hqEngineSelect.value = engine;
+      const opts = document.querySelectorAll('#hq-engine-menu .m3-dropdown-option');
+      opts.forEach(o => o.classList.toggle('selected', o.dataset.value === engine));
+      const picked = [...opts].find(o => o.dataset.value === engine);
+      const label = document.getElementById('hq-engine-label');
+      if (picked && label) label.textContent = picked.textContent;
+    }
     if (el.sliderSpeed) el.sliderSpeed.value = s.speed;
     if (el.valSpeed) el.valSpeed.textContent = `${s.speed.toFixed(2)}x`;
 
@@ -3015,6 +3053,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
   let navigatingBack = false;
 
+  const shuffleBag = { queue: null, played: new Set(), next: [] }; // see pickShuffleIndex
+
   async function playTrack(track, queueList = null, startIndex = -1, context = null) {
     if (!track || !el.nativeAudio) return;
     resetLevelWatcher();
@@ -3089,6 +3129,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     if (queueList) {
       state.queue = [...queueList];
+      shuffleBag.next = [];
       if (startIndex >= 0 && startIndex < state.queue.length && isSameTrack(state.queue[startIndex], track)) {
         state.queueIndex = startIndex;
       } else {
@@ -3125,7 +3166,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     try {
       if (track.platform === 'local') {
-        const streamUrl = `http://127.0.0.1:${state.serverPort}/api/library-file?id=${encodeURIComponent(track.id)}`;
+        const streamUrl = tokenUrl(`http://127.0.0.1:${state.serverPort}/api/library-file?id=${encodeURIComponent(track.id)}`);
         if (currentToken !== state.loadToken) return;
         el.nativeAudio.preload = 'auto';
         el.nativeAudio.src = streamUrl;
@@ -3181,6 +3222,22 @@ document.addEventListener('DOMContentLoaded', async () => {
           if (currentToken === state.loadToken) {
             playSmooth();
           }
+        });
+        // without this a dead HLS stream just sat on the loading spinner
+        hlsInstance.on(Hls.Events.ERROR, (evt, info) => {
+          if (!info || !info.fatal || currentToken !== state.loadToken) return;
+          const hls = hlsInstance;
+          if (info.type === Hls.ErrorTypes.MEDIA_ERROR && !hls._murielRecovered) {
+            hls._murielRecovered = true;
+            try { hls.recoverMediaError(); return; } catch (e) {}
+          }
+          try { hls.destroy(); } catch (e) {}
+          if (hlsInstance === hls) hlsInstance = null;
+          state.isPlaying = false;
+          document.body.classList.remove('is-playing');
+          updatePlayPauseButton(false, false);
+          if (el.trackLoadingOverlay) el.trackLoadingOverlay.classList.add('hidden');
+          showToast('Could not play this song. Try again or skip.', 'error');
         });
       } else {
         el.nativeAudio.src = data.streamUrl;
@@ -3294,6 +3351,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     state.forceSnapLyrics = true;
     state.syncedLyrics = [];
     state.isCustomLyrics = false;
+    // the previous song's translations were shown under the new song's lines until its own translation loaded
+    state.currentTranslations = null;
 
     try {
       // skipping through songs fired one lookup (several lrclib requests) per song and got rate limited
@@ -4945,8 +5004,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (el.customLyricsTrackTitle) el.customLyricsTrackTitle.textContent = (state.currentTrack.title || 'untitled');
     if (el.customLyricsTrackArtist) el.customLyricsTrackArtist.textContent = (state.currentTrack.artist || '');
 
+    // the editor stays open across song changes: remember which song it is for
+    customLyricsFor = { title: state.currentTrack.title || '', artist: state.currentTrack.artist || '' };
     if (state.syncedLyrics.length > 0) {
-      if (el.customLyricsTextarea) el.customLyricsTextarea.value = state.syncedLyrics.map(l => l.text).join('\n');
+      // keep the timestamps, or fixing a typo in synced lyrics saved them unsynced
+      if (el.customLyricsTextarea) el.customLyricsTextarea.value = state.syncedLyrics.map(l => (l.time >= 0 ? `${lrcStamp(l.time)}${l.text}` : l.text)).join('\n');
     } else {
       if (el.customLyricsTextarea) el.customLyricsTextarea.value = '';
     }
@@ -4960,12 +5022,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (el.customLyricsModal) closeModal(el.customLyricsModal);
   }
 
+  let customLyricsFor = null;
+  const lrcStamp = (t) => `[${Math.floor(t / 60)}:${(t % 60).toFixed(2).padStart(5, '0')}]`;
+  const isCurrentSong = (s) => !!(s && state.currentTrack && (state.currentTrack.title || '') === s.title && (state.currentTrack.artist || '') === s.artist);
+
   async function saveCustomLyrics() {
-    if (!state.currentTrack || !el.customLyricsTextarea) return;
+    if (!customLyricsFor || !el.customLyricsTextarea) return;
     const text = el.customLyricsTextarea.value.trim();
 
-    const title = state.currentTrack.title || '';
-    const artist = state.currentTrack.artist || '';
+    const { title, artist } = customLyricsFor;
 
     try {
       const res = await fetch(
@@ -4981,7 +5046,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
       showToast(text ? 'Lyrics saved successfully' : 'Lyrics removed', 'info');
       closeCustomLyricsEditor();
-      loadSyncedLyrics(title, artist, state.loadToken);
+      if (isCurrentSong({ title, artist })) loadSyncedLyrics(title, artist, state.loadToken);
     } catch (e) {
       showToast('Failed to save lyrics: ' + e.message, 'error');
     }
@@ -5018,6 +5083,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     syncState.active = true;
     syncState.lines = state.syncedLyrics.map(l => ({ text: l.text, time: null }));
     syncState.currentIndex = 0;
+    // the overlay stays open when the song ends: the timings belong to this song, not whatever plays at Save
+    syncState.song = { title: state.currentTrack.title || '', artist: state.currentTrack.artist || '' };
 
     renderSyncLines();
     // the banner shipped with placeholder text and was never filled in
@@ -5077,6 +5144,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   function handleSyncLineClick(idx) {
     if (!syncState.active || !el.nativeAudio) return;
+    if (!isCurrentSong(syncState.song)) { showToast('The song changed. Save or restart the sync.', 'info'); return; }
 
     const currentTime = el.nativeAudio.currentTime || 0;
     syncState.lines[idx].time = currentTime;
@@ -5096,13 +5164,13 @@ document.addEventListener('DOMContentLoaded', async () => {
   function restartSync() {
     syncState.lines.forEach(l => l.time = null);
     syncState.currentIndex = 0;
-    if (el.nativeAudio) el.nativeAudio.currentTime = 0;
+    if (el.nativeAudio && isCurrentSong(syncState.song)) el.nativeAudio.currentTime = 0;
     renderSyncLines();
     showToast('Sync restarted', 'info');
   }
 
   async function saveSyncAndExit() {
-    if (!state.currentTrack) return;
+    if (!syncState.song) return;
 
     const lrcLines = syncState.lines.map(line => {
       if (line.time !== null) {
@@ -5114,8 +5182,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
     const lrcContent = lrcLines.join('\n');
 
-    const title = state.currentTrack.title || '';
-    const artist = state.currentTrack.artist || '';
+    const { title, artist } = syncState.song;
 
     try {
       const res = await fetch(
@@ -5131,7 +5198,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
       showToast('Synced lyrics saved', 'info');
       closeSyncMode();
-      loadSyncedLyrics(title, artist, state.loadToken);
+      if (isCurrentSong({ title, artist })) loadSyncedLyrics(title, artist, state.loadToken);
     } catch (e) {
       showToast('Failed to save synced lyrics: ' + e.message, 'error');
     }
@@ -5247,7 +5314,17 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     if (el.nativeAudio) {
-      el.nativeAudio.play().catch(e => console.warn('Play error:', e));
+      el.nativeAudio.play().catch(e => {
+        console.warn('Play error:', e);
+        // a refused play() (no gesture yet, source gone) left the button showing pause on a silent player.
+        // AbortError just means a newer load replaced this one.
+        if (curToken === smoothFadeToken && e && e.name !== 'AbortError' && el.nativeAudio.paused) {
+          state.isPlaying = false;
+          document.body.classList.remove('is-playing');
+          updatePlayPauseButton(false, false);
+          if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
+        }
+      });
     }
 
     if (!crossfadeFadeInPending && audioEngine && audioEngine.fadeGain && audioEngine.ctx) {
@@ -5277,9 +5354,12 @@ document.addEventListener('DOMContentLoaded', async () => {
       const resumeAt = state.queueRestorePosition || 0;
       state.queueRestorePosition = 0;
       playTrack(state.currentTrack, state.queue, state.queueIndex);
+      // playTrack bumps loadToken before its first await: a skip before the song loads must not seek the next one
+      const resumeToken = state.loadToken;
       if (resumeAt > 3) {
         const seekOnce = () => {
           el.nativeAudio.removeEventListener('loadedmetadata', seekOnce);
+          if (resumeToken !== state.loadToken) return;
           if (!el.nativeAudio.duration || resumeAt < el.nativeAudio.duration - 5) el.nativeAudio.currentTime = resumeAt;
         };
         el.nativeAudio.addEventListener('loadedmetadata', seekOnce);
@@ -5287,6 +5367,27 @@ document.addEventListener('DOMContentLoaded', async () => {
     } else {
       playSmooth();
     }
+  }
+
+  // Shuffle used to roll any index, the current song included (a third of Nexts in a 3-song queue replayed
+  // it), and never looked at "Play next". Now it plays the Play-next songs first, then songs not heard yet
+  // in this queue, and starts a new round once everything has played.
+  function pickShuffleIndex() {
+    const q = state.queue;
+    if (shuffleBag.queue !== q) { shuffleBag.queue = q; shuffleBag.played = new Set(); }
+    if (q[state.queueIndex]) shuffleBag.played.add(q[state.queueIndex]);
+    while (shuffleBag.next.length) {
+      const i = q.indexOf(shuffleBag.next.shift());
+      if (i >= 0 && i !== state.queueIndex) return i;
+    }
+    if (q.length < 2) return 0;
+    let pool = [];
+    q.forEach((t, i) => { if (i !== state.queueIndex && !shuffleBag.played.has(t)) pool.push(i); });
+    if (!pool.length) {
+      shuffleBag.played = new Set([q[state.queueIndex]]);
+      q.forEach((t, i) => { if (i !== state.queueIndex) pool.push(i); });
+    }
+    return pool[Math.floor(Math.random() * pool.length)];
   }
 
   function recordPlayedIndex(idx) {
@@ -5308,7 +5409,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     if (state.isShuffle) {
-      const nextIdx = Math.floor(Math.random() * state.queue.length);
+      const nextIdx = pickShuffleIndex();
       state.queueIndex = nextIdx;
       recordPlayedIndex(nextIdx);
       playTrack(state.queue[nextIdx]);
@@ -5318,8 +5419,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     let nextIdx = state.queueIndex + 1;
     if (nextIdx >= state.queue.length) {
       if (state.myWaveActive && typeof extendMyWaveQueue === 'function') {
+        const tok = state.loadToken;
         extendMyWaveQueue().then(added => {
-          if (added && state.queueIndex + 1 < state.queue.length) {
+          if (added && tok === state.loadToken && state.queueIndex + 1 < state.queue.length) {
             playNext();
           }
         });
@@ -5327,6 +5429,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
       nextIdx = 0;
     }
+    if (shuffleBag.next.length) shuffleBag.next = shuffleBag.next.filter(t => t !== state.queue[nextIdx]);
     state.queueIndex = nextIdx;
     recordPlayedIndex(nextIdx);
     playTrack(state.queue[nextIdx]);
@@ -5376,9 +5479,13 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (el.nativeAudio) {
     el.nativeAudio.addEventListener('error', () => {
       if (el.trackLoadingOverlay) el.trackLoadingOverlay.classList.add('hidden');
-      if (state.currentTrack && state.currentTrack.platform === 'local') {
-        showToast('File missing from library');
-      }
+      // only an error on the song that is actually loaded counts (unloading one between songs is not a failure)
+      if (!state.currentTrack || (!el.nativeAudio.src && !hlsInstance)) return;
+      state.isPlaying = false;
+      document.body.classList.remove('is-playing');
+      updatePlayPauseButton(false, false);
+      if (state.currentTrack.platform === 'local') showToast('File missing from library');
+      else showToast('Could not play this song. Try again or skip.', 'error');
     });
 
     el.nativeAudio.addEventListener('waiting', () => {
@@ -5540,7 +5647,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         : (state.currentTrack && Number.isFinite(state.currentTrack.duration) ? state.currentTrack.duration : 0);
 
       const X = parseInt(localStorage.getItem('muriel_crossfade') || '0', 10);
-      if (X > 0 && !crossfadeTriggered && !state.isRepeat && dur > X && cur >= dur - X && (!audioEngine || !audioEngine.isLiveStream(el.nativeAudio))) {
+      // "end of track" sleep timer: let the song end on its own so the ended handler can stop playback
+      const sleepAtEnd = !!(state.sleepTimer && state.sleepTimer.mode === 'end');
+      if (X > 0 && !crossfadeTriggered && !state.isRepeat && !sleepAtEnd && dur > X && cur >= dur - X && (!audioEngine || !audioEngine.isLiveStream(el.nativeAudio))) {
         crossfadeTriggered = true;
         crossfadeFadeInPending = true;
         if (audioEngine) audioEngine.fadeOut(X / 2);
@@ -5985,8 +6094,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
       if (currentAlbumPlayRunId !== runId) return;
 
-      for (let i = 0; i < tracks.length; i++) {
-        if (i === startIdx) continue;
+      // the album continues after the song that was clicked; the earlier songs come after the last one
+      // (they used to be queued right after it, so Next on track 4 played track 1)
+      for (let k = 1; k < tracks.length; k++) {
+        const i = (startIdx + k) % tracks.length;
         const cand = resolvedMap.get(i);
         if (!cand) continue;
         const alreadyInQueue = state.queue.some(q => isSameTrack(q, cand));
@@ -6166,8 +6277,15 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
   window.updateRowFade = updateRowFade;
 
+  // one window listener for all rows: each search added its own, which kept every old album row alive
+  const fadeRows = new Set();
+  window.addEventListener('resize', () => {
+    fadeRows.forEach(r => { if (r.isConnected) updateRowFade(r); else fadeRows.delete(r); });
+  }, { passive: true });
+
   function bindHorizontalWheel(row) {
-    if (!row) return;
+    if (!row || row._wheelBound) return;
+    row._wheelBound = true;
     row.addEventListener('wheel', (e) => {
       if (row.scrollWidth <= row.clientWidth) return;
       const delta = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
@@ -6178,7 +6296,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }, { passive: false });
 
     row.addEventListener('scroll', () => updateRowFade(row), { passive: true });
-    window.addEventListener('resize', () => updateRowFade(row), { passive: true });
+    fadeRows.add(row);
     updateRowFade(row);
   }
   window.bindHorizontalWheel = bindHorizontalWheel;
@@ -6364,10 +6482,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     updateMultiSelectBar();
   }
 
+  // only what the list shows: with a search typed in, "Select all" took every song and Remove deleted hidden ones
   function multiSelectSourceTracks() {
-    if (multiSel.context === 'favorites') return state.favorites;
-    const pl = state.playlists.find(p => p.id === state.currentPlaylistId);
-    return pl ? (pl.tracks || []) : [];
+    const fav = multiSel.context === 'favorites';
+    const pl = fav ? null : state.playlists.find(p => p.id === state.currentPlaylistId);
+    const all = fav ? state.favorites : (pl ? (pl.tracks || []) : []);
+    const input = fav ? el.favoritesSearchInput : el.playlistSearchInput;
+    const query = input ? normalizeSearch(input.value) : '';
+    return query ? all.filter(t => matchesTrackQuery(t, query)) : all;
   }
 
   function createTrackRow(track, idx, currentCanonicalId, context, tracks, container) {
@@ -6480,21 +6602,27 @@ document.addEventListener('DOMContentLoaded', async () => {
           }
           let clickIndex = idx;
           let currentList = tracks;
+          // the row's own object first: with a song in the list twice, the second copy played from the first
+          const indexIn = (list) => { const i = list.indexOf(track); return i >= 0 ? i : list.findIndex(t => isSameTrack(t, track)); };
           if (context === 'favorites') {
             currentList = sortTracksFor('favorites', state.favorites);
-            clickIndex = currentList.findIndex(t => isSameTrack(t, track));
+            clickIndex = indexIn(currentList);
           } else if (context === 'playlist') {
             const pl = state.playlists.find(p => p.id === state.currentPlaylistId);
             if (pl && pl.tracks) {
               currentList = sortTracksFor('playlist', pl.tracks);
-              clickIndex = currentList.findIndex(t => isSameTrack(t, track));
+              clickIndex = indexIn(currentList);
             }
           } else if (context === 'artist') {
             const artistTracks = (state.currentArtistData && state.currentArtistData.tracks) || tracks;
             if (artistTracks) {
               currentList = artistTracks;
-              clickIndex = artistTracks.findIndex(t => isSameTrack(t, track));
+              clickIndex = indexIn(artistTracks);
             }
+          } else if (context === 'queue') {
+            // the queue as it is now: the rendered list could predate "Play next", and replaying it dropped that song
+            currentList = state.queue;
+            clickIndex = indexIn(currentList);
           }
           playTrack(track, currentList, clickIndex >= 0 ? clickIndex : idx, context);
         });
@@ -6552,7 +6680,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (btnRemPl) {
           btnRemPl.addEventListener('click', (e) => {
             e.stopPropagation();
-            removeTrackFromCurrentPlaylist(track.id);
+            removeTrackFromCurrentPlaylist(track);
           });
         }
 
@@ -6613,11 +6741,20 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (!state.queue.length || state.queueIndex < 0) { playTrack(track); return; }
         state.queue = state.queue.filter((t, i) => i <= state.queueIndex || !isSameTrack(t, track));
         state.queue.splice(state.queueIndex + 1, 0, track);
+        // the filter made a new queue array; keep shuffle's "already heard" list instead of starting over
+        if (shuffleBag.queue) shuffleBag.queue = state.queue;
+        shuffleBag.next.push(track);
         updateQueueBadge();
         showToast('Playing next', 'success');
       } },
       { label: 'Add to queue', run: () => {
-        if (!state.queue.some(t => isSameTrack(t, track))) state.queue.push(track);
+        // only songs still to come count: one that already played is queued again
+        const upcoming = state.queue.findIndex((t, i) => i > state.queueIndex && isSameTrack(t, track));
+        if (upcoming >= 0 || (state.queue[state.queueIndex] && isSameTrack(state.queue[state.queueIndex], track))) {
+          showToast('Already in the queue', 'info');
+          return;
+        }
+        state.queue.push(track);
         updateQueueBadge();
         showToast('Added to queue', 'success');
       } },
@@ -6636,7 +6773,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       items.push({ label: 'Download…', run: () => openDownloadModal(track) });
     }
     if (context === 'playlist') {
-      items.push({ label: 'Remove from playlist', danger: true, run: () => removeTrackFromCurrentPlaylist(track.id) });
+      items.push({ label: 'Remove from playlist', danger: true, run: () => removeTrackFromCurrentPlaylist(track) });
     }
 
     const menu = document.createElement('div');
@@ -6828,9 +6965,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     } catch (e) {}
   }
 
+  let artistRunId = 0;
   async function openArtistProfile(artistName) {
     if (!artistName || !artistName.trim()) return;
     const cleanName = artistName.replace(/ - Topic|VEVO|Official|Records/gi, '').trim();
+    // a slow reply for an artist opened earlier must not replace the one opened since
+    const run = ++artistRunId;
 
     state.previousView = state.currentView;
     switchView('artist');
@@ -6876,6 +7016,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       const res = await fetch(`http://127.0.0.1:${state.serverPort}/api/artist?name=${encodeURIComponent(cleanName)}`, { signal: bioController.signal });
       clearTimeout(bioTimeout);
       const data = await res.json();
+      if (run !== artistRunId) return;
 
       if (!data.success || !data.artist) throw new Error('Artist not found');
 
@@ -6914,7 +7055,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
 
         getCoverDominantColors(data.artist.avatar).then(([domColor]) => {
-          if (state.currentView === 'artist' && heroCard) {
+          if (run === artistRunId && state.currentView === 'artist' && heroCard) {
             const c = domColor || 'var(--md-sys-color-primary-container)';
             heroCard.style.setProperty('--artist-accent-color', c);
             document.documentElement.style.setProperty('--artist-accent-color', c);
@@ -6933,10 +7074,11 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (el.artistTracksCount) el.artistTracksCount.textContent = `${data.artist.tracks.length} tracks`;
 
       requestAnimationFrame(() => {
-        if (el.artistTracksList) renderTracks(el.artistTracksList, data.artist.tracks, 'artist');
+        if (run === artistRunId && el.artistTracksList) renderTracks(el.artistTracksList, data.artist.tracks, 'artist');
       });
     } catch (e) {
       clearTimeout(bioTimeout);
+      if (run !== artistRunId) return;
       console.warn('Artist load error:', e);
       if (el.artistHeroBackdrop) el.artistHeroBackdrop.style.backgroundImage = '';
       if (heroCard) heroCard.style.setProperty('--artist-accent-color', 'var(--md-sys-color-primary-container)');
@@ -7062,14 +7204,27 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (el.historyTracksList) renderTracks(el.historyTracksList, state.history, 'history');
   }
 
+  let queueRerender = 0;
   function updateQueueBadge() {
     window.dispatchEvent(new Event('muriel:queue'));
     if (el.queueCount) { el.queueCount.textContent = state.queue.length; el.queueCount.style.display = state.queue.length ? 'inline-block' : 'none'; }
     scheduleQueueSave();
+    // an open queue list kept showing the old order after Play next / Add to queue
+    if (!queueRerender && (state.currentView === 'queue' || (state.isRightPanelOpen && state.drawerTab === 'queue'))) {
+      queueRerender = requestAnimationFrame(() => {
+        queueRerender = 0;
+        const list = el.queueTracksList;
+        // a plain skip keeps the same queue (the row highlight follows on its own); only redraw when it changed
+        if (list && (list._renderedQueue !== state.queue || list._renderedLen !== state.queue.length)) renderQueueView();
+      });
+    }
   }
 
   function renderQueueView() {
-    if (el.queueTracksList) renderTracks(el.queueTracksList, state.queue, 'queue');
+    if (!el.queueTracksList) return;
+    renderTracks(el.queueTracksList, state.queue, 'queue');
+    el.queueTracksList._renderedQueue = state.queue;
+    el.queueTracksList._renderedLen = state.queue.length;
   }
 
   function updateLocalBadge() {
@@ -7169,7 +7324,7 @@ document.addEventListener('DOMContentLoaded', async () => {
           const item = items[idx++];
           if (!item || !item.id) continue;
           await new Promise(resolve => {
-            const url = `http://127.0.0.1:${state.serverPort}/api/library-file?id=${encodeURIComponent(item.id)}`;
+            const url = tokenUrl(`http://127.0.0.1:${state.serverPort}/api/library-file?id=${encodeURIComponent(item.id)}`);
             // set src after construction: new Audio(url) skips the phone bridge's src rewrite
             const a = new Audio();
             a.preload = 'metadata';
@@ -7526,6 +7681,17 @@ document.addEventListener('DOMContentLoaded', async () => {
         item.style.transition = 'transform 160ms cubic-bezier(0.2, 0, 0, 1)';
         item.style.transform = `translate3d(0, ${targetSlotDy}px, 0) scale(1)`;
 
+        // Long track lists are virtualised (renderTracks): `items` is only the rendered slice, so positions
+        // in it are not positions in the list. Each row knows its real index; without this, a drag in a
+        // scrolled list reordered two other songs and saved that.
+        const absolute = (i) => {
+          const n = items[i] && items[i].dataset.trackIndex !== undefined ? Number(items[i].dataset.trackIndex) : NaN;
+          return Number.isFinite(n) ? n : i;
+        };
+        const fromAbs = startIndex >= 0 ? absolute(startIndex) : -1;
+        const toAbs = targetIndex >= 0 ? absolute(targetIndex) : -1;
+        const sliceStart = container._lastStartIndex > 0 ? container._lastStartIndex : 0;
+
         setTimeout(() => {
           if (targetIndex !== startIndex && targetIndex >= 0 && targetIndex < items.length) {
             const targetItem = items[targetIndex];
@@ -7550,13 +7716,13 @@ document.addEventListener('DOMContentLoaded', async () => {
           container.classList.add('no-enter-anim');
 
           container.querySelectorAll('.track-row').forEach((r, i) => {
-            r.dataset.trackIndex = String(i);
+            r.dataset.trackIndex = String(sliceStart + i);
             const num = r.querySelector('.track-row-index');
-            if (num) num.textContent = String(i + 1);
+            if (num) num.textContent = String(sliceStart + i + 1);
           });
 
-          if (startIndex !== -1 && targetIndex !== -1 && startIndex !== targetIndex) {
-            setOrder(startIndex, targetIndex);
+          if (fromAbs !== -1 && toAbs !== -1 && fromAbs !== toAbs) {
+            setOrder(fromAbs, toAbs);
           }
 
           container._isDraggingReorder = false;
@@ -7697,7 +7863,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       for (let i = pl.tracks.length - 1; i >= 0; i--) {
         const track = pl.tracks[i];
         if (!state.favorites.some(f => isSameTrack(f, track))) {
-          state.favorites.unshift(track);
+          state.favorites.unshift(stampAddedAt(track));
           added++;
         }
       }
@@ -7763,7 +7929,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     on('multi-select-fav', () => {
       let added = 0;
       multiSel.tracks.forEach(t => {
-        if (!state.favorites.some(f => isSameTrack(f, t))) { state.favorites.unshift(t); added++; }
+        if (!state.favorites.some(f => isSameTrack(f, t))) { state.favorites.unshift(stampAddedAt(t)); added++; }
       });
       localStorage.setItem('devsize_favorites', JSON.stringify(state.favorites));
       updateFavoritesBadge();
@@ -7796,10 +7962,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   })();
 
-  function removeTrackFromCurrentPlaylist(trackId) {
+  // takes the row's song object: a playlist can hold the same song twice, and removing one copy took all of them
+  function removeTrackFromCurrentPlaylist(track) {
     const pl = state.playlists.find(p => p.id === state.currentPlaylistId);
     if (!pl) return;
-    pl.tracks = pl.tracks.filter(t => t.id !== trackId);
+    const at = pl.tracks.indexOf(track);
+    if (at >= 0) pl.tracks.splice(at, 1);
+    else pl.tracks = pl.tracks.filter(t => !isSameTrack(t, track));
     localStorage.setItem('devsize_playlists', JSON.stringify(state.playlists));
     openPlaylistDetail(state.currentPlaylistId);
   }
@@ -9644,11 +9813,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (!getAdv('ui_alpha_auto', true)) return;
     if (enabled) {
       const now = currentUiAlpha();
-      if (now > 50) { localStorage.setItem('muriel_ui_alpha_prev', String(now)); setUiAlphaViaSlider(50); localStorage.setItem('muriel_ui_alpha_auto', '50'); }
-    } else if (!backgroundActive()) {
+      if (now > 50) { localStorage.setItem('muriel_ui_alpha_prev', String(now)); setUiAlphaViaSlider(50); localStorage.setItem('muriel_ui_alpha_auto', '50'); localStorage.setItem('muriel_ui_alpha_auto_kind', kind); }
+    } else {
+      // undo when the background that dimmed the interface goes away. Checking "no background at all" never
+      // passed with the cover background on (the default), so removing a custom one left the UI at 50%.
+      const autoKind = localStorage.getItem('muriel_ui_alpha_auto_kind');
+      if (autoKind ? autoKind !== kind : backgroundActive()) return;
       const auto = localStorage.getItem('muriel_ui_alpha_auto'), prev = localStorage.getItem('muriel_ui_alpha_prev');
       if (auto !== null && prev !== null && currentUiAlpha() === Number(auto)) setUiAlphaViaSlider(Number(prev));
-      localStorage.removeItem('muriel_ui_alpha_auto'); localStorage.removeItem('muriel_ui_alpha_prev');
+      localStorage.removeItem('muriel_ui_alpha_auto'); localStorage.removeItem('muriel_ui_alpha_prev'); localStorage.removeItem('muriel_ui_alpha_auto_kind');
     }
   }
 
@@ -10515,17 +10688,34 @@ document.addEventListener('DOMContentLoaded', async () => {
   const btnPerfMode = document.getElementById('btn-perf-mode');
   const initialPerfMode = localStorage.getItem('muriel_perf_mode') === '1' || localStorage.getItem('muriel_perf_mode') === 'true';
   applyPerfMode(initialPerfMode);
-  if (!isPhoneApp && typeof navigator.getBattery === 'function' && localStorage.getItem('muriel_battery_saver') !== '0') {
+  // the battery saver had no switch: on battery it forced performance mode with no way back
+  const btnBatterySaver = document.getElementById('btn-battery-saver');
+  const batterySaverWanted = () => localStorage.getItem('muriel_battery_saver') !== '0';
+  let batteryRef = null;
+  const syncBatterySaver = () => {
+    const next = !!(batteryRef && batteryRef.charging === false && batterySaverWanted());
+    if (next === batterySaver) return;
+    batterySaver = next;
+    applyPerfMode(storedPerfMode());
+  };
+  if (btnBatterySaver) {
+    btnBatterySaver.classList.toggle('active', batterySaverWanted());
+    btnBatterySaver.addEventListener('click', () => {
+      const next = !btnBatterySaver.classList.contains('active');
+      btnBatterySaver.classList.toggle('active', next);
+      localStorage.setItem('muriel_battery_saver', next ? '1' : '0');
+      syncBatterySaver();
+    });
+  }
+  if (!isPhoneApp && typeof navigator.getBattery === 'function') {
     navigator.getBattery().then((b) => {
-      const sync = () => {
-        const next = b.charging === false;
-        if (next === batterySaver) return;
-        batterySaver = next;
-        applyPerfMode(storedPerfMode());
-      };
-      sync();
-      b.addEventListener('chargingchange', sync);
+      batteryRef = b;
+      syncBatterySaver();
+      b.addEventListener('chargingchange', syncBatterySaver);
     }).catch(() => {});
+  } else {
+    const row = document.getElementById('setting-battery-saver');
+    if (row) row.style.display = 'none';
   }
   if (btnPerfMode) {
     btnPerfMode.classList.toggle('active', initialPerfMode);
@@ -11039,11 +11229,13 @@ document.addEventListener('DOMContentLoaded', async () => {
       const modeBtn = document.querySelector(`.theme-mode-btn[data-theme-mode="${d.theme.b < 50 ? 'dark' : 'light'}"]`);
       if (modeBtn) modeBtn.click();
       const sH = document.getElementById('slider-theme-hue');
-      if (sH && d.theme.h !== undefined) { sH.value = d.theme.h; sH.dispatchEvent(new Event('input', { bubbles: true })); }
+      // the sliders apply and save on 'change'; firing only 'input' moved the knob and kept the default theme
+      const fire = (sl) => { sl.dispatchEvent(new Event('input', { bubbles: true })); sl.dispatchEvent(new Event('change', { bubbles: true })); };
+      if (sH && d.theme.h !== undefined) { sH.value = d.theme.h; fire(sH); }
       const sB = document.getElementById('slider-theme-brightness');
       if (sB && d.theme.b !== undefined) {
         sB.value = Math.min(Math.max(d.theme.b, Number(sB.min) || 0), Number(sB.max) || 100);
-        sB.dispatchEvent(new Event('input', { bubbles: true }));
+        fire(sB);
       }
     }
     if (d.toggles) {
@@ -11342,6 +11534,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       applyAudioSettings();
       applyHqSettings();
       renderPresets();
+      showToast('Audio settings reset', 'info');
     });
   }
 
@@ -11387,6 +11580,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   }, true);
 
   window.addEventListener('keydown', (e) => {
+    // Encore (full-screen) handles its own keys; shortcuts here acted on the app hidden behind it
+    if (document.querySelector('.encore')) return;
     const inInput = isTextInput(e.target);
 
     if (e.code === 'Escape' || e.key === 'Escape') {
@@ -12020,7 +12215,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             for (const item of rawTracks) {
               const title = item.track || item.trackName;
               const artist = item.artist || item.artistName;
-              const durMs = item.durationMs || item.duration_ms || item.msPlayed;
+              // msPlayed (streaming history) is how long it was listened to, not how long the song is
+              const durMs = item.durationMs || item.duration_ms;
               const duration = durMs ? Math.round(durMs / 1000) : undefined;
               if (title && artist) {
                 parsedSpotifyExport.likes.push({ title: String(title).trim(), artist: String(artist).trim(), duration });
@@ -12050,6 +12246,14 @@ document.addEventListener('DOMContentLoaded', async () => {
           }
         } catch (e) {}
       }
+      // a streaming-history file lists a song once per play: 60 plays of 3 songs meant 60 searches
+      const seenLikes = new Set();
+      parsedSpotifyExport.likes = parsedSpotifyExport.likes.filter((t) => {
+        const k = `${t.title.toLowerCase()}|${t.artist.toLowerCase()}`;
+        if (seenLikes.has(k)) return false;
+        seenLikes.add(k);
+        return true;
+      });
       if (spFileInfo) spFileInfo.textContent = names.join(', ');
     });
   }
@@ -12143,6 +12347,24 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (spotifyModal) closeModal(spotifyModal);
   }
 
+  const importErrorText = (err, fallback = 'Failed to import tracks') => (err && err.message === 'search_unresponsive'
+    ? 'Search is not responding, so the import stopped. Try again later; nothing gets added twice. If it keeps happening, open Settings -> About -> Copy diagnostics and send it with your report.'
+    : (err && err.message) || fallback);
+
+  // adds the songs that aren't favorites yet (one pass with a Set; comparing every pair froze big imports)
+  function mergeIntoFavorites(tracks) {
+    const have = new Set(state.favorites.map(getTrackCanonicalId));
+    let added = 0;
+    for (const track of tracks || []) {
+      const id = getTrackCanonicalId(track);
+      if (have.has(id)) continue;
+      have.add(id);
+      state.favorites.push(stampAddedAt(track));
+      added++;
+    }
+    return added;
+  }
+
   async function runSpotifyImport({ likes = [], playlists = [], skippedPlaylists = [] }) {
     const likesToImport = likes || [];
     const playlistsToImport = playlists || [];
@@ -12192,13 +12414,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
         globalCompleted += likesToImport.length;
         totalFoundCount += foundLikes.length;
-        let addedFav = false;
-        for (const track of foundLikes) {
-          if (!state.favorites.some(f => isSameTrack(f, track))) {
-            state.favorites.push(stampAddedAt(track));
-            addedFav = true;
-          }
-        }
+        const addedFav = mergeIntoFavorites(foundLikes) > 0;
         if (addedFav) {
           localStorage.setItem('devsize_favorites', JSON.stringify(state.favorites));
           updateFavoritesBadge();
@@ -12208,6 +12424,8 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
 
       if (playlistsToImport.length > 0) {
+        // match every playlist before creating any: a failure half way left some behind, and a retry made them twice
+        const matched = [];
         for (const pl of playlistsToImport) {
           const found = await matchSpotifyTracks(pl.tracks || [], (completed) => {
             const cur = globalCompleted + completed;
@@ -12216,8 +12434,9 @@ document.addEventListener('DOMContentLoaded', async () => {
           });
           globalCompleted += (pl.tracks || []).length;
           totalFoundCount += found.length;
-          createPlaylist(pl.name, found, pl.cover || '');
+          matched.push([pl, found]);
         }
+        matched.forEach(([pl, found]) => createPlaylist(pl.name, found, pl.cover || ''));
       }
 
       const notFound = totalItemsCount - totalFoundCount;
@@ -12242,7 +12461,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     } catch (err) {
       if (spotifyProgressWrap) spotifyProgressWrap.classList.add('hidden');
       if (spotifyStatus) {
-        spotifyStatus.textContent = err.message || 'Failed to import tracks';
+        spotifyStatus.textContent = importErrorText(err);
         spotifyStatus.style.color = 'var(--md-sys-color-error, #ba1a1a)';
         spotifyStatus.classList.remove('hidden');
       }
@@ -12421,9 +12640,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
       } catch (err) {
         if (spotifyProgressWrap) spotifyProgressWrap.classList.add('hidden');
-        const msg = err.message === 'search_unresponsive'
-          ? 'Search is not responding. Open Settings -> About -> Copy diagnostics and send it with your report.'
-          : (err.message || 'Import failed');
+        const msg = importErrorText(err, 'Import failed');
         if (spotifyStatus) {
           spotifyStatus.textContent = msg;
           spotifyStatus.style.color = 'var(--md-sys-color-error, #ba1a1a)';
@@ -12618,6 +12835,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         for (const item of node) walk(item, currentPl);
         return;
       }
+      // Apple's own export writes "Title", "Artist", "Track Duration": also look keys up in lower case, like the CSV path
+      const lowered = {};
+      for (const [k, v] of Object.entries(node)) { lowered[k] = v; const lk = k.toLowerCase(); if (!(lk in lowered)) lowered[lk] = v; }
+      node = lowered;
 
       let pl = currentPl;
       if (node.playlistName || node.playlist || node['playlist name']) {
@@ -12637,7 +12858,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
       const title = String(node.title || node.name || node.trackName || node.song || node['track name'] || node['song name'] || '').trim();
       const artist = String(node.artistName || node.artist || node.artist_name || node['artist name'] || '').trim();
-      const durRaw = node.durationInMillis || node.duration || node.duration_ms || node.time || node.trackDuration;
+      const durRaw = node.durationInMillis || node.duration || node.duration_ms || node.time || node.trackDuration || node['track duration'];
       const duration = parseAppleDuration(durRaw);
 
       if (title && artist && (node.type === 'song' || node.type === 'songs' || duration || pl || node.contentDescriptor)) {
@@ -12888,13 +13109,7 @@ document.addEventListener('DOMContentLoaded', async () => {
           });
           globalCompleted += likesToImport.length;
           totalFoundCount += foundLikes.length;
-          let addedFav = false;
-          for (const track of foundLikes) {
-            if (!state.favorites.some(f => isSameTrack(f, track))) {
-              state.favorites.push(stampAddedAt(track));
-              addedFav = true;
-            }
-          }
+          const addedFav = mergeIntoFavorites(foundLikes) > 0;
           if (addedFav) {
             localStorage.setItem('devsize_favorites', JSON.stringify(state.favorites));
             updateFavoritesBadge();
@@ -12904,6 +13119,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
 
         if (playlistsToImport.length > 0) {
+          // match every playlist before creating any (see the Spotify import)
+          const matched = [];
           for (const pl of playlistsToImport) {
             const found = await matchSpotifyTracks(pl.tracks || [], (completed) => {
               const cur = globalCompleted + completed;
@@ -12912,8 +13129,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             });
             globalCompleted += (pl.tracks || []).length;
             totalFoundCount += found.length;
-            createPlaylist(pl.name, found, pl.cover || '');
+            matched.push([pl, found]);
           }
+          matched.forEach(([pl, found]) => createPlaylist(pl.name, found, pl.cover || ''));
         }
 
         const notFound = totalItemsCount - totalFoundCount;
@@ -12938,7 +13156,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       } catch (err) {
         if (appleProgressWrap) appleProgressWrap.classList.add('hidden');
         if (appleStatus) {
-          appleStatus.textContent = err.message || 'Failed to import tracks';
+          appleStatus.textContent = importErrorText(err);
           appleStatus.style.color = 'var(--md-sys-color-error, #ba1a1a)';
           appleStatus.classList.remove('hidden');
         }
@@ -13466,12 +13684,16 @@ document.addEventListener('DOMContentLoaded', async () => {
         let done = 0;
         let failed = 0;
         let lastDir = null;
+        // Cancel/X used to only hide the dialog while every song kept downloading
+        const batchAbort = new AbortController();
+        downloadAbort = batchAbort;
         for (let i = 0; i < tracks.length; i++) {
+          if (batchAbort.signal.aborted) break;
           const t = tracks[i];
           if (el.downloadBtnText) el.downloadBtnText.textContent = `Downloading ${i + 1}/${tracks.length}`;
           try {
             const downloadUrl = `http://127.0.0.1:${state.serverPort}/api/download?url=${encodeURIComponent(t.url || '')}&id=${encodeURIComponent(t.id || '')}&title=${encodeURIComponent(t.title || '')}&artist=${encodeURIComponent(t.artist || '')}&format=${selectedFormat}&quality=${selectedQuality}`;
-            const res = await fetch(downloadUrl);
+            const res = await fetch(downloadUrl, { signal: batchAbort.signal });
             const text = await res.text();
             let data;
             try {
@@ -13483,11 +13705,18 @@ document.addEventListener('DOMContentLoaded', async () => {
             done++;
             if (data.directory) lastDir = data.directory;
           } catch (err) {
+            if (batchAbort.signal.aborted) break;
             failed++;
             console.error('Download failed:', t.title || t.url || '', err.message);
           }
         }
         el.btnConfirmDownload.disabled = false;
+        if (downloadAbort === batchAbort) downloadAbort = null;
+        if (batchAbort.signal.aborted) {
+          // cancelCurrentDownload already closed the dialog; another one may be open by now
+          if (done) showToast(`Stopped. ${done} of ${tracks.length} songs were downloaded${lastDir ? ' to ' + lastDir : ''}`, 'info');
+          return;
+        }
         downloadBatch = null;
         if (el.downloadModal) closeModal(el.downloadModal);
         showToast(failed > 0 ? `Downloaded ${done}/${tracks.length} (${failed} failed)` : `Downloaded ${tracks.length} tracks${lastDir ? ' to ' + lastDir : ''}`, failed > 0 ? 'error' : 'success');
@@ -13530,6 +13759,17 @@ document.addEventListener('DOMContentLoaded', async () => {
       downloadAbort = new AbortController();
 
       try {
+        // Phones have no audio rendering pipeline or ffmpeg: the server saves the song file as it is
+        // (the decode-and-encode path below always ended in "Download failed" there)
+        if (isPhoneApp) {
+          if (t.platform === 'local') throw new Error('This song is already on your phone');
+          const r = await fetch(`http://127.0.0.1:${state.serverPort}/api/download?url=${encodeURIComponent(t.url || '')}&id=${encodeURIComponent(t.id || '')}&title=${encodeURIComponent(t.title || '')}&artist=${encodeURIComponent(t.artist || '')}&format=${selectedFormat}&quality=${selectedQuality}`, { signal: downloadAbort.signal });
+          const d = await r.json();
+          if (!d.success) throw new Error(d.error || 'Download failed');
+          showToast(`Download complete: saved as ${d.filename}`, 'info');
+          if (el.downloadModal) closeModal(el.downloadModal);
+          return;
+        }
         let audioSourceUrl = null;
         const isCurrent = isSameTrack(t, state.currentTrack);
         if (isCurrent && el.nativeAudio && el.nativeAudio.src && !el.nativeAudio.src.startsWith('blob:')) {
@@ -14074,8 +14314,17 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   let currentWaveFocusedIndex = 0;
 
-  async function extendMyWaveQueue() {
-    if (!state.myWaveActive || isExtendingMyWave) return false;
+  // a second caller (Next pressed at the end while the background top-up runs) waits for the same top-up
+  // instead of getting false and doing nothing
+  let myWaveExtending = null;
+  function extendMyWaveQueue() {
+    if (!state.myWaveActive) return Promise.resolve(false);
+    if (!myWaveExtending) myWaveExtending = extendMyWaveQueueOnce().finally(() => { myWaveExtending = null; });
+    return myWaveExtending;
+  }
+
+  async function extendMyWaveQueueOnce() {
+    if (isExtendingMyWave) return false;
     isExtendingMyWave = true;
     try {
       const profile = await computeTasteProfile();
@@ -14586,11 +14835,13 @@ document.addEventListener('DOMContentLoaded', async () => {
   window.addEventListener('keydown', (e) => {
     if (!isDiscoverActive() || isFormInputFocused()) return;
     if (el.searchResultsContainer && !el.searchResultsContainer.classList.contains('hidden')) return;
+    // Up/Down scroll the (now scrolling) Home page; nothing behind an open dialog or Encore moves
+    if (document.querySelector('.encore, .modal-backdrop.visible:not(.hidden)')) return;
 
-    if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+    if (e.key === 'ArrowLeft') {
       e.preventDefault();
       stepCarouselFocus(-1);
-    } else if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+    } else if (e.key === 'ArrowRight') {
       e.preventDefault();
       stepCarouselFocus(1);
     }
@@ -14613,7 +14864,9 @@ document.addEventListener('DOMContentLoaded', async () => {
       });
       data = await res.json();
     } catch (e) {}
-    if (!data || !data.success) return;
+    // forget the signature on a failed (or offline, empty) load, or "For you" stayed empty until the history changed
+    const empty = !data || !data.success || (!(data.genres || []).length && !(data.sections || []).some((x) => (x.items || x.tracks || []).length));
+    if (empty) { if (forYouSig === sig) forYouSig = ''; return; }
     box.innerHTML = '';
     const section = (title) => {
       const block = document.createElement('div');
@@ -15844,16 +16097,19 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   function fadeOutAndPause() {
     const from = state.isMuted ? 0 : state.volume;
-    if (!from || !audioEngine || !audioEngine.setVolume) {
+    // nobody hears a fade in the background, and background timers run late: stop right away
+    if (!from || !audioEngine || !audioEngine.setVolume || document.hidden) {
       pauseSmooth();
       return;
     }
+    // timer steps, not animation frames: a minimized window or a locked phone gets no frames, so the fade
+    // never finished and the music played on after the timer said "Off"
     const started = Date.now();
     const step = () => {
       const k = Math.min(1, (Date.now() - started) / 4000);
       audioEngine.setVolume(from * (1 - k), false);
       if (k < 1) {
-        requestAnimationFrame(step);
+        setTimeout(step, 50);
         return;
       }
       pauseSmooth();
@@ -16139,7 +16395,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   function renderPlaylistDuplicateButton(pl) {
     if (!el.btnDedupePlaylist || !pl) return;
-    const duplicates = pl.tracks.length - dedupeTracks(pl.tracks, isSameTrack).length;
+    const duplicates = pl.tracks.length - dedupeTracks(pl.tracks, isSameTrack, getTrackCanonicalId).length;
     el.btnDedupePlaylist.classList.toggle('hidden', duplicates === 0);
     if (el.btnDedupePlaylistLabel) {
       el.btnDedupePlaylistLabel.textContent = duplicates === 1 ? 'Remove 1 duplicate' : `Remove ${duplicates} duplicates`;
@@ -16150,7 +16406,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const pl = state.playlists.find(p => p.id === state.currentPlaylistId);
     if (!pl) return;
     const before = pl.tracks.length;
-    pl.tracks = dedupeTracks(pl.tracks, isSameTrack);
+    pl.tracks = dedupeTracks(pl.tracks, isSameTrack, getTrackCanonicalId);
     const removed = before - pl.tracks.length;
     if (!removed) return;
     localStorage.setItem('devsize_playlists', JSON.stringify(state.playlists));
