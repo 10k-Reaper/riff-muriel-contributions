@@ -12,10 +12,12 @@ function fakeProcess(work) {
   p.stdout = new EventEmitter();
   p.stderr = new EventEmitter();
   let killed = false;
-  p.kill = () => { killed = true; };
+  const ac = new AbortController();
+  // like a killed process: stop the work and report the exit right away (server.js cleans up on 'close')
+  p.kill = () => { if (killed) return; killed = true; ac.abort(); setTimeout(() => p.emit('close', null), 0); };
   setTimeout(async () => {
     try {
-      const out = await work();
+      const out = await work(ac.signal);
       if (killed) return;
       if (out) p.stdout.emit('data', out);
       p.emit('close', 0);
@@ -49,23 +51,28 @@ async function searchJson(target, limit) {
 }
 
 // Fetches every segment of an HLS media playlist (4 at a time) and joins them into one .aac file.
-async function downloadHls(playlistUrl, headers) {
-  const m3u = await (await globalThis.__murielFetch(playlistUrl, { headers })).text();
+async function downloadHls(playlistUrl, headers, signal) {
+  const m3u = await (await globalThis.__murielFetch(playlistUrl, { headers, signal })).text();
   const urls = m3u.split('\n').map((l) => l.trim()).filter((l) => l && !l.startsWith('#')).map((l) => new URL(l, playlistUrl).href);
   const parts = new Array(urls.length);
   let next = 0;
+  // once one segment has failed for good (or the download was cancelled) the other workers stop too,
+  // instead of fetching the rest of a song that can't be finished
+  let failed = null;
   const worker = async () => {
-    while (next < urls.length) {
+    while (next < urls.length && !failed) {
+      if (signal && signal.aborted) throw (failed = new Error('download cancelled'));
       const i = next++;
       // a flaky segment shouldn't sink the whole song: retry it a couple of times with a short backoff
       for (let attempt = 0; ; attempt++) {
         try {
-          const r = await globalThis.__murielFetch(urls[i], { headers });
-          if (!r.ok) throw new Error(`segment ${i} failed: ${r.status}`);
+          const r = await globalThis.__murielFetch(urls[i], { headers, signal });
+          if (!r.ok) throw Object.assign(new Error(`segment ${i} failed: ${r.status}`), { status: r.status });
           parts[i] = new Uint8Array(await r.arrayBuffer());
           break;
         } catch (e) {
-          if (attempt >= 2) throw e;
+          // a 403/404 won't change on retry
+          if (attempt >= 2 || failed || (signal && signal.aborted) || (e.status >= 400 && e.status < 500)) throw (failed = failed || e);
           await new Promise((res) => setTimeout(res, 600 * (attempt + 1)));
         }
       }
@@ -75,15 +82,16 @@ async function downloadHls(playlistUrl, headers) {
   return segmentsToAac(parts);
 }
 
-async function download(args, target) {
+async function download(args, target, signal) {
   const audio = await ex.resolveAudio(target);
+  if (signal && signal.aborted) throw new Error('download cancelled');
   if (audio.ext === 'm3u8') throw new Error('this track is only available as a stream');
   let out = opt(args, '-o');
   // yt-dlp templates: the user-facing download keeps the real container (no ffmpeg on iOS to convert)
   out = out.includes('%(ext)s') ? out.replace('%(ext)s', audio.ext) : out;
   let size;
   if (audio.kind === 'hls') {
-    const bytes = await downloadHls(audio.url, audio.headers);
+    const bytes = await downloadHls(audio.url, audio.headers, signal);
     await store.writeBytes(out, bytes);
     size = bytes.length;
   } else {
@@ -103,7 +111,7 @@ function spawn(bin, args) {
   if (args.includes('-g')) return fakeProcess(async () => `${(await ex.resolveAudio(target)).url}\n`);
   if (args.includes('--dump-single-json') || args.includes('-J')) return fakeProcess(() => searchJson(target, limit));
   if (args.includes('--print')) return fakeProcess(async () => `${(await ex.resolveAudio(target)).artist || 'NA'}\n`);
-  if (args.includes('-x')) return fakeProcess(() => download(args, target));
+  if (args.includes('-x')) return fakeProcess((signal) => download(args, target, signal));
   return fakeProcess(async () => { throw new Error(`unsupported yt-dlp call: ${args.join(' ')}`); });
 }
 

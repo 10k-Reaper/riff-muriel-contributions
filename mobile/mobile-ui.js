@@ -60,17 +60,47 @@
     if (dy > 110) closeSheet();
   });
 
-  // custom background: rebuild its file URL from the app-relative path (it changes on every reinstall)
-  const fixBackground = async () => {
-    const vpath = localStorage.getItem('muriel_bg_vpath');
-    const current = localStorage.getItem('muriel_bg_url') || '';
-    if (!vpath || !window.electronAPI.fileUrl) return;
-    if (!current) { localStorage.removeItem('muriel_bg_vpath'); return; } // background was removed
-    if (!current.includes(vpath.split('/').pop())) { localStorage.removeItem('muriel_bg_vpath'); return; } // a different one was chosen
-    const url = await window.electronAPI.fileUrl(vpath);
-    if (url && url !== current) { localStorage.setItem('muriel_bg_url', url); window.MurielCore.refreshBackground(); }
+  // Picked images and videos (background, banner, song covers) are saved as file URLs, and those change when
+  // iOS moves the app container (every update or reinstall). Rebuild each saved one from its file name, then
+  // delete picks nothing uses any more (every pick is a new copy). Only the background was repaired before,
+  // and picking a song cover made even that repair forget the background.
+  const fixPickedMedia = async () => {
+    const api = window.electronAPI;
+    if (!api.fileUrl) return;
+    const nameOf = (u) => { const m = typeof u === 'string' && !u.startsWith('blob:') && u.match(/\/backgrounds\/(bg_[\w.-]+)$/); return m ? m[1] : null; };
+    const keep = new Set();
+    const fresh = async (u) => {
+      const name = nameOf(u);
+      if (!name) return u;
+      const url = await api.fileUrl(`/data/backgrounds/${name}`);
+      if (url) keep.add(name);
+      return url || u;
+    };
+    let bgChanged = false;
+    for (const key of ['muriel_bg_url', 'muriel_banner_media']) {
+      const cur = localStorage.getItem(key);
+      if (!cur) continue;
+      const next = await fresh(cur);
+      if (next !== cur) { localStorage.setItem(key, next); if (key === 'muriel_bg_url') bgChanged = true; }
+    }
+    let artOk = true;
+    try {
+      const art = JSON.parse(localStorage.getItem('muriel_track_art') || '{}');
+      let dirty = false;
+      for (const v of Object.values(art)) {
+        for (const f of ['cover', 'banner']) {
+          if (!v || !v[f]) continue;
+          const next = await fresh(v[f]);
+          if (next !== v[f]) { v[f] = next; dirty = true; }
+        }
+      }
+      if (dirty) localStorage.setItem('muriel_track_art', JSON.stringify(art));
+    } catch (e) { artOk = false; }
+    localStorage.removeItem('muriel_bg_vpath');
+    if (bgChanged) window.MurielCore.refreshBackground();
+    if (artOk && api.pruneMedia) api.pruneMedia(keep);
   };
-  if (window.MurielCore) fixBackground(); else window.addEventListener('muriel:ready', fixBackground, { once: true });
+  if (window.MurielCore) fixPickedMedia(); else window.addEventListener('muriel:ready', fixPickedMedia, { once: true });
 
   // phones default to word-by-word karaoke (the Line/Word button still switches)
   const preferWordLyrics = () => {
@@ -179,6 +209,8 @@
     limitRow.querySelectorAll('[data-limit]').forEach((b) => b.addEventListener('click', () => {
       localStorage.setItem('muriel_cache_limit_mb', b.dataset.limit);
       limitRow.querySelectorAll('[data-limit]').forEach((x) => x.classList.toggle('active', x === b));
+      // a lower limit applies now, not only after the next download
+      if (window.MurielCache) window.MurielCache.enforceLimit();
     }));
     const logRow = document.createElement('div');
     logRow.className = 'setting-item';
@@ -205,5 +237,15 @@
   ['btn-hw-accel', 'btn-tray-on-close', 'btn-media-keys'].forEach((id) => {
     const row = document.getElementById(id) && document.getElementById(id).closest('.setting-item');
     if (row) row.style.display = 'none';
+  });
+})();
+
+// a write to the phone's storage failed (usually: storage full); say so instead of losing it silently
+(() => {
+  let last = 0;
+  window.addEventListener('muriel:storage-error', () => {
+    if (Date.now() - last < 30000 || !window.MurielCore || !window.MurielCore.toast) return;
+    last = Date.now();
+    window.MurielCore.toast('Could not save to storage. Is your phone full?', 'error');
   });
 })();

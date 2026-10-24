@@ -5,7 +5,7 @@ const https = require('./https');
 
 let handler = null;
 
-function dispatch({ url, method = 'GET', headers = {}, body = '' }) {
+function dispatch({ url, method = 'GET', headers = {}, body = '', signal }) {
   return new Promise((resolve) => {
     const req = new EventEmitter();
     req.url = url;
@@ -41,6 +41,11 @@ function dispatch({ url, method = 'GET', headers = {}, body = '' }) {
       __pipeFile(vpath) { finish({ file: vpath }); },
     });
 
+    // the caller gave up (skipped song): like a closed socket, the route hears 'close' before it answered
+    if (signal) {
+      const onAbort = () => { if (done) return; req.emit('aborted'); req.emit('close'); finish({ status: 499, aborted: true }); };
+      if (signal.aborted) setTimeout(onAbort, 0); else signal.addEventListener('abort', onAbort, { once: true });
+    }
     Promise.resolve(handler(req, res)).catch((e) => {
       if (!res.headersSent) res.writeHead(500);
       res.end(String(e && e.message || e));

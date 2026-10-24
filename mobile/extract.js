@@ -61,10 +61,16 @@ async function ytMusicSearch(query, limit) {
 // for most clients. Same approach yt-dlp uses. Needs a visitor id or YouTube asks to "sign in".
 const VOS_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 15_7_3) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15';
 let visitorId = null;
+let visitorAt = 0;
+// a fresh id is fetched at most every 10 minutes: under YouTube's bot check every tap (and every retry and
+// alternate upload) used to download the whole YouTube homepage again
+const VISITOR_REFRESH_MS = 10 * 60 * 1000;
+const visitorIsFresh = () => !!visitorId && Date.now() - visitorAt < VISITOR_REFRESH_MS;
 async function getVisitorId(force) {
-  if (visitorId && !force) return visitorId;
+  if (visitorId && (!force || visitorIsFresh())) return visitorId;
   const html = await (await globalThis.__murielFetch('https://www.youtube.com/', { headers: { 'User-Agent': VOS_UA, 'Accept-Language': 'en-US' } })).text();
   visitorId = (html.match(/"VISITOR_DATA":"([^"]+)"/) || [])[1] || null;
+  visitorAt = Date.now();
   return visitorId;
 }
 
@@ -80,7 +86,8 @@ async function youtubeHlsAudio(id) {
     const j = await (await globalThis.__murielFetch('https://www.youtube.com/youtubei/v1/player?prettyPrint=false', { method: 'POST', headers, body: JSON.stringify(body) })).json();
     const master = j.streamingData && j.streamingData.hlsManifestUrl;
     if (!master) {
-      if (j.playabilityStatus && j.playabilityStatus.status === 'LOGIN_REQUIRED' && !force) continue; // stale visitor id
+      // stale visitor id: try once with a new one, unless the current one is new already (then a refresh won't help)
+      if (j.playabilityStatus && j.playabilityStatus.status === 'LOGIN_REQUIRED' && !force && !visitorIsFresh()) continue;
       throw new Error((j.playabilityStatus && j.playabilityStatus.reason) || 'no HLS stream');
     }
     const m3u = await (await globalThis.__murielFetch(master, { headers: { 'User-Agent': VOS_UA } })).text();

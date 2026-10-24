@@ -4,6 +4,7 @@ const { Capacitor } = require('@capacitor/core');
 const store = require('./shims/store');
 const http = require('./shims/http');
 const fs = require('./shims/fs');
+const { enforceCacheLimit } = require('./cache-limit');
 const electronAPI = require('./electron-api');
 
 // ---- error log ("Fehlerlog teilen" in Settings): last 300 warnings/errors, kept across restarts ----
@@ -18,10 +19,14 @@ function murielLog(level, msg) {
 }
 for (const level of ['warn', 'error']) {
   const orig = console[level].bind(console);
-  console[level] = (...args) => { murielLog(level, args.map((a) => (a && a.stack) || (typeof a === 'object' ? JSON.stringify(a) : String(a))).join(' ')); orig(...args); };
+  // a cyclic object made JSON.stringify throw, which turned every such log call into an exception
+  const str = (a) => { if (a && a.stack) return a.stack; if (typeof a !== 'object') return String(a); try { return JSON.stringify(a); } catch (e) { return String(a); } };
+  console[level] = (...args) => { murielLog(level, args.map(str).join(' ')); orig(...args); };
 }
 window.addEventListener('error', (e) => murielLog('error', `${e.message} @ ${(e.filename || '').split('/').pop()}:${e.lineno}`));
 window.addEventListener('unhandledrejection', (e) => murielLog('error', `unhandled: ${(e.reason && (e.reason.stack || e.reason.message)) || e.reason}`));
+// for mobile-ui.js (a plain script): trim the song cache right after the limit is lowered
+window.MurielCache = { enforceLimit: () => enforceCacheLimit() };
 window.MurielLog = {
   add: murielLog,
   text: () => [`Muriel ${navigator.userAgent}`, `platform: ${Capacitor.getPlatform()}`, ...logLines].join('\n'),
@@ -47,11 +52,23 @@ async function toPlain(input, init = {}) {
   }
   return [String(input), { ...init, headers: plainHeaders(init.headers) }];
 }
+// Every outside request gets a deadline. Android's native HTTP has none and iOS waits up to 10 minutes, so one
+// stalled request (network switch, captive portal) kept a song "loading" until the app was restarted.
+const REQUEST_DEADLINE_MS = 30000;
 globalThis.__murielFetch = async (input, init) => {
   const [url, opts] = await toPlain(input, init);
-  if (Capacitor.isNativePlatform()) return pageFetch(url, opts);
-  const { headers, ...rest } = opts;
-  return pageFetch(`/__proxy?url=${encodeURIComponent(url)}`, { ...rest, headers: { 'x-fwd-headers': JSON.stringify(headers || {}) } });
+  const timeout = typeof AbortSignal !== 'undefined' && AbortSignal.timeout ? AbortSignal.timeout(REQUEST_DEADLINE_MS) : null;
+  if (timeout) opts.signal = opts.signal && AbortSignal.any ? AbortSignal.any([opts.signal, timeout]) : (opts.signal || timeout);
+  let request;
+  if (Capacitor.isNativePlatform()) request = pageFetch(url, opts);
+  else {
+    const { headers, ...rest } = opts;
+    request = pageFetch(`/__proxy?url=${encodeURIComponent(url)}`, { ...rest, headers: { 'x-fwd-headers': JSON.stringify(headers || {}) } });
+  }
+  // native POSTs ignore the signal, so the deadline is also enforced here
+  let timer;
+  const deadline = new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(`request timed out: ${url.slice(0, 80)}`)), REQUEST_DEADLINE_MS + 1000); });
+  try { return await Promise.race([request, deadline]); } finally { clearTimeout(timer); }
 };
 
 // ---- the in-app "server" ----
@@ -70,8 +87,10 @@ function call(url, init = {}) {
     // there's no socket to protect in-app, but server.js checks its CSRF token, so every call carries it
     headers: { ...(init.headers instanceof Headers ? Object.fromEntries(init.headers.entries()) : (init.headers || {})), 'x-muriel-token': server.getServerToken() },
     body: typeof init.body === 'string' ? init.body : '',
+    signal: init.signal,
   }));
 }
+const abortError = () => new DOMException('The operation was aborted.', 'AbortError');
 
 const fileUrls = new Map();
 async function fileUrlFor(vpath) {
@@ -93,7 +112,10 @@ window.fetch = async (input, init = {}) => {
   const url = typeof input === 'string' ? input : input && input.url;
   if (!url || !url.startsWith(BASE)) return pageFetch(input, init);
   const started = Date.now();
+  // app.js aborts the previous song's lookup on every skip; that now also stops its download (see http shim)
+  if (init.signal && init.signal.aborted) throw abortError();
   let r = await call(url, init);
+  if (r.aborted || (init.signal && init.signal.aborted)) throw abortError();
   // loading a song can fail on a passing YouTube/network hiccup; one quiet retry fixes most of them.
   // A slow failure already went through every download route, so repeating it only burns data and battery.
   if (r.status >= 500 && url.includes('/api/stream-info') && Date.now() - started < 6000) {
@@ -124,6 +146,14 @@ function patchSrc(proto) {
 patchSrc(HTMLMediaElement.prototype);
 patchSrc(HTMLImageElement.prototype);
 
+// app.js unloads a song with removeAttribute('src'); forget the local URL too, or `audio.src` keeps reporting
+// the old song (so play/pause thought one was loaded) and a late file lookup could load it back in
+const realRemoveAttribute = Element.prototype.removeAttribute;
+Element.prototype.removeAttribute = function (name) {
+  if (this.__murielSrc !== undefined && String(name).toLowerCase() === 'src') { this.__murielSrc = undefined; this.__murielPending = null; }
+  return realRemoveAttribute.call(this, name);
+};
+
 const realPlay = HTMLMediaElement.prototype.play;
 HTMLMediaElement.prototype.play = function () {
   return this.__murielPending ? this.__murielPending.then(() => realPlay.call(this)) : realPlay.call(this);
@@ -148,6 +178,7 @@ if (Capacitor.getPlatform() === 'android') {
   const { App } = require('@capacitor/app');
   const visible = (el) => el && !el.classList.contains('hidden') && getComputedStyle(el).display !== 'none';
   App.addListener('backButton', () => {
+    if (window.MurielEncore && document.querySelector('.encore')) { window.MurielEncore.close(); return; }
     const modal = [...document.querySelectorAll('.modal-backdrop')].reverse().find((m) => visible(m) && m.classList.contains('visible'));
     if (modal) {
       const closeBtn = modal.querySelector('[id^="btn-close"], [id^="btn-cancel"], .modal-close');

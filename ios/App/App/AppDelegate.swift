@@ -10,9 +10,9 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
         // Music app: keep playing with the screen locked or the app in the background,
-        // and ignore the silent switch.
+        // and ignore the silent switch. The session is not activated here: that would stop other
+        // apps' audio the moment Muriel opens; WebKit activates it when a song starts.
         try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .default, options: [])
-        try? AVAudioSession.sharedInstance().setActive(true)
         return true
     }
 

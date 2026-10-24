@@ -506,3 +506,12 @@ html.is-mobile .track-context-menu { background: var(--md-sys-color-surface-cont
 /* a long message wraps instead of being cut off at the screen edge */
 html.is-mobile .muriel-toast { min-width: 0; max-width: 100%; border-radius: 22px; }
 html.is-mobile .muriel-toast .toast-text { white-space: normal; overflow-wrap: anywhere; line-height: 1.35; }
+
+/* phones play through a plain <audio> element (no Web Audio graph, see mobile-ui.js), so the Enhance,
+   Effects and EQ tabs had controls that did nothing; Tempo (speed/pitch) and Sleep still work */
+html.is-mobile .audio-tab[data-audio-tab="enhance"],
+html.is-mobile .audio-tab[data-audio-tab="effects"],
+html.is-mobile .audio-tab[data-audio-tab="eq"],
+html.is-mobile .audio-panel[data-audio-panel="enhance"],
+html.is-mobile .audio-panel[data-audio-panel="effects"],
+html.is-mobile .audio-panel[data-audio-panel="eq"] { display: none !important; }

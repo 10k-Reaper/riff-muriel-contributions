@@ -41,10 +41,21 @@ module.exports = function electronAPI({ ready, port, fs, fileUrlFor }) {
       await ready;
       const vpath = `/data/backgrounds/bg_${Date.now()}.${extOf(file.name)}`;
       fs.writeFileSync(vpath, new Uint8Array(await file.arrayBuffer()));
-      // the absolute file URL changes when iOS moves the app container (every reinstall), so keep the
-      // app-relative path too and rebuild the URL on launch (mobile-ui.js)
-      localStorage.setItem('muriel_bg_vpath', vpath);
+      // the absolute file URL changes when iOS moves the app container (every reinstall); mobile-ui.js
+      // rebuilds saved ones on launch from the file name
       return fileUrlFor(vpath);
+    },
+    // deletes picked files that no saved setting points to any more (called by mobile-ui.js after the repair)
+    async pruneMedia(keep) {
+      await ready;
+      let names = [];
+      try { names = fs.readdirSync('/data/backgrounds'); } catch (e) { return; }
+      for (const n of names) {
+        if (keep.has(n)) continue;
+        const pickedAt = Number((n.match(/^bg_(\d+)/) || [])[1]);
+        if (!pickedAt || Date.now() - pickedAt < 3600e3) continue; // not ours, or picked just now and not saved yet
+        try { fs.unlinkSync(`/data/backgrounds/${n}`); } catch (e) {}
+      }
     },
 
     // Same contract as main.js: copy into the library folder as local_<sha1>.<ext>.
@@ -56,7 +67,12 @@ module.exports = function electronAPI({ ready, port, fs, fileUrlFor }) {
         const ext = extOf(f.name);
         const id = 'local_' + crypto._sha1(f.name + f.size).slice(0, 12);
         const file = `${id}.${ext}`;
-        if (!fs.existsSync(`/data/library/${file}`)) fs.writeFileSync(`/data/library/${file}`, new Uint8Array(await f.arrayBuffer()));
+        if (!fs.existsSync(`/data/library/${file}`)) {
+          fs.writeFileSync(`/data/library/${file}`, new Uint8Array(await f.arrayBuffer()));
+          // finish writing this file before reading the next: queued writes each held a whole song in
+          // memory (20 FLACs could take the app down)
+          await fs._flush();
+        }
         out.push({ id, file, ext, name: f.name.replace(/\.[^.]+$/, '') });
       }
       await fs._flush();
@@ -69,7 +85,14 @@ module.exports = function electronAPI({ ready, port, fs, fileUrlFor }) {
       try { for (const n of fs.readdirSync('/data/tracks')) audio += fs.statSync(`/data/tracks/${n}`).size; } catch (e) {}
       return { audio, web: 0, total: audio };
     },
-    clearCache: async () => true,
+    // like desktop: delete the cached songs and thumbnails (via the in-app server), then wait for the disk.
+    // It used to only report success, so the cache never shrank.
+    clearCache: async () => {
+      await ready;
+      try { await fetch('http://127.0.0.1:38472/api/clear-offline-library', { method: 'POST' }); } catch (e) {}
+      await fs._flush();
+      return true;
+    },
     getDataDir: async () => ({ dir: 'On this iPhone (Files → Muriel)', defaultDir: '/data', isCustom: false }),
     pickDataDir: async () => null,
     setDataDir: async () => ({ success: false, error: 'The music folder is fixed on iPhone' }),
@@ -78,7 +101,7 @@ module.exports = function electronAPI({ ready, port, fs, fileUrlFor }) {
     setDownloadDir: async () => ({ success: false }),
     resetDownloadDir: async () => ({ success: true }),
     restartApp: () => location.reload(),
-    getAppVersion: async () => '1.0.0',
+    getAppVersion: async () => { const b = window.MURIEL_BUILD || {}; return b.version ? `${b.version}${b.run ? ` (build ${b.run})` : ''}` : '1.1.2'; },
     getHwAccel: async () => true,
     setHwAccel: noop,
     trimMemory: noop,

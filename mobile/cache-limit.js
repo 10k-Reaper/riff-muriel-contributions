@@ -10,18 +10,33 @@ function limitBytes() {
   return (Number.isFinite(mb) && mb > 0 ? mb : 2048) * 1024 * 1024;
 }
 
+// when each song was last played, from History (it survives restarts; file times only record the download)
+function lastPlayedById() {
+  const out = new Map();
+  try {
+    for (const t of JSON.parse(localStorage.getItem('devsize_history') || '[]')) {
+      if (t && t.id && t.playedAt) out.set(String(t.id).replace(/[^a-zA-Z0-9_-]/g, '_'), Number(t.playedAt) || 0);
+    }
+  } catch (e) {}
+  return out;
+}
+
 function enforceCacheLimit() {
   const limit = limitBytes();
+  const played = lastPlayedById();
   let files;
   try {
-    files = fs.readdirSync(TRACKS).filter((n) => !n.includes('.temp.')).map((n) => {
+    files = fs.readdirSync(TRACKS).map((n) => {
       const st = fs.statSync(`${TRACKS}/${n}`);
-      return { path: `${TRACKS}/${n}`, size: st.size, mtime: st.mtimeMs };
+      const id = n.replace(/(\.temp)?\.[^.]+$/, '');
+      return { path: `${TRACKS}/${n}`, size: st.size, used: Math.max(st.mtimeMs, played.get(id) || 0), temp: n.includes('.temp.') };
     });
   } catch (e) { return; }
+  // the download that is still being written counts towards the limit (the cache stayed one song over)
   let total = files.reduce((n, f) => n + f.size, 0);
   if (total <= limit) return;
-  files.sort((a, b) => a.mtime - b.mtime); // oldest first
+  files = files.filter((f) => !f.temp);
+  files.sort((a, b) => a.used - b.used); // played longest ago first
   const removable = files.slice(0, Math.max(0, files.length - KEEP_NEWEST));
   for (const f of removable) {
     if (total <= limit) break;

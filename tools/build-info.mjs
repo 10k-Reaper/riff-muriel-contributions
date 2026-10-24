@@ -1,10 +1,13 @@
 // Stamps a build with what the update notifier compares against: the commit, run number and time.
 // Usage (CI): node tools/build-info.mjs <out file> [channel]
-import { writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
+
+const pkgVersion = () => { try { return JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version; } catch (e) { return ''; } };
 
 export function buildInfo(channel = '') {
   return {
     sha: process.env.GITHUB_SHA || 'dev',
+    version: pkgVersion(),
     run: Number(process.env.GITHUB_RUN_NUMBER) || 0,
     repo: process.env.GITHUB_REPOSITORY || 'cloverscripts/riff-muriel',
     builtAt: new Date().toISOString(),

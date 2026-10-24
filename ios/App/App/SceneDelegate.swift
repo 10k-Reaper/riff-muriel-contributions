@@ -8,7 +8,9 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         guard let windowScene = scene as? UIWindowScene else { return }
 
         window = UIWindow(windowScene: windowScene)
-        window?.rootViewController = CAPBridgeViewController()
+        // Muriel's subclass (AppDelegate.swift) keeps audio playing while the app is hidden; the stock
+        // CAPBridgeViewController here meant that fix never ran and the music went silent on lock
+        window?.rootViewController = MurielBridgeViewController()
         window?.makeKeyAndVisible()
 
         SceneDelegateProxy.shared.scene(scene, willConnectTo: session, options: connectionOptions)

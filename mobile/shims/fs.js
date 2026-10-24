@@ -7,7 +7,14 @@ const store = require('./store');
 const TEXT_EXT = /\.(json|lrc|txt)$/i;
 const nodes = new Map(); // vpath -> { isDir, size, mtimeMs, text? }
 let chain = Promise.resolve();
-const persist = (fn) => { chain = chain.then(fn).catch((e) => console.warn('[fs] persist failed', e)); return chain; };
+// a failed write (storage full) used to look saved until the next launch: log it and tell the app
+const persist = (fn) => {
+  chain = chain.then(fn).catch((e) => {
+    console.warn('[fs] persist failed', e);
+    try { window.dispatchEvent(new CustomEvent('muriel:storage-error', { detail: String((e && e.message) || e) })); } catch (_) {}
+  });
+  return chain;
+};
 
 const norm = (p) => path.resolve('/', String(p).replace(/\\/g, '/'));
 const err = (code, p) => Object.assign(new Error(`${code}: ${p}`), { code, path: p });
