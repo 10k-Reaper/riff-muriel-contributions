@@ -6499,6 +6499,14 @@ document.addEventListener('DOMContentLoaded', async () => {
           playTrack(track, currentList, clickIndex >= 0 ? clickIndex : idx, context);
         });
 
+        // A finger tap gets moved onto the nearest element that listens for clicks, and only the buttons did,
+        // so a tap on a short song title on a phone hit the heart. Listening here makes the title area its own
+        // target; the click still bubbles to the row above, which plays the song.
+        if (isPhoneApp) {
+          const info = row.querySelector('.track-row-info');
+          if (info) info.addEventListener('click', () => {});
+        }
+
         const btnFav = row.querySelector('.btn-row-fav');
         if (btnFav) {
           btnFav.addEventListener('click', (e) => {
@@ -6522,6 +6530,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (btnMore) {
           btnMore.addEventListener('click', (e) => {
             e.stopPropagation();
+            // phones have no right-click: "..." opens the song's menu there (Download is one of its items)
+            if (isPhoneApp) {
+              const r = btnMore.getBoundingClientRect();
+              openTrackContextMenu(r.right, r.bottom, track, context, row);
+              return;
+            }
             openDownloadModal(track);
           });
         }
