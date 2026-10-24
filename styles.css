@@ -46,6 +46,9 @@
   --md-sys-color-surface-container-high: color-mix(in srgb, #28292C var(--ui-alpha), transparent);
   --md-sys-color-surface-container-highest-solid: #333438;
   --md-sys-color-surface-container-highest: color-mix(in srgb, #333438 var(--ui-alpha), transparent);
+  /* never set by the palette, so error toasts and danger hovers had no background at all */
+  --md-sys-color-error-container: var(--md-sys-color-surface-container-highest-solid);
+  --md-sys-color-on-error-container: var(--md-sys-color-on-surface);
 
   --md-sys-color-primary: #D0BCFF;
   --md-sys-color-on-primary: #381E72;

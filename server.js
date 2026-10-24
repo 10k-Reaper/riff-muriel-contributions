@@ -1872,6 +1872,23 @@ async function handleVibeRecommendations(req, res, payload) {
   }
 }
 
+// shown to the listener as is: by now every other upload and SoundCloud were tried too
+const STREAM_FAILED = "Couldn't play this song. Try another version from search";
+
+// YouTube refuses some uploads outright ("This video is not available": blocked in the listener's country,
+// taken down, age-gated). The same song is usually up several more times, so before giving up (or falling back
+// to SoundCloud) the stream lookup tries up to two other uploads of about the same length.
+async function alternativeUploads(cleanId, title, artist, duration) {
+  const query = `${artist || ''} ${title || ''}`.trim();
+  if (!query) return [];
+  const want = Number(duration) || 0;
+  const found = await directYoutubeSearch(query).catch(() => []);
+  return (found || [])
+    .filter((t) => t && t.id && t.id !== cleanId && (!want || !t.duration || Math.abs(t.duration - want) <= Math.max(15, want * 0.12)))
+    .slice(0, 2)
+    .map((t) => `https://www.youtube.com/watch?v=${t.id}`);
+}
+
 async function handleStreamInfo(req, res, trackUrl, trackId, platform = 'youtube', title = '', artist = '', duration = 0, thumbnail = '') {
   let cleanId = cleanTrackId(trackId);
   if (!cleanId && trackUrl && trackUrl.includes('v=')) {
@@ -1932,6 +1949,13 @@ async function handleStreamInfo(req, res, trackUrl, trackId, platform = 'youtube
 
   if (STREAM_VIA_CACHE) {
     await downloadTrackToDisk(trackUrl, cleanId, platform, meta);
+    if (!await findCachedFile(cleanId) && platform === 'youtube' && (title || artist)) {
+      for (const alt of await alternativeUploads(cleanId, title, artist, duration)) {
+        try { logger.log('warn', `stream: ${cleanId} unavailable, trying another upload ${alt}`); } catch (_) {}
+        await downloadTrackToDisk(alt, cleanId, 'youtube', meta);
+        if (await findCachedFile(cleanId)) break;
+      }
+    }
     if (!await findCachedFile(cleanId) && (title || artist)) {
       // same SoundCloud fallback as the streaming path below
       await downloadTrackToDisk(`scsearch1:${`${artist} ${title}`.trim()}`, cleanId, 'soundcloud', meta);
@@ -1940,7 +1964,7 @@ async function handleStreamInfo(req, res, trackUrl, trackId, platform = 'youtube
     // and drop it so later prefetches don't mistake it for a cached stream URL
     const outcome = await findCachedFile(cleanId)
       ? { success: true, isLocal: true, streamUrl: `http://127.0.0.1:${PORT}/api/local-track?id=${encodeURIComponent(cleanId)}` }
-      : { success: false, error: 'could not extract audio stream' };
+      : { success: false, error: STREAM_FAILED };
     resolveLookup(outcome);
     if (cacheKey && streamUrlCache.get(cacheKey) === inFlightEntry) streamUrlCache.delete(cacheKey);
     res.writeHead(outcome.success ? 200 : 500, { 'Content-Type': 'application/json' });
@@ -1964,6 +1988,18 @@ async function handleStreamInfo(req, res, trackUrl, trackId, platform = 'youtube
     }
   }
 
+  if (!streamUrl && platform === 'youtube' && (title || artist)) {
+    for (const alt of await alternativeUploads(cleanId, title, artist, duration)) {
+      try {
+        const raw = await executeYtDlp(['--no-config', '-g', '--no-warnings', '--no-playlist', '--no-check-certificates', '--prefer-free-formats', '-f', 'bestaudio/best', '--extractor-args', 'youtube:player_client=android', '--', alt], 18000);
+        streamUrl = raw.trim().split('\n').map(l => l.trim()).find(l => l.startsWith('http')) || null;
+        if (streamUrl) break;
+      } catch (e) {
+        try { logger.error('Stream resolve alternative error: ' + alt, e); } catch (_) {}
+      }
+    }
+  }
+
   if (!streamUrl && (title || artist || trackUrl)) {
     try {
       const q = `${artist} ${title}`.trim() || trackUrl;
@@ -1978,7 +2014,7 @@ async function handleStreamInfo(req, res, trackUrl, trackId, platform = 'youtube
 
   if (!streamUrl) {
     try { logger.error('Stream resolve failed: ' + (title || trackUrl)); } catch (_) {}
-    const failure = { success: false, error: 'could not extract audio stream' };
+    const failure = { success: false, error: STREAM_FAILED };
     resolveLookup(failure);
     if (cacheKey && streamUrlCache.get(cacheKey) === inFlightEntry) {
       streamUrlCache.delete(cacheKey);

@@ -498,3 +498,11 @@ html.is-mobile .track-row .track-row-artist { pointer-events: none; cursor: defa
    list (an artist's 35 songs) changed height under the finger while scrolling. The lists already render only
    the rows on screen, so phones lay every row out normally. */
 html.is-mobile .track-row:nth-child(n+25) { content-visibility: visible; contain-intrinsic-size: none; }
+
+/* phones draw no backdrop blur, so floating toasts and the song menu need a solid background or the list
+   underneath shows through their text (also when the UI transparency slider is turned down) */
+html.is-mobile .muriel-toast,
+html.is-mobile .track-context-menu { background: var(--md-sys-color-surface-container-highest-solid) !important; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35); }
+/* a long message wraps instead of being cut off at the screen edge */
+html.is-mobile .muriel-toast { min-width: 0; max-width: 100%; border-radius: 22px; }
+html.is-mobile .muriel-toast .toast-text { white-space: normal; overflow-wrap: anywhere; line-height: 1.35; }
