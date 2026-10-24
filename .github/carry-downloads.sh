@@ -10,11 +10,12 @@ set -u
 tag="$1"; file="$2"; seed="${3:-0}"; fix="${4:-}"
 fix_old="${fix%%:*}"; fix_new="${fix#*:}"
 [ -n "$fix" ] || { fix_old=-1; fix_new=-1; }
-# `gh release view --json` names the count downloadCount; the REST API calls it download_count
+# the REST API, like the website (`gh release view --json` would call the count downloadCount)
 filter='((((.body // "") | capture("muriel-downloads-before: (?<n>[0-9]+)") | .n | tonumber)) // $seed
     | if . == $fix_old then $fix_new else . end)
   + ([.assets[] | select(.name == $file) | (.downloadCount // .download_count // 0)] | add // 0)'
-total="$(gh release view "$tag" --json body,assets 2>/dev/null | jq -r --arg file "$file" --argjson seed "$seed" \
+total="$(gh api "repos/${GITHUB_REPOSITORY:-cloverscripts/riff-muriel}/releases/tags/$tag" 2>/dev/null | jq -r --arg file "$file" --argjson seed "$seed" \
   --argjson fix_old "$fix_old" --argjson fix_new "$fix_new" "$filter" 2>/dev/null || true)"
 case "$total" in ''|*[!0-9]*) total="$seed" ;; esac
+echo "carry-downloads: $tag $file: $total so far" >&2
 echo "$total"
