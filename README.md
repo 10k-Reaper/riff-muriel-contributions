@@ -4,6 +4,10 @@ A lightweight desktop music player for Windows, Linux and macOS. Stream from You
 
 Muriel is based on [Riff](https://github.com/rootscripts/riff) by rootscripts (MIT).
 
+> Muriel is an independent, non-commercial open-source project and is not affiliated with YouTube, Google,
+> SoundCloud, Spotify or Apple. It hosts no music. Use it for private listening and only download music you
+> have the right to. See [LEGAL.md](LEGAL.md) (also for rights holders).
+
 ## Features
 
 - **Streaming & downloads** — YouTube, YouTube Music and SoundCloud via yt-dlp and ffmpeg (installed automatically on first run)
@@ -38,6 +42,13 @@ Installers land in `dist/`. Builds are unsigned: on macOS, right-click Muriel in
 - Windows: `%LOCALAPPDATA%\Muriel`
 - macOS: `~/Library/Application Support/Muriel`
 - Linux: `~/.cache/muriel` (settings in `~/.config/muriel`)
+
+## Legal
+
+Muriel is a player: it doesn't host, upload or sell music, has no ads, accounts or tracking, and nobody earns
+money from it. You're responsible for using it in line with copyright and the terms of the services you use.
+Rights holders can reach us through a [rights holder request](https://github.com/cloverscripts/riff-muriel/issues/new?template=rights-holder-request.yml).
+Details, also in German: [LEGAL.md](LEGAL.md).
 
 ## License
 

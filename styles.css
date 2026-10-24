@@ -3254,9 +3254,9 @@ body.perf #sleep-timer-status.active::before {
   opacity: 0.9;
 }
 .settings-credits-text {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
+  /* plain text flow: as a flex row, the longer line (with the "not affiliated" note) broke into columns */
+  display: inline;
+  line-height: 1.5;
   font-size: calc(11px * var(--font-scale, 1));
   color: var(--md-sys-color-outline);
 }
@@ -3982,6 +3982,10 @@ body.perf #sleep-timer-status.active::before {
   color: var(--md-sys-color-outline);
   text-align: center;
   margin-top: 12px;
+}
+.download-caption-path.download-legal {
+  margin-top: 4px;
+  opacity: 0.85;
 }
 
 @media (max-width: 600px) {
