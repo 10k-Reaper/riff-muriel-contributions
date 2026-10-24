@@ -229,6 +229,32 @@
     storageGroup.append(limitRow, logRow);
   }
 
+  // iPhone: lyrics on the lock screen and in the Dynamic Island (mobile/live-activity.js)
+  const trRow = document.getElementById('btn-tr-enabled') && document.getElementById('btn-tr-enabled').closest('.setting-item');
+  if (window.MurielLiveActivity && trRow) {
+    const la = window.MurielLiveActivity;
+    const row = document.createElement('div');
+    row.className = 'setting-item';
+    row.innerHTML = `
+      <div class="setting-item-top" style="align-items: center;">
+        <div style="display: flex; flex-direction: column; gap: 2px;">
+          <span class="setting-name">Lyrics on lock screen</span>
+          <span class="la-hint" style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">The line being sung, on your lock screen and in the Dynamic Island.</span>
+        </div>
+        <button class="effect-switch-btn${la.enabled() ? ' active' : ''}" type="button" aria-label="Lyrics on lock screen"><span class="thumb"></span></button>
+      </div>`;
+    const sw = row.querySelector('button');
+    sw.addEventListener('click', () => {
+      const on = !sw.classList.contains('active');
+      sw.classList.toggle('active', on);
+      la.setEnabled(on);
+    });
+    la.available().then((ok) => {
+      if (!ok) row.querySelector('.la-hint').textContent = 'Turn on Live Activities for Muriel in the iPhone Settings app first (needs iOS 16.2 or newer).';
+    });
+    trRow.parentElement.insertBefore(row, trRow);
+  }
+
   // artist bio is clamped to 3 lines on phones; tapping it expands / collapses
   const bio = document.getElementById('artist-profile-bio');
   if (bio) bio.addEventListener('click', () => bio.classList.toggle('expanded'));

@@ -35,7 +35,10 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     }
 
     func applicationWillTerminate(_ application: UIApplication) {
-        // Called when the application is about to terminate. Save data if appropriate. See also applicationDidEnterBackground:.
+        // the lyrics Live Activity can't follow the song once the app is gone
+        #if canImport(ActivityKit)
+        if #available(iOS 16.2, *) { LyricsActivity.shared.endAllBeforeExit() }
+        #endif
     }
 
     func application(_ application: UIApplication,
@@ -61,5 +64,10 @@ class MurielBridgeViewController: CAPBridgeViewController {
             config.preferences.setValue(false, forKey: "requiresPageVisibilityToPlayAudio")
         }
         return config
+    }
+
+    // plugins that live in the app itself (not in an npm package) are registered by hand
+    override open func capacitorDidLoad() {
+        bridge?.registerPluginInstance(MurielLiveActivityPlugin())
     }
 }

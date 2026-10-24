@@ -3353,6 +3353,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     state.isCustomLyrics = false;
     // the previous song's translations were shown under the new song's lines until its own translation loaded
     state.currentTranslations = null;
+    // the iPhone lock screen / Dynamic Island lyrics (mobile/live-activity.js) follow state.syncedLyrics
+    window.dispatchEvent(new Event('muriel:lyrics'));
 
     try {
       // skipping through songs fired one lookup (several lrclib requests) per song and got rate limited
@@ -3409,6 +3411,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
 
       state.syncedLyrics = parsed;
+      window.dispatchEvent(new Event('muriel:lyrics'));
       const hasSyncTimes = parsed.some(p => p.time >= 0);
       if (el.lyricsStatus) el.lyricsStatus.textContent = data.isCustom ? (hasSyncTimes ? 'Custom synced' : 'Custom') : (hasSyncTimes ? 'Synced' : 'Plain');
       if (state.trEnabled && state.trAuto) {
