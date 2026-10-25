@@ -15,6 +15,7 @@ const { DATA_DIR, CACHE_DIR, CUSTOM_LYRICS_DIR, LYRICS_DIR, THUMBNAILS_DIR, META
 const STREAM_VIA_CACHE = !!require('./platform').STREAM_VIA_CACHE;
 const logger = require('./logger');
 const { getSystemAudioOutputInfo } = require('./audio-output');
+const ytmArtist = require('./ytm-artist');
 
 const MAX_BODY_BYTES = 2 * 1024 * 1024;
 const SAFE_MEDIA_URL = /^https?:\/\//i;
@@ -1265,6 +1266,7 @@ function directYoutubeSearch(query, filterSpam = false) {
                 const vidId = v.videoId;
                 const title = (v.title?.runs?.[0]?.text || 'untitled');
                 const artist = (v.ownerText?.runs?.[0]?.text || 'unknown artist');
+                const artistId = ytmArtist.channelId(v.ownerText?.runs?.[0]?.navigationEndpoint?.browseEndpoint?.browseId);
                 const durStr = v.lengthText?.simpleText || '0:00';
                 const durSec = parseDurationSeconds(durStr);
                 const thumbs = v.thumbnail?.thumbnails || [];
@@ -1280,6 +1282,7 @@ function directYoutubeSearch(query, filterSpam = false) {
                   id: vidId,
                   title: title,
                   artist: artist,
+                  artistId,
                   duration: durSec,
                   thumbnail: thumbnail,
                   url: `https://www.youtube.com/watch?v=${vidId}`,
@@ -1522,20 +1525,25 @@ const YTM_SONGS_PARAMS = 'EgWKAQIIAWoMEA4QChADEAQQCRAF';
 // The "Videos" filter. Where YouTube Music has no song catalogue (it is licensed per country) the Songs
 // filter answers "No results" for every query; the official music videos are the next best thing.
 const YTM_VIDEOS_PARAMS = 'EgWKAQIQAWoMEAUQEBAEEBUQChAR';
+const YTM_ARTISTS_PARAMS = 'EgWKAQIgAWoMEA4QChADEAQQCRAF';
 const YTM_CLIENT_VERSION = '1.20250101.01.00';
 let ytmFailUntil = 0;
 let ytmFailCount = 0;
 
 function ytmSearchRequest(query, params = YTM_SONGS_PARAMS) {
+  return ytmRequest('search', { query, params });
+}
+
+// one YouTube Music innertube call: 'search', 'browse' (artist pages, playlists) or 'next' (who a video is by)
+function ytmRequest(endpoint, payload, timeoutMs = 8000) {
   return new Promise((resolve, reject) => {
     const body = JSON.stringify({
       context: { client: { clientName: 'WEB_REMIX', clientVersion: YTM_CLIENT_VERSION, hl: 'en', gl: 'US' } },
-      query,
-      params
+      ...payload
     });
     const req = https.request({
       hostname: 'music.youtube.com',
-      path: '/youtubei/v1/search?prettyPrint=false',
+      path: `/youtubei/v1/${endpoint}?prettyPrint=false`,
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -1551,21 +1559,21 @@ function ytmSearchRequest(query, params = YTM_SONGS_PARAMS) {
       res.on('data', (chunk) => { data += chunk; });
       res.on('end', () => {
         if (res.statusCode !== 200) {
-          try { logger.log('warn', `ytmusic search status ${res.statusCode}`); } catch (_) {}
+          try { logger.log('warn', `ytmusic ${endpoint} status ${res.statusCode}`); } catch (_) {}
           return reject(new Error(`ytmusic status ${res.statusCode}`));
         }
         try { resolve(JSON.parse(data)); } catch (e) {
-          try { logger.log('warn', `ytmusic search parse error: ${e.message}`); } catch (_) {}
+          try { logger.log('warn', `ytmusic ${endpoint} parse error: ${e.message}`); } catch (_) {}
           reject(e);
         }
       });
     });
-    req.setTimeout(8000, () => {
-      try { logger.log('warn', 'ytmusic search timeout'); } catch (_) {}
+    req.setTimeout(timeoutMs, () => {
+      try { logger.log('warn', `ytmusic ${endpoint} timeout`); } catch (_) {}
       req.destroy(new Error('ytmusic timeout'));
     });
     req.on('error', (err) => {
-      try { logger.log('warn', `ytmusic search error: ${err.message}`); } catch (_) {}
+      try { logger.log('warn', `ytmusic ${endpoint} error: ${err.message}`); } catch (_) {}
       reject(err);
     });
     req.write(body);
@@ -1604,6 +1612,8 @@ function parseYtmSongs(json) {
       let duration = 0;
       if (clean.length && parseYtmDuration(clean[clean.length - 1])) duration = parseYtmDuration(clean.pop());
       const artist = (clean[0] || '').replace(/\s*-\s*Topic$/i, '').trim();
+      // the artist's channel: other artists can have the same name
+      const artistRun = ytmArtist.artistRuns(runsOf(1))[0];
       const album = clean[1] || '';
 
       const thumbs = (r.thumbnail && r.thumbnail.musicThumbnailRenderer && r.thumbnail.musicThumbnailRenderer.thumbnail && r.thumbnail.musicThumbnailRenderer.thumbnail.thumbnails) || [];
@@ -1611,7 +1621,7 @@ function parseYtmSongs(json) {
       thumbnail = thumbnail.replace(/=w\d+-h\d+[^&]*$/, '=w544-h544');
 
       if (!title || (duration && duration < 30)) continue;
-      out.push({ id: videoId, title, artist: artist || 'Unknown Artist', album, duration, thumbnail });
+      out.push({ id: videoId, title, artist: artist || 'Unknown Artist', artistId: artistRun && artistRun.id, album, duration, thumbnail });
     }
   }
   return out;
@@ -1640,6 +1650,7 @@ async function searchYtmTracks(query, limit = 16) {
         id: s.id,
         title: s.title,
         artist: s.artist,
+        artistId: s.artistId,
         duration: s.duration || 180,
         thumbnail: s.thumbnail || `https://i.ytimg.com/vi/${s.id}/hqdefault.jpg`,
         url: `https://www.youtube.com/watch?v=${s.id}`,
@@ -1719,7 +1730,7 @@ async function handleSearch(req, res, query, platform = 'youtube', limit = 20) {
             ytArtistCache.set(s.id, s.artist);
             trimCache(ytArtistCache, 2000);
             const isCached = await findCachedFile(s.id);
-            return { id: s.id, title: s.title, artist: s.artist, duration: s.duration, thumbnail: s.thumbnail, url: `https://www.youtube.com/watch?v=${s.id}`, platform: 'youtube', isCached: !!isCached };
+            return { id: s.id, title: s.title, artist: s.artist, artistId: s.artistId, duration: s.duration, thumbnail: s.thumbnail, url: `https://www.youtube.com/watch?v=${s.id}`, platform: 'youtube', isCached: !!isCached };
           }));
           const result = { success: true, tracks: entries };
           cacheSearchResult(cacheKey, result);
@@ -1821,6 +1832,7 @@ async function handleSearch(req, res, query, platform = 'youtube', limit = 20) {
           id: String(item.id),
           title: titleVal,
           artist: artistVal,
+          artistId: ytmArtist.channelId(item.channel_id),
           duration: item.duration || 0,
           thumbnail: thumbnail,
           url: `https://www.youtube.com/watch?v=${item.id}`,
@@ -1877,6 +1889,7 @@ async function handleSearch(req, res, query, platform = 'youtube', limit = 20) {
         id: String(item.id || Math.random().toString(36).substring(2)),
                                                                title: cleanTitle,
                                                                artist: cleanArtist,
+                                                               artistId: platform === 'youtube' ? ytmArtist.channelId(item.channel_id) : undefined,
                                                                duration: item.duration || 0,
                                                                thumbnail: thumbnail,
                                                                url: trackUrl,
@@ -2141,16 +2154,86 @@ async function handleStreamInfo(req, res, trackUrl, trackId, platform = 'youtube
 }
 
 const artistInFlight = new Map();
+const videoArtists = new Map();
 
-async function fetchArtistInfo(artistName) {
+// Several artists can share a name. With the artist's channel id (tracks from YouTube / YouTube Music carry it)
+// or the video a track plays, the page is the one of that artist; with only a name it's the best-known namesake.
+async function fetchArtistInfo(artistName, artistId = '', videoId = '') {
   const cleanName = (artistName || '').replace(/ - Topic|VEVO|Official|Records/gi, '').trim();
-  const cacheKey = cleanName.toLowerCase();
+  const id = await resolveArtistId(cleanName, artistId, videoId);
+  const cacheKey = id ? `id:${id}` : cleanName.toLowerCase();
   if (artistCache.has(cacheKey)) return artistCache.get(cacheKey);
   // the same artist page requested again while its lookup runs shares that lookup
   if (artistInFlight.has(cacheKey)) return artistInFlight.get(cacheKey);
-  const lookup = lookupArtistInfo(cleanName, cacheKey).finally(() => artistInFlight.delete(cacheKey));
+  const lookup = (id ? lookupYtmArtist(id, cleanName, cacheKey) : lookupArtistInfo(cleanName, cacheKey)).finally(() => artistInFlight.delete(cacheKey));
   artistInFlight.set(cacheKey, lookup);
   return lookup;
+}
+
+// Tracks saved before they kept `artistId`: the artist YouTube Music credits the video to, if it has that name
+async function resolveArtistId(cleanName, artistId, videoId) {
+  if (ytmArtist.channelId(artistId)) return artistId;
+  if (!ytmArtist.VIDEO_ID.test(videoId || '')) return '';
+  if (!videoArtists.has(videoId)) {
+    const credits = ytmRequest('next', { videoId, isAudioOnly: true }, 4000)
+      .then((json) => ytmArtist.parseWatchArtists(json, videoId))
+      .catch(() => { videoArtists.delete(videoId); return []; });
+    videoArtists.set(videoId, credits);
+    trimCache(videoArtists, 500);
+  }
+  const hit = ytmArtist.pickArtist(await videoArtists.get(videoId), cleanName);
+  return hit ? hit.id : '';
+}
+
+// the artist page from the artist's YouTube Music channel; the page by name when that can't be reached
+async function lookupYtmArtist(id, cleanName, cacheKey) {
+  let page = null;
+  try { page = ytmArtist.parseArtistPage(await ytmRequest('browse', { browseId: id }, 5000), id); } catch (e) {}
+  if (!page) return fetchArtistInfo(cleanName);
+
+  let songs = page.songs;
+  if (page.playlist) {
+    try {
+      const all = ytmArtist.parseSongRows(await ytmRequest('browse', { browseId: page.playlist }, 4000));
+      if (all.length) songs = all;
+    } catch (e) {}
+  }
+  // channels without a song catalogue (an uploader, or a country where YouTube Music has no songs) have videos
+  const seen = new Set();
+  const tracks = [...songs, ...(songs.length < 10 ? page.videos : [])]
+    .filter((t) => !seen.has(t.id) && seen.add(t.id))
+    .slice(0, 35)
+    .map((t) => ({ ...t, isCached: false }));
+
+  const result = {
+    id,
+    ids: page.ids,
+    name: page.name,
+    bio: page.bio,
+    avatar: page.avatar || (tracks[0] ? tracks[0].thumbnail : ''),
+    isVerified: page.isVerified,
+    tracks,
+    releases: page.releases
+  };
+  artistCache.set(cacheKey, result);
+  trimCache(artistCache, 100);
+  return result;
+}
+
+// other artists with the same name, for the chooser on the artist page
+async function handleArtistMatches(req, res, parsedUrl) {
+  const name = (parsedUrl.query.name || '').trim();
+  const cacheKey = `artist-matches:${ytmArtist.nameKey(name)}`;
+  let artists = getAlbumCache(cacheKey);
+  if (!artists && name) {
+    try {
+      const found = ytmArtist.parseArtistResults(await ytmRequest('search', { query: name, params: YTM_ARTISTS_PARAMS }, 5000));
+      artists = found.filter((a) => ytmArtist.nameKey(a.name) === ytmArtist.nameKey(name)).slice(0, 8);
+      setAlbumCache(cacheKey, artists);
+    } catch (e) {}
+  }
+  res.writeHead(200, { 'Content-Type': 'application/json' });
+  return res.end(JSON.stringify({ success: true, artists: artists || [] }));
 }
 
 async function lookupArtistInfo(cleanName, cacheKey) {
@@ -4634,7 +4717,8 @@ async function handleArtistAlbums(req, res, parsedUrl) {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     return res.end(JSON.stringify({ success: true, albums: [] }));
   }
-  const cacheKey = `artist-albums:${name.toLowerCase()}`;
+  const artistId = await resolveArtistId(name, parsedUrl.query.id || '', parsedUrl.query.video || '');
+  const cacheKey = `artist-albums:${artistId || name.toLowerCase()}`;
   const cached = getAlbumCache(cacheKey);
   if (cached) {
     res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -4645,7 +4729,31 @@ async function handleArtistAlbums(req, res, parsedUrl) {
     const target = normalize(name);
     const artistSearch = await fetchItunesJson(`https://itunes.apple.com/search?term=${encodeURIComponent(name)}&entity=musicArtist&limit=10${itunesCountryParam()}`);
     const artists = (artistSearch && Array.isArray(artistSearch.results)) ? artistSearch.results : [];
-    const best = artists.find(a => normalize(a.artistName) === target) || artists.find(a => normalize(a.artistName).includes(target) || target.includes(normalize(a.artistName))) || artists[0];
+    const lookupAlbums = async (ids) => {
+      const lookup = await fetchItunesJson(`https://itunes.apple.com/lookup?id=${ids.join(',')}&entity=album&limit=200${itunesCountryParam()}`);
+      return (lookup && Array.isArray(lookup.results)) ? lookup.results : [];
+    };
+    // iTunes has namesakes too: for an artist known by its YouTube Music page, only the one that released its songs
+    const page = artistId ? await fetchArtistInfo(name, artistId) : null;
+    let releases = null;
+    if (page && page.releases) {
+      const known = [...page.releases, ...page.tracks.map(t => t.title)];
+      const namesakes = known.length ? artists.filter(a => normalize(a.artistName) === target && a.artistId != null) : [];
+      // one lookup for all of them: it lists each artist followed by its releases
+      const byArtist = new Map();
+      let current = null;
+      for (const r of namesakes.length ? await lookupAlbums(namesakes.map(a => a.artistId)) : []) {
+        if (r && r.wrapperType === 'artist') byArtist.set(current = r.artistId, []);
+        else if (r && r.wrapperType === 'collection' && byArtist.has(current)) byArtist.get(current).push(r);
+      }
+      let bestShared = 0;
+      for (const list of byArtist.values()) {
+        const shared = ytmArtist.sharedTitles(known, list.map(r => r.collectionName));
+        if (shared > bestShared) { bestShared = shared; releases = list; }
+      }
+      // none of them: this artist isn't on iTunes, and a namesake's albums would be wrong
+      releases = releases || [];
+    }
     const albums = [];
     const seen = new Set();
     const addAlbum = (item) => {
@@ -4665,15 +4773,16 @@ async function handleArtistAlbums(req, res, parsedUrl) {
         date: item.releaseDate || ''
       });
     };
-    if (best && best.artistId != null) {
-      const lookup = await fetchItunesJson(`https://itunes.apple.com/lookup?id=${best.artistId}&entity=album&limit=200${itunesCountryParam()}`);
-      const items = (lookup && Array.isArray(lookup.results)) ? lookup.results : [];
-      items.filter(r => r && r.wrapperType === 'collection').forEach(addAlbum);
-    }
-    if (albums.length === 0) {
-      const fallback = await fetchItunesJson(`https://itunes.apple.com/search?term=${encodeURIComponent(name)}&entity=album&attribute=artistTerm&limit=200${itunesCountryParam()}`);
-      const items = (fallback && Array.isArray(fallback.results)) ? fallback.results : [];
-      items.filter(r => r && normalize(r.artistName).includes(target)).forEach(addAlbum);
+    if (releases) {
+      releases.forEach(addAlbum);
+    } else {
+      const best = artists.find(a => normalize(a.artistName) === target) || artists.find(a => normalize(a.artistName).includes(target) || target.includes(normalize(a.artistName))) || artists[0];
+      if (best && best.artistId != null) (await lookupAlbums([best.artistId])).filter(r => r && r.wrapperType === 'collection').forEach(addAlbum);
+      if (albums.length === 0) {
+        const fallback = await fetchItunesJson(`https://itunes.apple.com/search?term=${encodeURIComponent(name)}&entity=album&attribute=artistTerm&limit=200${itunesCountryParam()}`);
+        const items = (fallback && Array.isArray(fallback.results)) ? fallback.results : [];
+        items.filter(r => r && normalize(r.artistName).includes(target)).forEach(addAlbum);
+      }
     }
     albums.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
     const responseData = { success: true, albums };
@@ -5160,9 +5269,13 @@ const server = http.createServer(guardHandler(async (req, res) => {
       res.writeHead(400, { 'Content-Type': 'application/json' });
       return res.end(JSON.stringify({ success: false, error: 'Missing artist name' }));
     }
-    const info = await fetchArtistInfo(name);
+    const info = await fetchArtistInfo(name, parsedUrl.query.id || '', parsedUrl.query.video || '');
     res.writeHead(200, { 'Content-Type': 'application/json' });
     return res.end(JSON.stringify({ success: true, artist: info }));
+  }
+
+  if (parsedUrl.pathname === '/api/artist-matches') {
+    return handleArtistMatches(req, res, parsedUrl);
   }
 
   if (parsedUrl.pathname === '/api/prefetch') {

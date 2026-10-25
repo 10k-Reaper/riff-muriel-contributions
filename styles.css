@@ -7920,6 +7920,13 @@ body.glass.glass-lite :is(.sidebar, .main-content, #right-panel, .playbar, .sear
 .fy-artist { width: 108px; align-items: center; text-align: center; }
 .fy-artist img { width: 108px; height: 108px; border-radius: 50%; object-fit: cover; background: var(--md-sys-color-surface-container); }
 .fy-artist span { width: 100%; font-size: calc(12px * var(--font-scale, 1)); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--md-sys-color-on-surface); }
+/* artist page: other artists with the same name, smaller, with what tells them apart ("10 subscribers") below */
+#artist-matches-section { margin-bottom: 24px; }
+#artist-matches-row .fy-artist img { width: 80px; height: 80px; }
+#artist-matches-row .fy-artist .fy-artist-name {
+  font-weight: 400; color: var(--md-sys-color-on-surface-variant); white-space: normal;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+}
 
 /* ---- Muriel: home is a scrolling page again (Hot picks card on top, "For you" recommendations below) ---- */
 #view-discover:has(.home-hero),

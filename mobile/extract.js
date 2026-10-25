@@ -36,6 +36,7 @@ async function youtubeSearch(query, limit) {
     title: text(v.title),
     uploader: text(v.author && v.author.name),
     channel: text(v.author && v.author.name),
+    channel_id: v.author && v.author.id,
     duration: (v.duration && v.duration.seconds) || 0,
     thumbnails: thumbs(v.thumbnails),
     webpage_url: `https://www.youtube.com/watch?v=${v.id}`,
@@ -49,6 +50,8 @@ async function ytMusicSearch(query, limit) {
     id: s.id,
     title: text(s.title || s.name),
     artists: (s.artists || []).map((a) => a.name).filter(Boolean),
+    // the lead artist's channel, like yt-dlp's channel_id (several artists can share a name)
+    channel_id: (s.artists || []).map((a) => a.channel_id).find(Boolean),
     duration: (s.duration && s.duration.seconds) || 0,
     thumbnails: thumbs(s.thumbnails || (s.thumbnail && s.thumbnail.contents)),
     webpage_url: `https://www.youtube.com/watch?v=${s.id}`,

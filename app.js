@@ -2040,9 +2040,12 @@ document.addEventListener('DOMContentLoaded', async () => {
       const newTitle = el.inputRenameTitle ? el.inputRenameTitle.value.trim() || 'Untitled track' : 'Untitled track';
       const newArtist = el.inputRenameArtist ? el.inputRenameArtist.value.trim() || 'Unknown artist' : 'Unknown artist';
 
+      // the artist's channel stays with the artist it came with, not with a name typed over it
+      const artistChanged = !!state.currentTrack && state.currentTrack.artist !== newArtist;
       if (state.currentTrack) {
         state.currentTrack.title = newTitle;
         state.currentTrack.artist = newArtist;
+        if (artistChanged) delete state.currentTrack.artistId;
       }
 
       updateNowPlayingUI(state.currentTrack);
@@ -2053,6 +2056,7 @@ document.addEventListener('DOMContentLoaded', async () => {
           if (t.id === state.currentTrack?.id) {
             t.title = newTitle;
             t.artist = newArtist;
+            if (artistChanged) delete t.artistId;
             updated = true;
           }
         });
@@ -6714,7 +6718,7 @@ document.addEventListener('DOMContentLoaded', async () => {
           }
           if (e.target.classList.contains('track-row-artist')) {
             e.stopPropagation();
-            openArtistProfile(track.artist);
+            openTrackArtist(track);
             return;
           }
           let clickIndex = idx;
@@ -6884,7 +6888,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       } }
     ];
     if (track.artist && !/^unknown artist$/i.test(track.artist)) {
-      items.push({ label: 'Go to artist', run: () => openArtistProfile(track.artist) });
+      items.push({ label: 'Go to artist', run: () => openTrackArtist(track) });
     }
     if (track.platform !== 'local') {
       items.push({ label: 'Download…', run: () => openDownloadModal(track) });
@@ -7040,7 +7044,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   const artistBioCache = new Map();
 
-  async function loadArtistAlbums(name) {
+  async function loadArtistAlbums(artistQuery) {
     const section = document.getElementById('artist-albums-section');
     const grid = document.getElementById('artist-albums-grid');
     const countEl = document.getElementById('artist-albums-count');
@@ -7050,7 +7054,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     section.style.display = 'none';
     grid.innerHTML = '';
     try {
-      const res = await fetch(`http://127.0.0.1:${state.serverPort}/api/artist-albums?name=${encodeURIComponent(name)}`);
+      const res = await fetch(`http://127.0.0.1:${state.serverPort}/api/artist-albums?${artistQuery}`);
       const data = await res.json();
       if (state.artistAlbumsToken !== token) return;
       if (!data || !data.success || !Array.isArray(data.albums) || data.albums.length === 0) return;
@@ -7082,16 +7086,67 @@ document.addEventListener('DOMContentLoaded', async () => {
     } catch (e) {}
   }
 
+  async function fetchArtistMatches(name) {
+    try {
+      const res = await fetch(`http://127.0.0.1:${state.serverPort}/api/artist-matches?name=${encodeURIComponent(name)}`);
+      const data = await res.json();
+      return (data && data.success && Array.isArray(data.artists)) ? data.artists : [];
+    } catch (e) {
+      return [];
+    }
+  }
+
+  // other artists with the same name, so the right one is a tap away when the page shows a namesake
+  async function showArtistMatches(matchesPromise, artist, name, run) {
+    const section = document.getElementById('artist-matches-section');
+    const row = document.getElementById('artist-matches-row');
+    if (!section || !row) return;
+    const matches = await matchesPromise;
+    if (run !== artistRunId) return;
+    const shown = (artist && artist.ids) || [];
+    const others = matches.filter(m => !shown.includes(m.id));
+    // opened by name, the page can't tell which namesake it shows: offer them once there are two
+    if (!others.length || (!shown.length && others.length < 2)) return;
+    const title = document.getElementById('artist-matches-title');
+    if (title) title.textContent = `${shown.length ? 'Other artists' : 'Artists'} named ${name}`;
+    row.innerHTML = others.map(m => `
+      <button class="fy-artist" type="button" title="${escapeHtml(m.subtitle || m.name)}">
+        <img src="${escapeHtml(m.thumbnail || '')}" alt="" loading="lazy" decoding="async">
+        <span>${escapeHtml(m.name)}</span>
+        ${m.subtitle ? `<span class="fy-artist-name">${escapeHtml(m.subtitle)}</span>` : ''}
+      </button>`).join('');
+    row.querySelectorAll('.fy-artist').forEach((b, i) => b.addEventListener('click', () => openArtistProfile(others[i].name, { id: others[i].id })));
+    section.style.display = '';
+  }
+
+  // the YouTube video a track plays, for tracks saved before they kept their artist's channel (artistId)
+  function trackVideoId(track) {
+    const m = String((track && track.url) || '').match(/(?:youtube\.com\/watch\?(?:.*&)?v=|youtu\.be\/)([\w-]{11})/);
+    if (m) return m[1];
+    return track && track.platform === 'youtube' && /^[\w-]{11}$/.test(String(track.id || '')) ? track.id : '';
+  }
+
+  function openTrackArtist(track) {
+    if (track && track.artist) openArtistProfile(track.artist, { id: track.artistId, video: trackVideoId(track) });
+  }
+
   let artistRunId = 0;
-  async function openArtistProfile(artistName) {
+  // `id` (the artist's channel) or `video` (a video of theirs) tells artists with the same name apart;
+  // a name alone opens the best-known namesake, and the page offers the others
+  async function openArtistProfile(artistName, { id = '', video = '' } = {}) {
     if (!artistName || !artistName.trim()) return;
     const cleanName = artistName.replace(/ - Topic|VEVO|Official|Records/gi, '').trim();
     // a slow reply for an artist opened earlier must not replace the one opened since
     const run = ++artistRunId;
+    const artistQuery = `name=${encodeURIComponent(cleanName)}${id ? `&id=${encodeURIComponent(id)}` : video ? `&video=${encodeURIComponent(video)}` : ''}`;
 
-    state.previousView = state.currentView;
+    // from one artist to another (a namesake), Back still returns to where the first was opened from
+    if (state.currentView !== 'artist') state.previousView = state.currentView;
     switchView('artist');
-    loadArtistAlbums(cleanName);
+    loadArtistAlbums(artistQuery);
+    const matches = fetchArtistMatches(cleanName);
+    const matchesSection = document.getElementById('artist-matches-section');
+    if (matchesSection) matchesSection.style.display = 'none';
 
     const heroCard = document.querySelector('.artist-hero-card');
     if (heroCard) {
@@ -7114,9 +7169,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (el.artistHeroBackdrop) el.artistHeroBackdrop.style.backgroundImage = '';
     if (el.artistTracksList) el.artistTracksList.innerHTML = '<div class="empty-hint">Fetching official releases...</div>';
 
-    const bioCacheKey = cleanName.toLowerCase();
+    // with only a video to go by, the server works out which artist it is: no cached bio of a namesake meanwhile
+    const bioCacheKey = id || (video ? '' : cleanName.toLowerCase());
     let bioFromCache = false;
-    if (artistBioCache.has(bioCacheKey)) {
+    if (bioCacheKey && artistBioCache.has(bioCacheKey)) {
       const cached = artistBioCache.get(bioCacheKey);
       if (cached && el.artistProfileBio) {
         bioFromCache = true;
@@ -7130,7 +7186,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const bioTimeout = setTimeout(() => bioController.abort(), 8000);
 
     try {
-      const res = await fetch(`http://127.0.0.1:${state.serverPort}/api/artist?name=${encodeURIComponent(cleanName)}`, { signal: bioController.signal });
+      const res = await fetch(`http://127.0.0.1:${state.serverPort}/api/artist?${artistQuery}`, { signal: bioController.signal });
       clearTimeout(bioTimeout);
       const data = await res.json();
       if (run !== artistRunId) return;
@@ -7139,19 +7195,21 @@ document.addEventListener('DOMContentLoaded', async () => {
 
       state.currentArtistData = data.artist;
       if (el.artistProfileName) el.artistProfileName.textContent = data.artist.name;
+      showArtistMatches(matches, data.artist, cleanName, run);
 
       if (!bioFromCache) {
         const rawBio = (data.artist && data.artist.bio) ? data.artist.bio : '';
         const cleanBio = rawBio.replace(/<[^>]*>/g, '').trim();
+        const bioKey = data.artist.id || cleanName.toLowerCase();
         if (cleanBio) {
-          artistBioCache.set(bioCacheKey, cleanBio);
+          artistBioCache.set(bioKey, cleanBio);
           if (el.artistProfileBio) {
             el.artistProfileBio.textContent = cleanBio;
             el.artistProfileBio.classList.remove('hidden');
             requestAnimationFrame(() => { el.artistProfileBio.style.opacity = '1'; });
           }
         } else {
-          artistBioCache.set(bioCacheKey, '');
+          artistBioCache.set(bioKey, '');
           if (el.artistProfileBio) {
             el.artistProfileBio.classList.add('hidden');
             el.artistProfileBio.textContent = '';
@@ -7197,6 +7255,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       clearTimeout(bioTimeout);
       if (run !== artistRunId) return;
       console.warn('Artist load error:', e);
+      showArtistMatches(matches, null, cleanName, run);
       if (el.artistHeroBackdrop) el.artistHeroBackdrop.style.backgroundImage = '';
       if (heroCard) heroCard.style.setProperty('--artist-accent-color', 'var(--md-sys-color-primary-container)');
       if (el.artistProfileBio && !bioFromCache) {
@@ -7231,7 +7290,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     el.playbarArtist.addEventListener('click', (e) => {
       e.stopPropagation();
       if (state.currentTrack && state.currentTrack.artist) {
-        openArtistProfile(state.currentTrack.artist);
+        openTrackArtist(state.currentTrack);
       }
     });
   }
@@ -7240,7 +7299,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     el.rightPanelArtist.addEventListener('click', (e) => {
       e.stopPropagation();
       if (state.currentTrack && state.currentTrack.artist) {
-        openArtistProfile(state.currentTrack.artist);
+        openTrackArtist(state.currentTrack);
       }
     });
   }
