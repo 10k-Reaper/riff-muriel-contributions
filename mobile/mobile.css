@@ -66,6 +66,8 @@ html.is-mobile .main-content {
   background: transparent !important;
   -webkit-overflow-scrolling: touch;
 }
+/* the album page scrolls by itself (styles.css); the mini player is already below this area */
+html.is-mobile #view-album.active { padding-bottom: 24px; }
 
 /* ---------- tab bar (the rail) ---------- */
 html.is-mobile .sidebar {

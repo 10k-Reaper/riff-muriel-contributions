@@ -7210,14 +7210,29 @@ body.no-clip-fx .sidebar { background: color-mix(in srgb, var(--md-sys-color-sur
   display: none !important;
 }
 @media (max-width: 900px) {
+  /* cover above the tracks, and the page scrolls as one. The tracks column used to keep scrolling on its own,
+     but stacked it had no height left, so nothing scrolled and the page stuck on the cover (issue #2). */
+  #view-album.active {
+    overflow-y: auto;
+    padding-bottom: 120px;
+  }
   .album-layout {
     grid-template-columns: 1fr;
     gap: 24px;
     padding: 0 16px 24px;
+    flex: none;
   }
   .album-side {
     position: static;
     max-width: 360px;
+  }
+  .album-tracks-col {
+    height: auto;
+    overflow: visible;
+  }
+  .album-tracks-col.fade-top, .album-tracks-col.fade-bottom, .album-tracks-col.fade-top.fade-bottom {
+    -webkit-mask-image: none;
+    mask-image: none;
   }
 }
 
