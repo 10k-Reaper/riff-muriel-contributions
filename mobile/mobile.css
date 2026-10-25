@@ -517,3 +517,11 @@ html.is-mobile .audio-tab[data-audio-tab="eq"],
 html.is-mobile .audio-panel[data-audio-panel="enhance"],
 html.is-mobile .audio-panel[data-audio-panel="effects"],
 html.is-mobile .audio-panel[data-audio-panel="eq"] { display: none !important; }
+
+/* no color-mix() in old Android WebViews (see the end of styles.css) */
+@supports not (color: color-mix(in srgb, red 50%, transparent)) {
+  html.is-mobile .sidebar { border-top: 1px solid rgba(255, 255, 255, .08); }
+  html.is-mobile .playbar::after { background: linear-gradient(90deg, var(--md-sys-color-primary) calc(var(--mini-progress, 0) * 100%), rgba(255, 255, 255, .12) 0); }
+  html.is-mobile #right-panel::before { background: rgba(255, 255, 255, .3); }
+  html.is-mobile #right-panel .lyric-line.active .lyric-word { color: rgba(255, 255, 255, .38); }
+}

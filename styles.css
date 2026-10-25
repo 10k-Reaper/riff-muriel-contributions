@@ -8012,3 +8012,25 @@ body.glass.glass-lite :is(.sidebar, .main-content, #right-panel, .playbar, .sear
   .encore, .enc-slide, .enc-slide.on { transition: opacity .2s ease; transform: none; }
   .enc-spin, .enc-slide.on .enc-cover, .enc-slide.on .enc-list li, .enc-slide.on .enc-hours i, .enc-bar i.run::after { animation: none; }
 }
+
+/* Old engines without color-mix() (Android WebView before Chrome 111, e.g. Huawei and Honor phones without
+   Google services) threw every color built with it away, so all text came out black. There the theme colors
+   are plain (no transparency slider), and the few direct uses get fixed stand-ins. */
+@supports not (color: color-mix(in srgb, red 50%, transparent)) {
+  :root {
+    --md-sys-color-background: var(--md-sys-color-background-solid);
+    --md-sys-color-surface: var(--md-sys-color-surface-solid);
+    --md-sys-color-surface-dim: var(--md-sys-color-surface-dim-solid);
+    --md-sys-color-surface-bright: var(--md-sys-color-surface-bright-solid);
+    --md-sys-color-surface-container-lowest: var(--md-sys-color-surface-container-lowest-solid);
+    --md-sys-color-surface-container-low: var(--md-sys-color-surface-container-low-solid);
+    --md-sys-color-surface-container: var(--md-sys-color-surface-container-solid);
+    --md-sys-color-surface-container-high: var(--md-sys-color-surface-container-high-solid);
+    --md-sys-color-surface-container-highest: var(--md-sys-color-surface-container-highest-solid);
+    --md-sys-color-on-surface: var(--md-sys-color-on-surface-solid);
+    --md-sys-color-on-surface-variant: var(--md-sys-color-on-surface-variant-solid);
+  }
+  .volume-range::-webkit-slider-runnable-track, .wavy-track { background: rgba(255, 255, 255, .3); stroke: rgba(255, 255, 255, .3); }
+  .cache-progress-track, .update-progress, .sl-inactive { background: rgba(255, 255, 255, .16); }
+  .settings-nav-btn:hover, .sp-modes button:hover:not(.active), .tvk-pill-btn:hover { background: rgba(255, 255, 255, .08); }
+}

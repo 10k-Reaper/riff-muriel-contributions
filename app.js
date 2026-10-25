@@ -636,25 +636,37 @@ document.addEventListener('DOMContentLoaded', async () => {
     else if (cmd === 'stop') { if (state.isPlaying) pauseSmooth(); }
   }
 
-  if ('mediaSession' in navigator) {
-    try {
-      navigator.mediaSession.setActionHandler('play', () => handleMediaCommand('play', 'session'));
-      navigator.mediaSession.setActionHandler('pause', () => handleMediaCommand('pause', 'session'));
-      navigator.mediaSession.setActionHandler('previoustrack', () => handleMediaCommand('prev', 'session'));
-      navigator.mediaSession.setActionHandler('nexttrack', () => handleMediaCommand('next', 'session'));
-      navigator.mediaSession.setActionHandler('stop', () => handleMediaCommand('stop', 'session'));
-      navigator.mediaSession.setActionHandler('seekto', (details) => {
-        if (details.seekTime !== undefined && details.seekTime !== null) {
-          const audio = (state.secondaryAudio && !state.secondaryAudio.paused) ? state.secondaryAudio : el.nativeAudio;
-          if (audio) audio.currentTime = details.seekTime;
-          if (typeof updateSyncedLyricsHighlight === 'function') {
-            updateSyncedLyricsHighlight(details.seekTime);
-          }
-          updateMediaPositionState();
+  // Lock screen / Control Center / headset buttons. iOS forgets these whenever one song is unloaded for the
+  // next, and with none registered it shows its own ±15 s skip buttons instead of previous / next (the
+  // "songs act like podcasts" report), so they are registered again every time a song starts.
+  const mediaActions = {
+    play: () => handleMediaCommand('play', 'session'),
+    pause: () => handleMediaCommand('pause', 'session'),
+    previoustrack: () => handleMediaCommand('prev', 'session'),
+    nexttrack: () => handleMediaCommand('next', 'session'),
+    stop: () => handleMediaCommand('stop', 'session'),
+    seekto: (details) => {
+      if (details.seekTime !== undefined && details.seekTime !== null) {
+        const audio = (state.secondaryAudio && !state.secondaryAudio.paused) ? state.secondaryAudio : el.nativeAudio;
+        if (audio) audio.currentTime = details.seekTime;
+        if (typeof updateSyncedLyricsHighlight === 'function') {
+          updateSyncedLyricsHighlight(details.seekTime);
         }
-      });
-    } catch (_) {}
+        updateMediaPositionState();
+      }
+    },
+    // skip buttons take the place of previous / next on the iPhone lock screen
+    seekbackward: null,
+    seekforward: null,
+  };
+  function registerMediaActions() {
+    if (!('mediaSession' in navigator)) return;
+    for (const [action, handler] of Object.entries(mediaActions)) {
+      // one action the browser doesn't know must not stop the others
+      try { navigator.mediaSession.setActionHandler(action, handler); } catch (_) {}
+    }
   }
+  registerMediaActions();
 
   function hexToRgb(hex) {
     hex = hex.replace('#', '');
@@ -745,7 +757,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   };
 
-  const tint = (hex, v) => `color-mix(in srgb, ${hex} var(${v}), transparent)`;
+  // Old Android WebViews (before Chrome 111) have no color-mix(): a color built with it was thrown away and all
+  // text came out black. They get the plain color instead (the transparency sliders do nothing there).
+  const hasColorMix = !!(window.CSS && CSS.supports && CSS.supports('color', 'color-mix(in srgb, red 50%, transparent)'));
+  const tint = (hex, v) => (hasColorMix ? `color-mix(in srgb, ${hex} var(${v}), transparent)` : hex);
   const SURFACE_TOKENS = new Set([
     '--md-sys-color-background',
     '--md-sys-color-surface',
@@ -5568,6 +5583,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       failStreak = 0;
       state.isPlaying = true;
       setTrackLoading(false);
+      registerMediaActions();
       document.body.classList.add('is-playing');
       updatePlayPauseButton(true, false);
       // warm up the next two songs (staggered) so skipping or a slow network never leaves a gap
