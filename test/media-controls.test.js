@@ -6,7 +6,7 @@ const assert = require('node:assert');
 const Module = require('module');
 const path = require('path');
 
-function setup(platform = 'android', { unrestricted = true } = {}) {
+function setup(platform = 'android', { unrestricted = true, island = null } = {}) {
   const calls = [];
   const asked = [];
   let actionListener = null;
@@ -15,6 +15,9 @@ function setup(platform = 'android', { unrestricted = true } = {}) {
     addListener: (name, cb) => { if (name === 'action') actionListener = cb; return Promise.resolve({ remove() {} }); },
     backgroundStatus: () => Promise.resolve({ unrestricted }),
     allowBackground: () => { asked.push('allow'); return Promise.resolve(); },
+    // like an older native side when null: the call fails
+    islandStatus: () => (island ? Promise.resolve(island) : Promise.reject(new Error('not implemented'))),
+    allowIsland: (opts) => { asked.push(`island ${JSON.stringify(opts || {})}`); return Promise.resolve(island); },
   };
   const fakeCore = { Capacitor: { getPlatform: () => platform }, registerPlugin: () => plugin };
   const origLoad = Module._load;
@@ -50,7 +53,45 @@ test('one update per song change with title, cover, length and play state', asyn
   audio.dispatchEvent(new Event('playing'));
   await tick();
   assert.strictEqual(calls.length, 1);
-  assert.deepStrictEqual(calls[0], { title: 'Song', artist: 'Someone', album: '', artwork: 'https://i.ytimg.com/vi/a/mqdefault.jpg', duration: 201.5, position: 3, playing: true, loading: false, rate: 1, shuffle: false, repeat: 'off' });
+  assert.deepStrictEqual(calls[0], { title: 'Song', artist: 'Someone', album: '', artwork: 'https://i.ytimg.com/vi/a/mqdefault.jpg', duration: 201.5, position: 3, playing: true, loading: false, rate: 1, shuffle: false, repeat: 'off', island: 'auto' });
+});
+
+test('the island setting goes along: the phone decides until it is picked, then on or off', async () => {
+  const { calls, state } = setup();
+  state.currentTrack = { title: 'T' };
+  assert.strictEqual(window.MurielIsland.enabled({ defaultOn: true }), true);
+  assert.strictEqual(window.MurielIsland.enabled({ defaultOn: false }), false);
+  window.MurielIsland.setEnabled(true);
+  await tick();
+  assert.strictEqual(calls[0].island, 'on');
+  assert.strictEqual(window.MurielIsland.enabled({ defaultOn: false }), true);
+  window.MurielIsland.setEnabled(false);
+  await tick();
+  assert.strictEqual(calls[1].island, 'off');
+  assert.strictEqual(window.MurielIsland.enabled({ defaultOn: true }), false);
+});
+
+test('island status survives a native side without it', async () => {
+  setup();
+  assert.deepStrictEqual(await window.MurielIsland.status(), {});
+  assert.strictEqual(window.MurielIsland.enabled({}), false);
+});
+
+test('where the island is on by default, notifications are asked for once, after the battery question', async () => {
+  const off = { supported: true, vendor: 'vivo', defaultOn: true, notifications: false, promoted: true };
+  const vivo = setup('android', { unrestricted: false, island: off });
+  vivo.audio.dispatchEvent(new Event('playing'));
+  vivo.audio.dispatchEvent(new Event('playing'));
+  await tick();
+  // never opens Settings by itself
+  assert.deepStrictEqual(vivo.asked, ['allow', 'island {"settings":false}']);
+  // notifications already allowed, the island off by default, or Android older than 16: nothing to ask
+  for (const island of [{ ...off, notifications: true }, { ...off, defaultOn: false }, { ...off, supported: false }]) {
+    const other = setup('android', { island });
+    other.audio.dispatchEvent(new Event('playing'));
+    await tick();
+    assert.deepStrictEqual(other.asked, []);
+  }
 });
 
 test('the gap while the next song downloads is reported as loading, not as a pause', async () => {

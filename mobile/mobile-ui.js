@@ -281,6 +281,65 @@
     trRow.parentElement.insertBefore(row, trRow);
   }
 
+  // Android: the song in the island at the top of the screen, as an Android 16 live update (media-controls.js).
+  // vivo's Origin Island and OPPO's Fluid Cloud only take music apps on their maker's list; a live update they take
+  // from any app. Xiaomi's Super Island and Samsung's Now Bar show the playback notification already: no row there.
+  if (window.MurielIsland && trRow) {
+    const isl = window.MurielIsland;
+    isl.status().then((s) => {
+      if (!s.vendor || s.vendor === 'xiaomi' || s.vendor === 'samsung' || (!s.supported && s.vendor !== 'vivo')) return;
+      const name = { vivo: 'Origin Island', oplus: 'Fluid Cloud' }[s.vendor] || 'Song in the status bar';
+      const about = {
+        vivo: 'The song in the Origin Island at the top of the screen. vivo’s music capsule only takes apps on vivo’s list, so Muriel shows there as a live update.',
+        oplus: 'The song in Fluid Cloud at the top of the screen, as a live update.',
+      }[s.vendor] || 'The song as a live update in the status bar.';
+      const row = document.createElement('div');
+      row.className = 'setting-item';
+      row.innerHTML = `
+        <div class="setting-item-top" style="align-items: center;">
+          <div style="display: flex; flex-direction: column; gap: 2px;">
+            <span class="setting-name">${name}</span>
+            <span class="island-hint" style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);"></span>
+            <button class="btn-pill-primary island-fix" type="button" style="align-self: flex-start; margin-top: 6px; display: none;"></button>
+          </div>
+          <button class="effect-switch-btn" type="button" aria-label="${name}"><span class="thumb"></span></button>
+        </div>`;
+      const hint = row.querySelector('.island-hint');
+      const fix = row.querySelector('.island-fix');
+      const sw = row.querySelector('.effect-switch-btn');
+      const show = (st) => {
+        if (!st.supported) {
+          // OriginOS 5 and older: no live updates yet
+          hint.textContent = 'Needs OriginOS 6 (Android 16). vivo’s own music capsule only takes apps on vivo’s list.';
+          sw.style.display = 'none';
+          return;
+        }
+        const on = isl.enabled(st);
+        sw.classList.toggle('active', on);
+        let need = '';
+        if (on && !st.notifications) { need = ' Allow Muriel’s notifications for it.'; fix.textContent = 'Allow'; }
+        else if (on && !st.promoted) {
+          need = st.vendor === 'oplus' ? ' Turn on “Show Live Updates on Live Alerts” for Muriel in the phone’s settings.'
+            : ' Live updates are turned off for Muriel in the phone’s settings.';
+          fix.textContent = 'Settings';
+        }
+        hint.textContent = about + need;
+        fix.style.display = need ? '' : 'none';
+      };
+      const refresh = () => isl.status().then(show);
+      sw.addEventListener('click', () => {
+        const on = !sw.classList.contains('active');
+        isl.setEnabled(on);
+        // turning it on asks for what's missing right away
+        (on ? isl.allow() : isl.status()).then(show);
+      });
+      fix.addEventListener('click', () => isl.allow().then(show));
+      document.addEventListener('visibilitychange', () => { if (!document.hidden) { refresh(); isl.refresh(); } });
+      show(s);
+      trRow.parentElement.insertBefore(row, trRow);
+    });
+  }
+
   // artist bio is clamped to 3 lines on phones; tapping it expands / collapses
   const bio = document.getElementById('artist-profile-bio');
   if (bio) bio.addEventListener('click', () => bio.classList.toggle('expanded'));

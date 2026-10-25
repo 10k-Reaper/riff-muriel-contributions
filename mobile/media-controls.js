@@ -9,6 +9,11 @@ module.exports = function mediaControls() {
   const plugin = registerPlugin('MurielMedia');
   const core = () => window.MurielCore;
   let pending = 0;
+  // The song in the island at the top of the screen (Android 16+, a "Live Update" beside the playback notification;
+  // see MediaControlsPlugin). 'on' / 'off' once picked in Settings; until then the phone's default: on for vivo,
+  // whose Origin Island won't take Muriel's playback notification itself.
+  const ISLAND = 'muriel_android_island';
+  const islandMode = () => { const v = localStorage.getItem(ISLAND); return v === 'on' || v === 'off' ? v : 'auto'; };
 
   function send() {
     pending = 0;
@@ -32,10 +37,24 @@ module.exports = function mediaControls() {
       rate: a.playbackRate || 1,
       shuffle: !!c.state.isShuffle,
       repeat: c.state.repeatMode || (c.state.isRepeat ? 'one' : 'off'), // 'off', 'all' or 'one'
+      island: islandMode(),
     }).catch(() => {});
   }
   // several events arrive together on a song change; send once
   const update = () => { if (!pending) pending = setTimeout(send, 80); };
+
+  // For the island row in Settings (mobile-ui.js). status(): { supported (Android 16+), vendor ('vivo', 'oplus',
+  // 'xiaomi', 'samsung', 'honor' or 'other'), defaultOn, notifications (allowed), promoted (the phone's switch for
+  // live updates) }. allow(): asks for notifications or opens that switch, whichever is missing; resolves with status.
+  const ask = (method, ...args) => Promise.resolve().then(() => plugin[method](...args)).then((s) => s || {}).catch(() => ({}));
+  const island = window.MurielIsland = {
+    status: () => ask('islandStatus'),
+    enabled: (status) => (islandMode() === 'auto' ? !!(status && status.defaultOn) : islandMode() === 'on'),
+    setEnabled: (on) => { localStorage.setItem(ISLAND, on ? 'on' : 'off'); update(); },
+    allow: (opts) => ask('allowIsland', opts),
+    // back from the phone's settings: a switch turned on there shows the island right away
+    refresh: () => update(),
+  };
 
   // Some phones stop apps in the background to save battery, music or not. For the "Play in the background"
   // row in Settings (mobile-ui.js), and asked once by itself when the first song starts.
@@ -45,10 +64,18 @@ module.exports = function mediaControls() {
     allow: () => plugin.allowBackground().then((r) => !!(r && r.unrestricted)).catch(() => false),
   };
   const ASKED = 'muriel_bg_asked';
+  // the island is on by default on vivo, and a live update needs notifications, which the playback notification
+  // never asked for: asked once too, after the battery question
+  const ISLAND_ASKED = 'muriel_island_asked';
+  const askIslandOnce = () => island.status().then((s) => {
+    if (!s.supported || s.notifications || !island.enabled(s) || localStorage.getItem(ISLAND_ASKED) || document.hidden) return;
+    localStorage.setItem(ISLAND_ASKED, '1');
+    return island.allow({ settings: false });
+  });
   const askOnce = () => {
-    if (localStorage.getItem(ASKED) || document.hidden) return;
-    localStorage.setItem(ASKED, '1');
-    background.allowed().then((ok) => { if (!ok) background.allow(); });
+    const first = localStorage.getItem(ASKED) || document.hidden ? Promise.resolve()
+      : (localStorage.setItem(ASKED, '1'), background.allowed().then((ok) => { if (!ok) return background.allow(); }));
+    first.then(askIslandOnce).catch(() => {});
   };
 
   function hook() {

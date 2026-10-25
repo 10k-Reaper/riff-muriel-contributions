@@ -27,6 +27,8 @@ public class PlaybackService extends Service {
     static final String ACTION_DISMISS = "io.github.cloverscripts.muriel.DISMISS";
     static final String ACTION_SHUFFLE = "io.github.cloverscripts.muriel.SHUFFLE_BUTTON";
     static final String ACTION_REPEAT = "io.github.cloverscripts.muriel.REPEAT_BUTTON";
+    // the Live Update (the island, MediaControlsPlugin.postIsland) was swiped away
+    static final String ACTION_ISLAND_DISMISSED = "io.github.cloverscripts.muriel.ISLAND_DISMISSED";
     // set when started with startForegroundService(): Android then insists on startForeground()
     static final String EXTRA_FOREGROUND = "foreground";
     // Paused, Muriel stays in the foreground this much longer. Android doesn't let an app in the background
@@ -50,9 +52,16 @@ public class PlaybackService extends Service {
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
+        boolean wasRunning = running;
         running = true;
         String action = intent != null ? intent.getAction() : null;
         MediaControlsPlugin plugin = MediaControlsPlugin.instance;
+        if (ACTION_ISLAND_DISMISSED.equals(action)) {
+            // the playback notification stays as it is; started just for this, the service goes again
+            if (plugin != null) plugin.islandDismissed();
+            if (!wasRunning) stopSelf(startId);
+            return START_NOT_STICKY;
+        }
         if (ACTION_TOGGLE.equals(action) && plugin != null) {
             if (MediaControlsPlugin.playing) plugin.send("pause", -1); else plugin.start("play");
         }

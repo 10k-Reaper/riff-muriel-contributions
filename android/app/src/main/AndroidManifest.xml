@@ -60,6 +60,9 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Android 16+: the song as a "Live Update", in the island at the top of the screen or the status bar
+         (MediaControlsPlugin.postIsland). Granted at install, not asked for; older versions ignore it. -->
+    <uses-permission android:name="android.permission.POST_PROMOTED_NOTIFICATIONS" />
     <!-- awake (CPU + Wi-Fi) while the next song downloads with the screen off -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <!-- the "Play in the background" switch: asks to be left out of battery optimization -->
