@@ -377,6 +377,9 @@
               <button class="btn-icon-pill" id="btn-rename-playlist" title="Rename playlist" aria-label="Rename playlist">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
               </button>
+              <button class="btn-icon-pill" id="btn-export-playlist" title="Export as JSON file" aria-label="Export as JSON file">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="12" y1="12" x2="12" y2="18"></line><polyline points="9 15 12 18 15 15"></polyline></svg>
+              </button>
               <button class="btn-icon-pill delete-btn" id="btn-delete-playlist" title="Delete playlist" aria-label="Delete playlist">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
               </button>
@@ -1174,6 +1177,26 @@
 
             <div class="m3-group">
 
+            <div class="setting-item" id="card-lastfm">
+              <div class="setting-item-top" style="align-items: center; justify-content: space-between;">
+                <div style="display: flex; align-items: center; gap: 10px; min-width: 0;">
+                  <span style="width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; color: #d51007;">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                      <path d="M10.584 17.21l-.88-2.392s-1.43 1.594-3.573 1.594c-1.897 0-3.244-1.649-3.244-4.288 0-3.382 1.704-4.591 3.381-4.591 2.42 0 3.189 1.567 3.849 3.574l.88 2.749c.88 2.666 2.529 4.81 7.285 4.81 3.409 0 5.718-1.045 5.718-3.793 0-2.227-1.265-3.381-3.63-3.931l-1.758-.385c-1.21-.275-1.567-.77-1.567-1.595 0-.934.742-1.484 1.952-1.484 1.32 0 2.034.495 2.144 1.677l2.749-.33c-.22-2.474-1.924-3.492-4.729-3.492-2.474 0-4.893.935-4.893 3.932 0 1.87.907 3.051 3.189 3.601l1.87.44c1.402.33 1.869.907 1.869 1.704 0 1.017-.99 1.43-2.86 1.43-2.776 0-3.93-1.457-4.59-3.464l-.907-2.749c-1.155-3.573-2.997-4.893-6.653-4.893C2.144 5.334 0 7.89 0 12.233c0 4.18 2.144 6.434 5.993 6.434 3.106 0 4.591-1.457 4.591-1.457z"/>
+                    </svg>
+                  </span>
+                  <div style="display: flex; flex-direction: column; min-width: 0;">
+                    <span class="setting-name" data-i18n>Last.fm scrobbling</span>
+                    <span id="lastfm-status-label" style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">Not connected</span>
+                  </div>
+                </div>
+                <div style="display: flex; align-items: center; gap: 10px; flex-shrink: 0;">
+                  <button type="button" class="btn-outline-pill" id="btn-lastfm-open-modal" style="padding: 4px 14px; font-size: calc(12px * var(--font-scale, 1)); height: 32px;" data-i18n>Connect</button>
+                  <button type="button" class="effect-switch-btn" id="btn-lastfm-toggle" title="Scrobble to Last.fm" aria-label="Scrobble to Last.fm"><span class="thumb"></span></button>
+                </div>
+              </div>
+            </div>
+
             <div class="setting-item" id="card-spotify-import">
               <div class="setting-item-top" style="align-items: center; justify-content: space-between;">
                 <div style="display: flex; align-items: center; gap: 10px;">
@@ -1239,6 +1262,35 @@
                   <span class="setting-name">Apple Music</span>
                 </div>
                 <button class="btn-pill-primary" id="btn-open-apple-import" type="button">Import</button>
+              </div>
+            </div>
+
+            <div class="setting-item" id="card-yandex-import">
+              <div class="setting-item-top" style="align-items: center; justify-content: space-between;">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                  <span style="width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; color: var(--md-sys-color-on-surface-variant);">
+                    <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true"><path d="M12.928 1.5l-1.93 7.64L5.69 3.63l4.13 6.72L2 9.48l7.36 2.91L3.1 17.5l6.98-3.51-.83 8.51 2.77-7.79 4.79 6.64-2.58-7.61 7.77 1.34-6.62-4.29 6.12-4.96-7.44 2.41L16.92 1.5l-3.992 6.84L12.928 1.5z"/></svg>
+                  </span>
+                  <span class="setting-name">Yandex Music</span>
+                </div>
+                <button class="btn-pill-primary btn-open-link-import" id="btn-open-yandex-import" data-platform="yandex" type="button">Import</button>
+              </div>
+            </div>
+
+            <div class="setting-item" id="card-json-import">
+              <div class="setting-item-top" style="align-items: center; justify-content: space-between;">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                  <span style="width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; color: var(--md-sys-color-on-surface-variant);">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                      <polyline points="14 2 14 8 20 8"></polyline>
+                      <line x1="12" y1="18" x2="12" y2="12"></line>
+                      <polyline points="9 15 12 12 15 15"></polyline>
+                    </svg>
+                  </span>
+                  <span class="setting-name" data-i18n>Playlist file (JSON)</span>
+                </div>
+                <button class="btn-pill-primary" id="btn-open-json-import" type="button">Import</button>
               </div>
             </div>
             </div>
@@ -1326,6 +1378,66 @@
                   <button class="btn-outline-pill hidden" id="btn-reset-download-folder" style="padding: 6px 14px; font-size: calc(12px * var(--font-scale, 1));">Reset</button>
                   <button class="btn-outline-pill" id="btn-change-download-folder" style="padding: 6px 14px; font-size: calc(12px * var(--font-scale, 1));">Change</button>
                 </div>
+              </div>
+            </div>
+
+            <div class="setting-item" id="export-all-playlists-item">
+              <div class="setting-item-top" style="align-items: center; justify-content: space-between;">
+                <div style="display: flex; align-items: center; gap: 12px; min-width: 0;">
+                  <div style="width: 32px; height: 32px; border-radius: 50%; background: var(--md-sys-color-surface-container-high); display: flex; align-items: center; justify-content: center; color: var(--md-sys-color-primary); flex-shrink: 0;">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                  </div>
+                  <div style="display: flex; flex-direction: column; min-width: 0;">
+                    <span class="setting-name" data-i18n>Export all playlists</span>
+                    <span style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);" data-i18n>Every playlist in one JSON file, readable by Muriel and Riff</span>
+                  </div>
+                </div>
+                <button class="btn-outline-pill" id="btn-export-all-playlists" style="padding: 6px 14px; font-size: calc(12px * var(--font-scale, 1)); flex-shrink: 0;" data-i18n>Export</button>
+              </div>
+            </div>
+
+            <div class="setting-item" id="import-json-playlists-item">
+              <div class="setting-item-top" style="align-items: center; justify-content: space-between;">
+                <div style="display: flex; align-items: center; gap: 12px; min-width: 0;">
+                  <div style="width: 32px; height: 32px; border-radius: 50%; background: var(--md-sys-color-surface-container-high); display: flex; align-items: center; justify-content: center; color: var(--md-sys-color-primary); flex-shrink: 0;">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                  </div>
+                  <div style="display: flex; flex-direction: column; min-width: 0;">
+                    <span class="setting-name" data-i18n>Import playlists</span>
+                    <span style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);" data-i18n>From a JSON file exported by Muriel or Riff</span>
+                  </div>
+                </div>
+                <button class="btn-outline-pill" id="btn-import-json-playlists" style="padding: 6px 14px; font-size: calc(12px * var(--font-scale, 1)); flex-shrink: 0;" data-i18n>Import</button>
+              </div>
+            </div>
+
+            <div class="setting-item" id="export-account-item">
+              <div class="setting-item-top" style="align-items: center; justify-content: space-between;">
+                <div style="display: flex; align-items: center; gap: 12px; min-width: 0;">
+                  <div style="width: 32px; height: 32px; border-radius: 50%; background: var(--md-sys-color-surface-container-high); display: flex; align-items: center; justify-content: center; color: var(--md-sys-color-primary); flex-shrink: 0;">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                  </div>
+                  <div style="display: flex; flex-direction: column; min-width: 0;">
+                    <span class="setting-name" data-i18n>Back up this profile</span>
+                    <span id="export-account-hint" style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);" data-i18n>Playlists, favorites, history, Encore and settings in one file</span>
+                  </div>
+                </div>
+                <button class="btn-outline-pill" id="btn-export-account" style="padding: 6px 14px; font-size: calc(12px * var(--font-scale, 1)); flex-shrink: 0;" data-i18n>Export</button>
+              </div>
+            </div>
+
+            <div class="setting-item" id="import-account-item">
+              <div class="setting-item-top" style="align-items: center; justify-content: space-between;">
+                <div style="display: flex; align-items: center; gap: 12px; min-width: 0;">
+                  <div style="width: 32px; height: 32px; border-radius: 50%; background: var(--md-sys-color-surface-container-high); display: flex; align-items: center; justify-content: center; color: var(--md-sys-color-primary); flex-shrink: 0;">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                  </div>
+                  <div style="display: flex; flex-direction: column; min-width: 0;">
+                    <span class="setting-name" data-i18n>Restore a backup</span>
+                    <span style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);" data-i18n>Replaces this profile's playlists, favorites, history and settings. Also reads Riff account files (.rfacc)</span>
+                  </div>
+                </div>
+                <button class="btn-outline-pill" id="btn-import-account" style="padding: 6px 14px; font-size: calc(12px * var(--font-scale, 1)); flex-shrink: 0;" data-i18n>Import</button>
               </div>
             </div>
             </div>
@@ -2143,8 +2255,36 @@
         <button class="btn-outline-pill" id="btn-cancel-new-playlist">Cancel</button>
         <button class="btn-pill-primary" id="btn-confirm-new-playlist">Create</button>
       </div>
+      <div class="cpm-import-bar">
+        <span class="cpm-import-label" data-i18n>Or import one</span>
+        <div class="cpm-import-icons">
+          <button class="cpm-service-btn" id="btn-cpm-spotify" type="button" title="Spotify" aria-label="Import from Spotify">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M7 9.5c3.5-1 7.5-.7 10.5 1"/><path d="M7.5 12.7c3-.8 6-.5 8.5.9"/><path d="M8 15.8c2.5-.6 4.5-.4 6.5.7"/></svg>
+          </button>
+          <button class="cpm-service-btn btn-open-link-import" data-platform="youtube" type="button" title="YouTube" aria-label="Import from YouTube">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>
+          </button>
+          <button class="cpm-service-btn btn-open-link-import" data-platform="ytmusic" type="button" title="YouTube Music" aria-label="Import from YouTube Music">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.376 0 0 5.376 0 12s5.376 12 12 12 12-5.376 12-12S18.624 0 12 0zm0 19.104c-3.924 0-7.104-3.18-7.104-7.104S8.076 4.896 12 4.896s7.104 3.18 7.104 7.104-3.18 7.104-7.104 7.104zm0-13.333c-3.44 0-6.229 2.789-6.229 6.229s2.789 6.229 6.229 6.229 6.229-2.789 6.229-6.229-2.789-6.229-6.229-6.229zm-1.75 9.138V9.091l5.426 3.092-5.426 3.092z"/></svg>
+          </button>
+          <button class="cpm-service-btn btn-open-link-import" data-platform="soundcloud" type="button" title="SoundCloud" aria-label="Import from SoundCloud">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M1.175 12.225c-.051 0-.094.044-.103.097l-.29 3.01c-.01.076.046.14.122.14.051 0 .094-.043.103-.097l.29-3.01a.117.117 0 0 0-.122-.14zm1.037-1.127c-.06 0-.11.048-.12.112l-.438 4.148c-.01.082.05.15.132.15.06 0 .11-.048.12-.112l.438-4.148c.01-.082-.05-.15-.132-.15zm1.096-.693c-.07 0-.13.054-.14.126l-.496 4.838c-.01.088.055.163.143.163.07 0 .13-.054.14-.126l.496-4.838c.01-.088-.055-.163-.143-.163zm1.144-.436c-.08 0-.148.06-.16.142l-.527 5.275c-.01.094.06.175.154.175.08 0 .148-.06.16-.142l.527-5.275c.01-.094-.06-.175-.154-.175zm1.18-.328c-.09 0-.165.068-.178.16l-.525 5.603c-.01.1.066.187.168.187.09 0 .165-.068.178-.16l.525-5.603c.01-.1-.066-.187-.168-.187zm1.205-.109c-.1 0-.183.075-.198.176l-.504 5.712c-.01.106.072.198.179.198.1 0 .183-.075.198-.176l.504-5.712c.01-.106-.072-.198-.179-.198zm1.222.054c-.11 0-.2.083-.217.195l-.47 5.658c-.01.112.078.21.192.21.11 0 .2-.083.217-.195l.47-5.658c.01-.112-.078-.21-.192-.21zm1.233.273c-.12 0-.218.09-.236.213l-.427 5.385c-.01.12.083.22.206.22.12 0 .218-.09.236-.213l.427-5.385c.01-.12-.083-.22-.206-.22zm1.238.655c-.13 0-.236.1-.255.232l-.374 4.73c-.01.126.09.232.22.232.13 0 .236-.1.255-.232l.374-4.73c.01-.126-.09-.232-.22-.232zm3.328-4.323c-.31 0-.61.05-.89.15a3.49 3.49 0 0 0-2.02-1.46c-.14-.04-.26.06-.26.2v8.94c0 .12.1.22.22.22h6.14c1.93 0 3.5-1.57 3.5-3.5s-1.57-3.5-3.5-3.5c-.38 0-.74.06-1.07.18-.08-1.59-1.39-2.85-3.03-2.85z"/></svg>
+          </button>
+          <button class="cpm-service-btn" id="btn-cpm-apple" type="button" title="Apple Music" aria-label="Import from Apple Music">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/></svg>
+          </button>
+          <button class="cpm-service-btn btn-open-link-import" data-platform="yandex" type="button" title="Yandex Music" aria-label="Import from Yandex Music">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M12.928 1.5l-1.93 7.64L5.69 3.63l4.13 6.72L2 9.48l7.36 2.91L3.1 17.5l6.98-3.51-.83 8.51 2.77-7.79 4.79 6.64-2.58-7.61 7.77 1.34-6.62-4.29 6.12-4.96-7.44 2.41L16.92 1.5l-3.992 6.84L12.928 1.5z"/></svg>
+          </button>
+          <button class="cpm-service-btn" id="btn-cpm-json" type="button" title="JSON file" aria-label="Import from a JSON file">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="12" y1="18" x2="12" y2="12"></line><polyline points="9 15 12 12 15 15"></polyline></svg>
+          </button>
+        </div>
+      </div>
     </div>
   </div>
+  <input type="file" id="json-playlist-file-input" accept=".json,application/json" multiple style="display:none">
+  <input type="file" id="account-file-input" accept=".json,.rfacc,application/json,application/octet-stream" style="display:none">
 
   <div class="modal-backdrop hidden" id="spotify-import-modal">
     <div class="dialog-card">
@@ -2320,14 +2460,79 @@
 
   <div class="modal-backdrop hidden" id="link-import-modal">
     <div class="dialog-card">
-      <h3>Import from link</h3>
-      <div style="position: relative; width: 100%; margin-bottom: 12px;">
-        <span style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%); display: flex; align-items: center; color: var(--md-sys-color-on-surface-variant); pointer-events: none;">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg>
-        </span>
-        <input type="text" id="link-import-url" class="pill-text-input" placeholder="Paste a YouTube, YouTube Music or SoundCloud link" style="width: 100%; box-sizing: border-box; padding-left: 40px;">
+      <h3 id="link-import-title">Import from link</h3>
+      <div class="sp-modes hidden" id="link-modes">
+        <button type="button" class="active" data-mode="link" id="link-mode-link">Playlist link</button>
+        <button type="button" data-mode="login" id="link-mode-login">Log in</button>
       </div>
+      <div class="link-pane sp-pane" data-mode="link">
+        <div style="position: relative; width: 100%; margin-bottom: 12px;">
+          <span style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%); display: flex; align-items: center; color: var(--md-sys-color-on-surface-variant); pointer-events: none;">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg>
+          </span>
+          <input type="text" id="link-import-url" class="pill-text-input" placeholder="Paste a YouTube, YouTube Music or SoundCloud link" style="width: 100%; box-sizing: border-box; padding-left: 40px;">
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 6px; margin-bottom: 16px;">
+          <label class="dialog-label">Import into</label>
+          <select class="pill-select" id="link-import-target" style="display:none">
+            <option value="new">New playlist</option>
+          </select>
+          <div class="m3-dropdown" id="link-target-dropdown">
+            <button class="m3-dropdown-trigger" id="link-target-trigger" type="button">
+              <span id="link-target-label">New playlist</span>
+              <svg class="m3-dropdown-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </button>
+            <div class="m3-dropdown-menu" id="link-target-menu">
+              <button class="m3-dropdown-option selected" data-value="new" type="button">New playlist</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="link-pane sp-pane hidden" data-mode="login">
+        <div id="google-login-hint" style="font-size: calc(13px * var(--font-scale, 1)); color: var(--md-sys-color-on-surface-variant); margin-bottom: 12px; line-height: 1.4;">Log in with your Google account to bring over your liked songs and playlists. The login stays in its own browser storage inside Muriel, for this profile only.</div>
+        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 12px; flex-wrap: wrap;">
+          <button type="button" class="btn-outline-pill" id="btn-google-login">Log in with Google</button>
+          <button type="button" class="btn-outline-pill hidden" id="btn-google-logout">Log out</button>
+          <span id="google-login-status" style="font-size: calc(13px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">Not connected</span>
+        </div>
+        <div style="display: flex; gap: 16px; margin-bottom: 12px;">
+          <label style="display: flex; align-items: center; gap: 8px; font-size: calc(13px * var(--font-scale, 1)); cursor: pointer;">
+            <input type="checkbox" id="google-chk-likes" class="m3-checkbox" checked> Liked songs
+          </label>
+          <label style="display: flex; align-items: center; gap: 8px; font-size: calc(13px * var(--font-scale, 1)); cursor: pointer;">
+            <input type="checkbox" id="google-chk-playlists" class="m3-checkbox" checked> Playlists
+          </label>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 6px; margin-bottom: 16px;">
+          <label class="dialog-label">Put playlists into</label>
+          <select class="pill-select" id="google-import-target" style="display:none">
+            <option value="new">Separate playlists</option>
+          </select>
+          <div class="m3-dropdown" id="google-target-dropdown">
+            <button class="m3-dropdown-trigger" id="google-target-trigger" type="button">
+              <span id="google-target-label">Separate playlists</span>
+              <svg class="m3-dropdown-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </button>
+            <div class="m3-dropdown-menu" id="google-target-menu">
+              <button class="m3-dropdown-option selected" data-value="new" type="button">Separate playlists</button>
+            </div>
+          </div>
+        </div>
+        <div class="sp-warning">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+            <line x1="12" y1="9" x2="12" y2="13"></line>
+            <line x1="12" y1="17" x2="12.01" y2="17"></line>
+          </svg>
+          <span>Muriel only reads your likes and playlists, and is open-source. Want zero risk? Import a single playlist by link instead.</span>
+        </div>
+      </div>
+      <!-- outside the panes: errors of the link and of the Google import both show here -->
       <div id="link-import-error" class="import-error-block hidden"></div>
+      <div id="link-import-progress-wrap" class="hidden" style="margin-bottom: 16px; display: flex; flex-direction: column; align-items: center; gap: 8px;">
+        <div id="link-import-wavy-container" style="width: 100%;"></div>
+        <span id="link-import-progress-label" style="font-size: calc(13px * var(--font-scale, 1)); color: var(--md-sys-color-on-surface-variant);">0 / 0</span>
+      </div>
       <div id="link-import-status" class="hidden" style="margin-bottom: 16px; font-size: calc(13px * var(--font-scale, 1));"></div>
       <div class="dialog-actions">
         <button class="btn-outline-pill" id="btn-cancel-link-import" type="button">Cancel</button>
@@ -2775,6 +2980,46 @@
     </div>
   </div>
 
+  <div class="modal-backdrop hidden" id="lastfm-modal">
+    <div class="dialog-card" style="width: 440px; max-width: 92vw; display: flex; flex-direction: column; gap: 14px;">
+      <div class="dialog-header" style="display: flex; justify-content: space-between; align-items: center;">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="#d51007" aria-hidden="true"><path d="M10.584 17.21l-.88-2.392s-1.43 1.594-3.573 1.594c-1.897 0-3.244-1.649-3.244-4.288 0-3.382 1.704-4.591 3.381-4.591 2.42 0 3.189 1.567 3.849 3.574l.88 2.749c.88 2.666 2.529 4.81 7.285 4.81 3.409 0 5.718-1.045 5.718-3.793 0-2.227-1.265-3.381-3.63-3.931l-1.758-.385c-1.21-.275-1.567-.77-1.567-1.595 0-.934.742-1.484 1.952-1.484 1.32 0 2.034.495 2.144 1.677l2.749-.33c-.22-2.474-1.924-3.492-4.729-3.492-2.474 0-4.893.935-4.893 3.932 0 1.87.907 3.051 3.189 3.601l1.87.44c1.402.33 1.869.907 1.869 1.704 0 1.017-.99 1.43-2.86 1.43-2.776 0-3.93-1.457-4.59-3.464l-.907-2.749c-1.155-3.573-2.997-4.893-6.653-4.893C2.144 5.334 0 7.89 0 12.233c0 4.18 2.144 6.434 5.993 6.434 3.106 0 4.591-1.457 4.591-1.457z"/></svg>
+          <h3 style="margin: 0;" data-i18n>Last.fm scrobbling</h3>
+        </div>
+        <button class="btn-icon-pill" id="btn-close-lastfm-modal" type="button" title="Close" aria-label="Close">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div id="lastfm-modal-connected-box" class="hidden" style="display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 16px; border-radius: 16px; background: var(--md-sys-color-surface-container);">
+        <div style="display: flex; flex-direction: column; gap: 2px; min-width: 0;">
+          <span style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);" data-i18n>Connected account</span>
+          <span id="lastfm-modal-user" style="font-size: calc(15px * var(--font-scale, 1)); font-weight: 600; color: var(--md-sys-color-primary); overflow: hidden; text-overflow: ellipsis;">@user</span>
+        </div>
+        <button type="button" class="btn-outline-pill" id="btn-lastfm-disconnect" style="height: 34px; padding: 0 14px; flex-shrink: 0;" data-i18n>Log out</button>
+      </div>
+      <div id="lastfm-modal-auth-box" style="display: flex; flex-direction: column; gap: 12px;">
+        <div style="font-size: calc(13px * var(--font-scale, 1)); color: var(--md-sys-color-on-surface-variant); line-height: 1.4;" data-i18n>Songs you listen to in this profile show up on your Last.fm page. Muriel keeps the login on this device only.</div>
+        <button type="button" class="btn-pill-primary" id="btn-lastfm-web-auth" style="width: 100%;" data-i18n>Connect in the browser</button>
+        <div style="text-align: center; font-size: calc(11px * var(--font-scale, 1)); color: var(--md-sys-color-outline);" data-i18n>or sign in here</div>
+        <input type="text" id="lastfm-input-user" class="pill-text-input" placeholder="Last.fm username" autocomplete="username" autocapitalize="off" spellcheck="false">
+        <input type="password" id="lastfm-input-pass" class="pill-text-input" placeholder="Last.fm password" autocomplete="current-password">
+        <details style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-on-surface-variant);">
+          <summary style="cursor: pointer; padding: 4px 0;" data-i18n>Your own API key (optional)</summary>
+          <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 8px;">
+            <input type="text" id="lastfm-input-key" class="pill-text-input" placeholder="API key" autocomplete="off" spellcheck="false">
+            <input type="password" id="lastfm-input-secret" class="pill-text-input" placeholder="Shared secret" autocomplete="off">
+          </div>
+        </details>
+        <div id="lastfm-modal-status" class="hidden" role="status" style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-primary); text-align: center;"></div>
+        <div class="dialog-actions" style="margin-top: 4px;">
+          <button type="button" class="btn-outline-pill" id="btn-cancel-lastfm-modal" data-i18n>Cancel</button>
+          <button type="button" class="btn-pill-primary" id="btn-lastfm-login-direct" data-i18n>Sign in</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div class="toast-container" id="toast-container"></div>
 
 
@@ -2819,5 +3064,9 @@
   <script src="sync-core.js"></script>
   <script src="sync.js"></script>
   <script src="profiles.js"></script>
+  <script src="lastfm-core.js"></script>
+  <script src="lastfm.js"></script>
+  <script src="backup-core.js"></script>
+  <script src="backup.js"></script>
 </body>
 </html>

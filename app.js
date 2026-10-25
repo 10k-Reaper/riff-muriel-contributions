@@ -9231,10 +9231,14 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 
 
+  // "Or import one" (the service buttons under Create) only when making an empty playlist
+  const showCreateImportBar = (on) => { const bar = el.createPlaylistModal && el.createPlaylistModal.querySelector('.cpm-import-bar'); if (bar) bar.classList.toggle('hidden', !on); };
+
   if (el.btnNewPlaylist) {
     el.btnNewPlaylist.addEventListener('click', () => {
       tracksForNewPlaylist = null;
       if (el.newPlaylistInput) el.newPlaylistInput.value = '';
+      showCreateImportBar(true);
       if (el.createPlaylistModal) openModal(el.createPlaylistModal);
       if (el.newPlaylistInput) el.newPlaylistInput.focus();
     });
@@ -9292,6 +9296,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (el.addToPlaylistModal) closeModal(el.addToPlaylistModal);
       if (el.createPlaylistModal) {
         if (el.newPlaylistInput) el.newPlaylistInput.value = '';
+        showCreateImportBar(false);
         openModal(el.createPlaylistModal);
         if (el.newPlaylistInput) el.newPlaylistInput.focus();
       }
@@ -13589,10 +13594,155 @@ document.addEventListener('DOMContentLoaded', async () => {
   const linkImportUrl = document.getElementById('link-import-url');
   const linkImportStatus = document.getElementById('link-import-status');
   const linkImportError = document.getElementById('link-import-error');
+  const linkImportTitle = document.getElementById('link-import-title');
+  const linkModesContainer = document.getElementById('link-modes');
+  const linkImportProgressWrap = document.getElementById('link-import-progress-wrap');
+  const linkImportProgressLabel = document.getElementById('link-import-progress-label');
+  const linkImportWavyContainer = document.getElementById('link-import-wavy-container');
+  const btnGoogleLogin = document.getElementById('btn-google-login');
+  const btnGoogleLogout = document.getElementById('btn-google-logout');
+  const googleLoginStatus = document.getElementById('google-login-status');
+  const googleChkLikes = document.getElementById('google-chk-likes');
+  const googleChkPlaylists = document.getElementById('google-chk-playlists');
+  let currentLinkImportMode = 'link';
+  let currentLinkImportPlatform = '';
+  let googleConnected = false;
+  // YouTube / YouTube Music "Log in" (desktop): the Google login lives in its own browser storage in main.js
+  // (google-library.js), one per profile; this page only learns whether it is logged in and gets the songs back
+  const googleApi = () => (window.electronAPI && typeof window.electronAPI.googleImportLibrary === 'function' && !window.electronAPI.isMobile ? window.electronAPI : null);
+  const googleProfile = () => (window.MurielProfiles && window.MurielProfiles.id) || 'default';
+
+  function setLinkStatus(text, isError) {
+    if (!linkImportStatus) return;
+    linkImportStatus.textContent = text || '';
+    linkImportStatus.style.color = isError ? 'var(--md-sys-color-error, #ba1a1a)' : 'var(--md-sys-color-primary, #6750A4)';
+    linkImportStatus.classList.toggle('hidden', !text);
+  }
+
+  function setLinkImportBusy(busy, label) {
+    if (linkImportUrl) linkImportUrl.disabled = busy;
+    if (btnConfirmLinkImport) {
+      btnConfirmLinkImport.disabled = busy || (currentLinkImportMode === 'login' && !googleConnected);
+      btnConfirmLinkImport.textContent = label || (busy ? 'Loading…' : 'Import');
+    }
+    if (btnCancelLinkImport) btnCancelLinkImport.disabled = busy;
+    ['link-target-trigger', 'google-target-trigger', 'btn-google-login', 'btn-google-logout'].forEach((id) => { const b = document.getElementById(id); if (b) b.disabled = busy; });
+  }
+
+  // "Import into": a new playlist, or one of yours (the hidden <select> holds the choice)
+  function fillImportTarget(prefix, newLabel) {
+    const sel = document.getElementById(`${prefix}-import-target`);
+    const menu = document.getElementById(`${prefix}-target-menu`);
+    const label = document.getElementById(`${prefix}-target-label`);
+    const drop = document.getElementById(`${prefix}-target-dropdown`);
+    const trigger = document.getElementById(`${prefix}-target-trigger`);
+    if (!sel || !menu) return;
+    sel.innerHTML = '';
+    menu.innerHTML = '';
+    const add = (value, text, selected) => {
+      const opt = document.createElement('option');
+      opt.value = value;
+      opt.textContent = text;
+      sel.appendChild(opt);
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'm3-dropdown-option' + (selected ? ' selected' : '');
+      b.dataset.value = value;
+      b.textContent = text;
+      b.addEventListener('click', (e) => {
+        e.stopPropagation();
+        sel.value = value;
+        if (label) label.textContent = text;
+        menu.querySelectorAll('.m3-dropdown-option').forEach((o) => o.classList.toggle('selected', o === b));
+        if (drop) drop.classList.remove('open');
+      });
+      menu.appendChild(b);
+    };
+    add('new', newLabel, true);
+    state.playlists.forEach((p) => add(p.id, p.name || 'untitled', false));
+    sel.value = 'new';
+    if (label) label.textContent = newLabel;
+    if (trigger && drop && !trigger._targetBound) {
+      trigger._targetBound = true;
+      trigger.addEventListener('click', (e) => { e.stopPropagation(); drop.classList.toggle('open'); });
+      document.addEventListener('click', () => drop.classList.remove('open'));
+    }
+  }
+
+  // songs into the playlist picked under "Import into" (or a new one, opened unless several come in a row);
+  // returns how many went in
+  function addImportedTracks(targetId, name, tracks, cover, open = true) {
+    const target = targetId && targetId !== 'new' ? state.playlists.find((p) => p.id === targetId) : null;
+    if (!target) {
+      const pl = createPlaylist(name || 'Imported playlist', tracks, cover || '', { open });
+      return pl ? pl.tracks.length : 0;
+    }
+    if (!target.cover && cover) target.cover = cover;
+    const fresh = tracks.filter((t) => !target.tracks.some((x) => isSameTrack(x, t)));
+    target.tracks.push(...fresh.map(stampAddedAt));
+    localStorage.setItem('devsize_playlists', JSON.stringify(state.playlists));
+    renderPlaylistsList();
+    if (state.currentView === 'playlist-detail' && state.currentPlaylistId === target.id) openPlaylistDetail(target.id);
+    return fresh.length;
+  }
+
+  function updateGoogleAuthUI() {
+    if (googleLoginStatus) {
+      googleLoginStatus.textContent = googleConnected ? 'Connected' : 'Not connected';
+      googleLoginStatus.style.color = googleConnected ? 'var(--md-sys-color-primary, #6750A4)' : 'var(--md-sys-color-outline)';
+    }
+    if (btnGoogleLogin) btnGoogleLogin.textContent = googleConnected ? 'Switch account' : 'Log in with Google';
+    if (btnGoogleLogout) btnGoogleLogout.classList.toggle('hidden', !googleConnected);
+    if (currentLinkImportMode === 'login' && btnConfirmLinkImport && btnConfirmLinkImport.dataset.action !== 'done') btnConfirmLinkImport.disabled = !googleConnected;
+  }
+
+  async function checkGoogleAuthStatus() {
+    const api = googleApi();
+    try { googleConnected = !!(api && (await api.googleAuthStatus(googleProfile())).loggedIn); } catch (e) { googleConnected = false; }
+    updateGoogleAuthUI();
+  }
+
+  function setLinkImportMode(mode) {
+    currentLinkImportMode = mode === 'login' && googleApi() ? 'login' : 'link';
+    if (linkModesContainer) linkModesContainer.querySelectorAll('button').forEach((b) => b.classList.toggle('active', b.dataset.mode === currentLinkImportMode));
+    if (linkImportModal) linkImportModal.querySelectorAll('.link-pane').forEach((p) => p.classList.toggle('hidden', p.dataset.mode !== currentLinkImportMode));
+    clearImportError(linkImportError);
+    setLinkStatus('');
+    if (btnConfirmLinkImport && btnConfirmLinkImport.dataset.action !== 'done') {
+      btnConfirmLinkImport.textContent = 'Import';
+      btnConfirmLinkImport.disabled = currentLinkImportMode === 'login' && !googleConnected;
+    }
+    if (currentLinkImportMode === 'login') checkGoogleAuthStatus();
+  }
+
+  if (linkModesContainer) linkModesContainer.querySelectorAll('button').forEach((b) => b.addEventListener('click', () => setLinkImportMode(b.dataset.mode)));
+
+  if (btnGoogleLogin) {
+    btnGoogleLogin.addEventListener('click', async () => {
+      const api = googleApi();
+      if (!api) return;
+      if (googleLoginStatus) { googleLoginStatus.textContent = 'Logging in…'; googleLoginStatus.style.color = 'var(--md-sys-color-on-surface-variant)'; }
+      try { googleConnected = !!(await api.googleLogin(googleProfile())).loggedIn; } catch (e) {}
+      updateGoogleAuthUI();
+    });
+  }
+  if (btnGoogleLogout) {
+    btnGoogleLogout.addEventListener('click', async () => {
+      const api = googleApi();
+      try { if (api) await api.googleLogout(googleProfile()); } catch (e) {}
+      googleConnected = false;
+      updateGoogleAuthUI();
+    });
+  }
 
   function openLinkImportModal(platform = '') {
     if (!linkImportModal) return;
+    currentLinkImportPlatform = platform || '';
     clearImportError(linkImportError);
+    const titles = { youtube: 'Import from YouTube', ytmusic: 'Import from YouTube Music', soundcloud: 'Import from SoundCloud', yandex: 'Import from Yandex Music' };
+    if (linkImportTitle) linkImportTitle.textContent = titles[platform] || 'Import from link';
+    // logging in to Google works for YouTube and YouTube Music, and only in the desktop app
+    if (linkModesContainer) linkModesContainer.classList.toggle('hidden', !(googleApi() && (platform === 'youtube' || platform === 'ytmusic')));
     if (linkImportUrl) {
       linkImportUrl.value = '';
       linkImportUrl.disabled = false;
@@ -13602,20 +13752,19 @@ document.addEventListener('DOMContentLoaded', async () => {
         linkImportUrl.placeholder = 'Paste a YouTube Music link';
       } else if (platform === 'soundcloud') {
         linkImportUrl.placeholder = 'Paste a SoundCloud playlist or track link';
+      } else if (platform === 'yandex') {
+        linkImportUrl.placeholder = 'Paste a Yandex Music playlist link';
       } else {
-        linkImportUrl.placeholder = 'Paste a YouTube, YouTube Music or SoundCloud link';
+        linkImportUrl.placeholder = 'Paste a YouTube, YouTube Music, SoundCloud or Yandex Music link';
       }
     }
-    if (linkImportStatus) {
-      linkImportStatus.classList.add('hidden');
-      linkImportStatus.textContent = '';
-      linkImportStatus.style.color = '';
-    }
-    if (btnConfirmLinkImport) {
-      btnConfirmLinkImport.disabled = false;
-      btnConfirmLinkImport.textContent = 'Import';
-    }
-    if (btnCancelLinkImport) btnCancelLinkImport.disabled = false;
+    fillImportTarget('link', 'New playlist');
+    fillImportTarget('google', 'Separate playlists');
+    if (linkImportProgressWrap) linkImportProgressWrap.classList.add('hidden');
+    if (linkImportWavyContainer) linkImportWavyContainer.innerHTML = '';
+    if (btnConfirmLinkImport) btnConfirmLinkImport.dataset.action = 'import';
+    setLinkImportMode('link');
+    setLinkImportBusy(false);
     openModal(linkImportModal);
     if (linkImportUrl) linkImportUrl.focus();
   }
@@ -13624,7 +13773,117 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (linkImportModal) closeModal(linkImportModal);
   }
 
+  function linkImportDone(message) {
+    if (linkImportProgressWrap) linkImportProgressWrap.classList.add('hidden');
+    setLinkImportBusy(false, 'Done');
+    if (btnConfirmLinkImport) { btnConfirmLinkImport.disabled = false; btnConfirmLinkImport.dataset.action = 'done'; }
+    setLinkStatus(message);
+    showToast(message, 'success');
+  }
+
+  function linkImportProgress() {
+    if (linkImportProgressWrap) linkImportProgressWrap.classList.remove('hidden');
+    if (linkImportProgressLabel) linkImportProgressLabel.textContent = '0 / 0';
+    const wavy = linkImportWavyContainer ? createWavyProgress(linkImportWavyContainer) : { set() {} };
+    wavy.set(0);
+    return (done, total) => {
+      wavy.set(total ? Math.round((done / total) * 100) : 0);
+      if (linkImportProgressLabel) linkImportProgressLabel.textContent = `${done} / ${total}`;
+    };
+  }
+
+  // Yandex Music: the server reads the playlist (titles and artists), then each song is found on YouTube
+  async function handleYandexLinkImport(url) {
+    const progress = linkImportProgress();
+    const res = await fetch(`http://127.0.0.1:${state.serverPort}/api/yandex-import?url=${encodeURIComponent(url)}`);
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.success || !Array.isArray(data.tracks) || !data.tracks.length) {
+      if (linkImportProgressWrap) linkImportProgressWrap.classList.add('hidden');
+      showImportError(linkImportError, classifyImportError('link', res.status, data));
+      setLinkImportBusy(false);
+      return;
+    }
+    progress(0, data.tracks.length);
+    let found;
+    try {
+      found = await matchSpotifyTracks(data.tracks, progress);
+    } catch (err) {
+      if (linkImportProgressWrap) linkImportProgressWrap.classList.add('hidden');
+      setLinkStatus(importErrorText(err, 'Import failed'), true);
+      setLinkImportBusy(false);
+      return;
+    }
+    const target = document.getElementById('link-import-target');
+    const added = addImportedTracks(target ? target.value : 'new', data.name || 'Yandex Music playlist', found, data.cover || '');
+    const missing = data.tracks.length - found.length;
+    linkImportDone(missing > 0 ? `Imported ${added} tracks. ${missing} not found on YouTube.` : `Imported ${added} tracks.`);
+  }
+
+  async function handleGoogleLoginImport() {
+    const api = googleApi();
+    if (!api) return;
+    const doLikes = !!(googleChkLikes && googleChkLikes.checked);
+    const doPlaylists = !!(googleChkPlaylists && googleChkPlaylists.checked);
+    if (!doLikes && !doPlaylists) { setLinkStatus('Pick liked songs, playlists or both', true); return; }
+    clearImportError(linkImportError);
+    setLinkImportBusy(true);
+    setLinkStatus('Reading your library…');
+    const hasBusy = typeof beginBusy === 'function';
+    if (hasBusy) beginBusy('import');
+    try {
+      const res = await api.googleImportLibrary({ profile: googleProfile(), platform: currentLinkImportPlatform === 'ytmusic' ? 'ytmusic' : 'youtube', doLikes, doPlaylists });
+      if (!res || !res.success) {
+        const loggedOut = !!(res && res.code === 'not_logged_in');
+        if (loggedOut) googleConnected = false;
+        setLinkImportBusy(false);
+        updateGoogleAuthUI();
+        setLinkStatus(loggedOut ? 'Google logged Muriel out. Log in again.' : `Couldn't read your library: ${(res && res.error) || 'try again later'}`, true);
+        return;
+      }
+      const likes = Array.isArray(res.likes) ? res.likes : [];
+      const playlists = Array.isArray(res.playlists) ? res.playlists : [];
+      const total = likes.length + playlists.reduce((n, p) => n + (Array.isArray(p.tracks) ? p.tracks.length : 0), 0);
+      if (!total) { setLinkStatus('No songs found to import', true); setLinkImportBusy(false); return; }
+      const progress = linkImportProgress();
+      let done = 0;
+      // liked songs become favorites of the open profile
+      let newFavorites = 0;
+      for (const t of likes) {
+        if (!state.favorites.some((f) => isSameTrack(f, t))) { state.favorites.push(stampAddedAt(t)); newFavorites++; }
+        progress(++done, total);
+      }
+      if (newFavorites) {
+        localStorage.setItem('devsize_favorites', JSON.stringify(state.favorites));
+        updateFavoritesBadge();
+        updateFavoriteIcon();
+        if (state.currentView === 'favorites') renderFavoritesView();
+        window.dispatchEvent(new Event('muriel:library'));
+      }
+      const target = document.getElementById('google-import-target');
+      const targetId = target ? target.value : 'new';
+      let added = 0;
+      for (const pl of playlists) {
+        const tracks = Array.isArray(pl.tracks) ? pl.tracks : [];
+        if (tracks.length) added += addImportedTracks(targetId, pl.name, tracks, pl.cover || '', false);
+        done += tracks.length;
+        progress(done, total);
+      }
+      const parts = [];
+      if (doLikes) parts.push(`${newFavorites} new favorite${newFavorites === 1 ? '' : 's'}`);
+      if (doPlaylists) parts.push(`${playlists.length} playlist${playlists.length === 1 ? '' : 's'} (${added} tracks)`);
+      linkImportDone(`Imported ${parts.join(' and ')}.`);
+    } catch (err) {
+      if (linkImportProgressWrap) linkImportProgressWrap.classList.add('hidden');
+      setLinkImportBusy(false);
+      setLinkStatus("Couldn't read your library. Check your connection and try again.", true);
+    } finally {
+      if (hasBusy && typeof endBusy === 'function') endBusy('import');
+    }
+  }
+
   async function handleLinkImportAction() {
+    if (btnConfirmLinkImport && btnConfirmLinkImport.dataset.action === 'done') { closeLinkImportModal(); return; }
+    if (currentLinkImportMode === 'login') { await handleGoogleLoginImport(); return; }
     clearImportError(linkImportError);
     const url = linkImportUrl ? linkImportUrl.value.trim() : '';
     if (window.MurielShare && window.MurielShare.payloadFrom(url)) { closeLinkImportModal(); importSharedPlaylist(url); return; }
@@ -13634,46 +13893,38 @@ document.addEventListener('DOMContentLoaded', async () => {
       return;
     }
 
-    if (linkImportStatus) linkImportStatus.classList.add('hidden');
-    if (linkImportUrl) linkImportUrl.disabled = true;
-    if (btnConfirmLinkImport) {
-      btnConfirmLinkImport.disabled = true;
-      btnConfirmLinkImport.textContent = 'Loading…';
-    }
-    if (btnCancelLinkImport) btnCancelLinkImport.disabled = true;
-
-    if (url.includes('soundcloud.com')) setPlatform('soundcloud', false);
-    else if (url.includes('music.youtube.com')) setPlatform('ytmusic', false);
-    else if (url.includes('youtube.com') || url.includes('youtu.be')) setPlatform('youtube', false);
+    setLinkStatus('');
+    setLinkImportBusy(true);
 
     const hasBusy = typeof beginBusy === 'function';
     if (hasBusy) beginBusy('import');
     try {
+      if (/^https?:\/\/(?:[\w-]+\.)*music\.yandex\./i.test(url) || (currentLinkImportPlatform === 'yandex' && /yandex\./i.test(url))) {
+        await handleYandexLinkImport(url);
+        return;
+      }
+      if (url.includes('soundcloud.com')) setPlatform('soundcloud', false);
+      else if (url.includes('music.youtube.com')) setPlatform('ytmusic', false);
+      else if (url.includes('youtube.com') || url.includes('youtu.be')) setPlatform('youtube', false);
+
       const res = await fetch(`http://127.0.0.1:${state.serverPort}/api/playlist-import?url=${encodeURIComponent(url)}`);
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data || !data.success || !Array.isArray(data.tracks) || data.tracks.length === 0) {
         const errInfo = classifyImportError('link', res.status, data);
         showImportError(linkImportError, errInfo);
-        if (linkImportUrl) linkImportUrl.disabled = false;
-        if (btnConfirmLinkImport) {
-          btnConfirmLinkImport.disabled = false;
-          btnConfirmLinkImport.textContent = 'Import';
-        }
-        if (btnCancelLinkImport) btnCancelLinkImport.disabled = false;
+        setLinkImportBusy(false);
         return;
       }
-      createPlaylist(data.name, data.tracks, data.cover || '');
-      showToast(`Imported ${data.tracks.length} tracks`, 'success');
+      const target = document.getElementById('link-import-target');
+      const targetId = target ? target.value : 'new';
+      const added = addImportedTracks(targetId, data.name, data.tracks, data.cover || '');
+      showToast(`Imported ${added} tracks`, 'success');
       closeLinkImportModal();
     } catch (err) {
+      if (linkImportProgressWrap) linkImportProgressWrap.classList.add('hidden');
       const errInfo = classifyImportError('link', err, err.message);
       showImportError(linkImportError, errInfo);
-      if (linkImportUrl) linkImportUrl.disabled = false;
-      if (btnConfirmLinkImport) {
-        btnConfirmLinkImport.disabled = false;
-        btnConfirmLinkImport.textContent = 'Import';
-      }
-      if (btnCancelLinkImport) btnCancelLinkImport.disabled = false;
+      setLinkImportBusy(false);
     } finally {
       if (hasBusy && typeof endBusy === 'function') {
         endBusy('import');
@@ -13684,8 +13935,19 @@ document.addEventListener('DOMContentLoaded', async () => {
   const linkImportBtns = document.querySelectorAll('.btn-open-link-import, #btn-open-link-import');
   linkImportBtns.forEach(btn => {
     btn.addEventListener('click', () => {
-      if (btn.dataset.platform) setPlatform(btn.dataset.platform, false);
+      // the round buttons in "Create playlist" open the importer in its place
+      if (el.createPlaylistModal && el.createPlaylistModal.contains(btn)) closeModal(el.createPlaylistModal);
+      if (btn.dataset.platform && btn.dataset.platform !== 'yandex') setPlatform(btn.dataset.platform, false);
       openLinkImportModal(btn.dataset.platform || '');
+    });
+  });
+  // "Create playlist" → import from Spotify / Apple Music: the same dialogs as in Settings → Integrations
+  [['btn-cpm-spotify', 'btn-open-spotify-import'], ['btn-cpm-apple', 'btn-open-apple-import']].forEach(([from, to]) => {
+    const b = document.getElementById(from);
+    if (b) b.addEventListener('click', () => {
+      if (el.createPlaylistModal) closeModal(el.createPlaylistModal);
+      const target = document.getElementById(to);
+      if (target) target.click();
     });
   });
   if (btnCancelLinkImport) btnCancelLinkImport.addEventListener('click', closeLinkImportModal);
@@ -16789,6 +17051,18 @@ document.addEventListener('DOMContentLoaded', async () => {
     formatDuration: (s) => formatDuration(s),
     toast: (msg, kind) => showToast(msg, kind),
     refreshBackground: () => updateCustomBg(),
+    // for lastfm.js and backup.js (Last.fm dialog, playlist files, backups)
+    openModal: (m) => openModal(m),
+    closeModal: (m) => closeModal(m),
+    importPlaylist(name, tracks, { cover = '', description = '' } = {}) {
+      const pl = createPlaylist(name, tracks || [], cover, { open: false });
+      if (pl && description) { pl.description = description; localStorage.setItem('devsize_playlists', JSON.stringify(state.playlists)); }
+      if (pl) window.dispatchEvent(new Event('muriel:library'));
+      return pl;
+    },
+    openPlaylist: (id) => openPlaylistDetail(id),
+    // songs known only by title and artist, found on YouTube like a Spotify import
+    matchTracks: (list, onProgress) => matchSpotifyTracks(list, onProgress),
     // sync.js wrote these keys with what another device had; show it without a restart
     reloadFromStorage(keys) {
       const has = (k) => keys.includes(k);

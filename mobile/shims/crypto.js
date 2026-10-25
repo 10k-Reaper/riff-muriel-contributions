@@ -56,6 +56,39 @@ function sha256Bytes(bytes) {
   return out;
 }
 
+// MD5 (Last.fm signs its API calls with it; server.js's Last.fm block)
+function md5Bytes(bytes) {
+  const S = [7, 12, 17, 22, 7, 12, 17, 22, 7, 12, 17, 22, 7, 12, 17, 22, 5, 9, 14, 20, 5, 9, 14, 20, 5, 9, 14, 20, 5, 9, 14, 20,
+    4, 11, 16, 23, 4, 11, 16, 23, 4, 11, 16, 23, 4, 11, 16, 23, 6, 10, 15, 21, 6, 10, 15, 21, 6, 10, 15, 21, 6, 10, 15, 21];
+  const K = new Uint32Array(64);
+  for (let i = 0; i < 64; i++) K[i] = Math.floor(Math.abs(Math.sin(i + 1)) * 2 ** 32) >>> 0;
+  const ml = bytes.length * 8;
+  const m = new Uint8Array(((bytes.length + 9 + 63) >> 6) << 6);
+  m.set(bytes); m[bytes.length] = 0x80;
+  const dv = new DataView(m.buffer);
+  dv.setUint32(m.length - 8, ml >>> 0, true); dv.setUint32(m.length - 4, Math.floor(ml / 2 ** 32), true);
+  let a0 = 0x67452301, b0 = 0xefcdab89, c0 = 0x98badcfe, d0 = 0x10325476;
+  const rol = (x, n) => (x << n) | (x >>> (32 - n));
+  for (let off = 0; off < m.length; off += 64) {
+    let a = a0, b = b0, c = c0, d = d0;
+    for (let i = 0; i < 64; i++) {
+      let f, g;
+      if (i < 16) { f = (b & c) | (~b & d); g = i; }
+      else if (i < 32) { f = (d & b) | (~d & c); g = (5 * i + 1) % 16; }
+      else if (i < 48) { f = b ^ c ^ d; g = (3 * i + 5) % 16; }
+      else { f = c ^ (b | ~d); g = (7 * i) % 16; }
+      const t = d; d = c; c = b;
+      b = (b + rol((a + f + K[i] + dv.getUint32(off + g * 4, true)) >>> 0, S[i])) >>> 0;
+      a = t;
+    }
+    a0 = (a0 + a) >>> 0; b0 = (b0 + b) >>> 0; c0 = (c0 + c) >>> 0; d0 = (d0 + d) >>> 0;
+  }
+  const out = new Uint8Array(16);
+  const ov = new DataView(out.buffer);
+  [a0, b0, c0, d0].forEach((x, i) => ov.setUint32(i * 4, x, true));
+  return out;
+}
+
 // Byte array with Node's toString encodings (hex / base64 / base64url).
 function bytesOut(u8) {
   u8.toString = (enc) => {
@@ -69,14 +102,14 @@ function bytesOut(u8) {
 
 function createHash(alg) {
   const kind = String(alg).toLowerCase();
-  if (kind !== 'sha1' && kind !== 'sha256') throw new Error(`hash ${alg} is not available on mobile`);
+  if (kind !== 'sha1' && kind !== 'sha256' && kind !== 'md5') throw new Error(`hash ${alg} is not available on mobile`);
   const parts = [];
   return {
     update(d) { parts.push(typeof d === 'string' ? new TextEncoder().encode(d) : new Uint8Array(d)); return this; },
     digest(enc) {
       const all = new Uint8Array(parts.reduce((n, p) => n + p.length, 0));
       let o = 0; for (const p of parts) { all.set(p, o); o += p.length; }
-      const raw = kind === 'sha1' ? Uint8Array.from(sha1Bytes(all).match(/../g).map((x) => parseInt(x, 16))) : sha256Bytes(all);
+      const raw = kind === 'sha1' ? Uint8Array.from(sha1Bytes(all).match(/../g).map((x) => parseInt(x, 16))) : kind === 'md5' ? md5Bytes(all) : sha256Bytes(all);
       const out = bytesOut(raw);
       return enc ? out.toString(enc) : out;
     },

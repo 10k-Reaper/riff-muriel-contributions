@@ -3172,7 +3172,8 @@ const TOKEN_PROTECTED_ROUTES = new Set([
   '/api/save-custom-lyrics',
   '/api/encode',
   '/api/apple-import',
-  '/api/playlist-import'
+  '/api/playlist-import',
+  '/api/yandex-import'
 ]);
 
 // Every route needs the token: any web page the user visits can send requests to 127.0.0.1, so a route without
@@ -4966,6 +4967,335 @@ async function handleHotPicks(req, res, parsedUrl) {
   }
 }
 
+// ---------- Last.fm scrobbling ----------
+// Every profile can connect its own Last.fm account (the page sends the open profile's id). The session key, and a
+// custom API key pair if one was entered, stay here and never go back to the page. They are kept like the Spotify
+// login: encrypted with the system keychain on desktop (lastfm-auth.enc); on phones in the app's private WebView
+// storage (bridge.js), not under /data, which the Files app shows. Without a keychain (Linux without a secret
+// service) they last until Muriel closes. The password typed for the direct sign-in goes to Last.fm once and is
+// not kept. Nothing here logs a key, token or password.
+// The default key pair is upstream Riff's Last.fm application (published in its source). Muriel can register its
+// own at last.fm/api/account/create and put it here; people can also enter their own pair in the Last.fm dialog.
+const LASTFM_API_KEY = '4b4f73bda181868353f9b438604adf52';
+const LASTFM_API_SECRET = '716cc0a784bb62835de5bd674e65eb57';
+const LASTFM_KEY_RE = /^[a-f0-9]{32}$/i;
+const LASTFM_PROFILE_RE = /^(?:default|[a-z0-9]{4,16})$/;
+const lastfmAuthPath = path.join(DATA_DIR, 'lastfm-auth.enc');
+let lastfmAccounts = null; // { [profileId]: { sk, user, key?, secret? } }
+let lastfmStoreError = '';
+const lastfmPending = new Map(); // profileId -> { token, pair, at }: a browser sign-in waiting for approval
+
+function lastfmVault() {
+  if (typeof globalThis.__murielVault === 'function') return globalThis.__murielVault('lastfm');
+  if (!canStoreSpotifyAuth()) return null;
+  return {
+    read: () => JSON.parse(spotifySafeStorage.decryptString(fs.readFileSync(lastfmAuthPath))),
+    write: (value) => {
+      const tmp = `${lastfmAuthPath}.tmp`;
+      fs.mkdirSync(DATA_DIR, { recursive: true });
+      try {
+        fs.writeFileSync(tmp, spotifySafeStorage.encryptString(JSON.stringify(value)), { mode: 0o600 });
+        fs.renameSync(tmp, lastfmAuthPath);
+      } catch (e) {
+        try { fs.rmSync(tmp, { force: true }); } catch (_) {}
+        throw e;
+      }
+    },
+  };
+}
+
+function lastfmCleanAccount(a) {
+  if (!a || typeof a !== 'object' || typeof a.sk !== 'string' || !/^[A-Za-z0-9_-]{8,128}$/.test(a.sk)) return null;
+  const out = { sk: a.sk, user: String(a.user || '').slice(0, 64) };
+  if (LASTFM_KEY_RE.test(a.key || '') && LASTFM_KEY_RE.test(a.secret || '')) { out.key = a.key; out.secret = a.secret; }
+  return out;
+}
+
+function lastfmLoad() {
+  if (lastfmAccounts) return lastfmAccounts;
+  lastfmAccounts = {};
+  let saved = null;
+  try {
+    const vault = lastfmVault();
+    saved = vault ? vault.read() : null;
+  } catch (e) {
+    if (e && e.code !== 'ENOENT') lastfmStoreError = 'The saved Last.fm login could not be read. Please connect again.';
+  }
+  if (saved && typeof saved === 'object') {
+    for (const [id, a] of Object.entries(saved)) {
+      const clean = LASTFM_PROFILE_RE.test(id) ? lastfmCleanAccount(a) : null;
+      if (clean) lastfmAccounts[id] = clean;
+    }
+  }
+  return lastfmAccounts;
+}
+
+// true when the logins reached secure storage
+function lastfmSave() {
+  const vault = lastfmVault();
+  if (!vault) return false;
+  try {
+    vault.write(lastfmAccounts || {});
+    lastfmStoreError = '';
+    return true;
+  } catch (e) {
+    lastfmStoreError = 'The Last.fm login could not be saved securely; connect again after restarting Muriel.';
+    return false;
+  }
+}
+
+function lastfmSign(params, secret) {
+  let raw = '';
+  for (const k of Object.keys(params).filter((k) => k !== 'format' && k !== 'callback').sort()) raw += k + String(params[k]);
+  return crypto.createHash('md5').update(raw + secret, 'utf8').digest('hex');
+}
+
+// one signed call to the Last.fm API; resolves to its JSON answer, or { error, message } when it can't be reached
+function lastfmCall(params, pair, method = 'POST') {
+  const key = (pair && pair.key) || LASTFM_API_KEY;
+  const secret = (pair && pair.secret) || LASTFM_API_SECRET;
+  const full = { ...params, api_key: key };
+  full.api_sig = lastfmSign(full, secret);
+  full.format = 'json';
+  const body = new URLSearchParams(full).toString();
+  const isGet = method === 'GET';
+  return new Promise((resolve) => {
+    let settled = false;
+    const done = (v) => { if (!settled) { settled = true; resolve(v); } };
+    const req = https.request({
+      hostname: 'ws.audioscrobbler.com',
+      path: isGet ? `/2.0/?${body}` : '/2.0/',
+      method,
+      headers: isGet ? { 'User-Agent': 'Muriel' } : { 'User-Agent': 'Muriel', 'Content-Type': 'application/x-www-form-urlencoded', 'Content-Length': Buffer.byteLength(body) },
+      timeout: 10000,
+    }, (resp) => {
+      let raw = '';
+      resp.on('data', (c) => { raw += c; if (raw.length > 1e6) { raw = ''; resp.destroy(); } });
+      resp.on('error', () => done({ error: -1, message: "Can't reach Last.fm" }));
+      resp.on('end', () => { try { done(JSON.parse(raw)); } catch (_) { done({ error: -1, message: 'Last.fm sent an answer Muriel could not read' }); } });
+    });
+    req.on('error', () => done({ error: -1, message: "Can't reach Last.fm" }));
+    req.on('timeout', () => { req.destroy(); done({ error: -1, message: 'Last.fm did not answer in time' }); });
+    if (!isGet) req.write(body);
+    req.end();
+  });
+}
+
+function lastfmPairFrom(body) {
+  const key = String(body.apiKey || '').trim();
+  const secret = String(body.apiSecret || '').trim();
+  if (!key && !secret) return { pair: null };
+  if (!LASTFM_KEY_RE.test(key) || !LASTFM_KEY_RE.test(secret)) return { error: 'An API key and its shared secret are 32 letters and digits each' };
+  return { pair: { key, secret } };
+}
+
+const lastfmText = (v, n = 512) => (typeof v === 'string' || typeof v === 'number' ? String(v) : '').replace(/\s+/g, ' ').trim().slice(0, n);
+const lastfmMessage = (r) => lastfmText(r && r.message, 200) || 'Last.fm refused the request';
+
+function lastfmStatus(profile) {
+  const a = lastfmLoad()[profile];
+  return { connected: !!a, username: a ? a.user : '', saved: !!a && !!lastfmVault(), error: lastfmStoreError };
+}
+
+function lastfmConnect(profile, session, pair) {
+  const account = lastfmCleanAccount({ sk: session && session.key, user: session && session.name, ...(pair || {}) });
+  if (!account) return null;
+  lastfmLoad()[profile] = account;
+  const saved = lastfmSave();
+  return { success: true, username: account.user, saved, error: saved ? '' : lastfmStoreError || 'Connected until Muriel closes: this system has no secure place to keep the login.' };
+}
+
+// a scrobble or now-playing update: the song as the page cleaned it (lastfm-core.js), checked again here
+function lastfmSongParams(body, n) {
+  const artist = lastfmText(body.artist);
+  const track = lastfmText(body.track);
+  if (!artist || !track) return null;
+  const sfx = n === undefined ? '' : `[${n}]`;
+  const p = { [`artist${sfx}`]: artist, [`track${sfx}`]: track };
+  const album = lastfmText(body.album);
+  if (album) p[`album${sfx}`] = album;
+  const duration = Math.round(Number(body.duration) || 0);
+  if (duration > 0 && duration < 86400) p[`duration${sfx}`] = String(duration);
+  return p;
+}
+
+async function lastfmRoute(route, body) {
+  const profile = String(body.profile || '');
+  if (!LASTFM_PROFILE_RE.test(profile)) return { status: 400, data: { success: false, error: 'Unknown profile' } };
+
+  if (route === 'status') {
+    // logins of profiles deleted since are forgotten
+    if (Array.isArray(body.profiles) && body.profiles.length && body.profiles.includes(profile)) {
+      const keep = new Set(body.profiles.map(String));
+      const all = lastfmLoad();
+      let changed = false;
+      for (const id of Object.keys(all)) if (!keep.has(id)) { delete all[id]; changed = true; }
+      if (changed) lastfmSave();
+    }
+    return { status: 200, data: { success: true, ...lastfmStatus(profile) } };
+  }
+
+  if (route === 'logout') {
+    lastfmPending.delete(profile);
+    const all = lastfmLoad();
+    if (all[profile]) { delete all[profile]; lastfmSave(); }
+    return { status: 200, data: { success: true } };
+  }
+
+  // browser sign-in, step 1: a token for the approval page (the token stays here)
+  if (route === 'token') {
+    const { pair, error } = lastfmPairFrom(body);
+    if (error) return { status: 400, data: { success: false, error } };
+    const r = await lastfmCall({ method: 'auth.getToken' }, pair, 'GET');
+    if (!r || typeof r.token !== 'string' || !/^[A-Za-z0-9_-]{8,128}$/.test(r.token)) return { status: 502, data: { success: false, error: lastfmMessage(r) } };
+    lastfmPending.set(profile, { token: r.token, pair, at: Date.now() });
+    const key = (pair && pair.key) || LASTFM_API_KEY;
+    return { status: 200, data: { success: true, authUrl: `https://www.last.fm/api/auth/?api_key=${encodeURIComponent(key)}&token=${encodeURIComponent(r.token)}` } };
+  }
+
+  // step 2, polled: has the person approved it yet?
+  if (route === 'session') {
+    const p = lastfmPending.get(profile);
+    if (!p || Date.now() - p.at > 60 * 60 * 1000) { lastfmPending.delete(profile); return { status: 200, data: { success: false, expired: true, error: 'The sign-in expired. Start again.' } }; }
+    const r = await lastfmCall({ method: 'auth.getSession', token: p.token }, p.pair, 'GET');
+    if (r && r.session && r.session.key) {
+      lastfmPending.delete(profile);
+      const done = lastfmConnect(profile, r.session, p.pair);
+      return done ? { status: 200, data: done } : { status: 502, data: { success: false, error: 'Last.fm sent an unusable session' } };
+    }
+    // 14: not approved yet; 15/4: token expired or invalid
+    if (r && (r.error === 15 || r.error === 4)) { lastfmPending.delete(profile); return { status: 200, data: { success: false, expired: true, error: 'The sign-in expired. Start again.' } }; }
+    return { status: 200, data: { success: false, pending: r && r.error === 14, error: r && r.error === 14 ? '' : lastfmMessage(r) } };
+  }
+
+  // direct sign-in with username and password (works on phones too, no browser round trip)
+  if (route === 'mobile-session') {
+    const { pair, error } = lastfmPairFrom(body);
+    if (error) return { status: 400, data: { success: false, error } };
+    const username = lastfmText(body.username, 64);
+    const password = typeof body.password === 'string' ? body.password.slice(0, 256) : '';
+    if (!username || !password) return { status: 400, data: { success: false, error: 'Enter your Last.fm username and password' } };
+    const r = await lastfmCall({ method: 'auth.getMobileSession', username, password }, pair, 'POST');
+    if (r && r.session && r.session.key) {
+      const done = lastfmConnect(profile, r.session, pair);
+      return done ? { status: 200, data: done } : { status: 502, data: { success: false, error: 'Last.fm sent an unusable session' } };
+    }
+    // 4: Last.fm's "Authentication Failed - You do not have permissions..." means a wrong username or password
+    return { status: 200, data: { success: false, error: r && r.error === 4 ? 'Wrong Last.fm username or password' : lastfmMessage(r) } };
+  }
+
+  if (route === 'now-playing' || route === 'scrobble') {
+    const account = lastfmLoad()[profile];
+    if (!account) return { status: 200, data: { success: false, code: 'not_connected' } };
+    const isScrobble = route === 'scrobble';
+    const song = lastfmSongParams(body, isScrobble ? 0 : undefined);
+    if (!song) return { status: 400, data: { success: false, error: 'Missing artist or title' } };
+    const params = { method: isScrobble ? 'track.scrobble' : 'track.updateNowPlaying', sk: account.sk, ...song };
+    if (isScrobble) {
+      // Last.fm takes scrobbles up to two weeks old
+      const now = Math.floor(Date.now() / 1000);
+      const ts = Math.floor(Number(body.timestamp) || 0);
+      params['timestamp[0]'] = String(ts > now - 14 * 86400 && ts <= now + 60 ? ts : now);
+    }
+    const r = await lastfmCall(params, account.key ? { key: account.key, secret: account.secret } : null, 'POST');
+    // 9: the session was revoked on last.fm; signing in again is the only way back
+    if (r && r.error === 9) { delete lastfmLoad()[profile]; lastfmSave(); return { status: 200, data: { success: false, code: 'reauth', error: 'Last.fm signed Muriel out. Connect again.' } }; }
+    if (!r || r.error) return { status: 200, data: { success: false, retry: !r || r.error === -1 || r.error === 11 || r.error === 16 || r.error === 29, error: lastfmMessage(r) } };
+    const accepted = isScrobble ? Number(r.scrobbles && r.scrobbles['@attr'] && r.scrobbles['@attr'].accepted) || 0 : 1;
+    return { status: 200, data: { success: true, accepted } };
+  }
+
+  return { status: 404, data: { success: false, error: 'not found' } };
+}
+
+function handleLastFmRoute(req, res, pathname) {
+  const reply = (status, data) => { if (res.writableEnded) return; res.writeHead(status, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(data)); };
+  if (req.method !== 'POST') return reply(405, { success: false, error: 'POST only' });
+  let raw = '';
+  req.on('data', (chunk) => {
+    if (res.writableEnded) return;
+    raw += chunk;
+    if (raw.length > 64 * 1024) { raw = ''; req.removeAllListeners('data'); req.removeAllListeners('end'); reply(413, { success: false, error: 'payload too large' }); req.resume(); }
+  });
+  req.on('end', () => {
+    const body = safeJsonParse(raw, null);
+    if (!body || typeof body !== 'object' || Array.isArray(body)) return reply(400, { success: false, error: 'bad request' });
+    lastfmRoute(pathname.slice('/api/lastfm/'.length), body)
+      .then(({ status, data }) => reply(status, data))
+      .catch(() => reply(500, { success: false, error: 'Last.fm request failed' }));
+  });
+}
+
+// ---------- Yandex Music playlist import ----------
+// Reads a public playlist through Yandex Music's API: title, artist and length of each song. app.js then finds
+// each song on YouTube, like a Spotify import.
+// music.yandex.ru/users/<owner>/playlists/<kind>, or a shared /playlists/<uuid> (with or without "lk.")
+function parseYandexPlaylistUrl(input) {
+  let u;
+  try { u = new URL(String(input || '').trim()); } catch (e) { return null; }
+  if (u.protocol !== 'https:' && u.protocol !== 'http:') return null;
+  if (!/^(?:www\.)?music\.yandex\.(?:ru|com|by|kz|uz|com\.tr)$/i.test(u.hostname)) return null;
+  const users = u.pathname.match(/^\/users\/([A-Za-z0-9._-]{1,64})\/playlists\/(\d{1,12})\/?$/);
+  if (users) return `/users/${encodeURIComponent(users[1])}/playlists/${users[2]}`;
+  const shared = u.pathname.match(/^\/playlists\/((?:lk\.)?[a-f0-9-]{8,64})\/?$/i);
+  if (shared) return `/playlist/${encodeURIComponent(shared[1])}`;
+  return null;
+}
+
+function yandexCover(uri) {
+  const s = String(uri || '').trim();
+  if (!s) return '';
+  const full = /^https:\/\//i.test(s) ? s : `https://${s.replace(/^\/+/, '')}`;
+  try {
+    const u = new URL(full.replace('%%', '400x400'));
+    return u.protocol === 'https:' && /(?:^|\.)yandex\.net$|(?:^|\.)yandex\.ru$/i.test(u.hostname) ? u.href : '';
+  } catch (e) { return ''; }
+}
+
+function yandexTracks(result) {
+  const list = Array.isArray(result && result.tracks) ? result.tracks : [];
+  const out = [];
+  for (const item of list.slice(0, 10000)) {
+    const t = item && item.track ? item.track : item;
+    if (!t || typeof t !== 'object') continue;
+    const title = lastfmText(t.title, 300);
+    if (!title) continue;
+    const artist = Array.isArray(t.artists) ? t.artists.map((a) => a && lastfmText(a.name, 120)).filter(Boolean).join(', ') : lastfmText(t.artist, 300);
+    const ms = Number(t.durationMs);
+    const duration = ms > 0 ? Math.round(ms / 1000) : Math.max(0, Math.round(Number(t.duration) || 0));
+    out.push({ title, artist: artist.slice(0, 300), duration: duration < 86400 ? duration : 0 });
+  }
+  return out;
+}
+
+async function handleYandexImport(req, res, inputUrl) {
+  const reply = (status, data) => { res.writeHead(status, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(data)); };
+  const apiPath = parseYandexPlaylistUrl(inputUrl);
+  if (!apiPath) return reply(400, { success: false, error: 'unsupported link: not a Yandex Music playlist link', status: 404 });
+  try {
+    const response = await fetchWithTimeout(`https://api.music.yandex.net${apiPath}`, {
+      headers: { 'User-Agent': 'Yandex-Music-API', 'X-Yandex-Music-Client': 'YandexMusicAndroid/24023231', 'Accept': 'application/json' }
+    }, 20000);
+    if (!response.ok) {
+      if (response.status === 404) return reply(404, { success: false, error: 'not found', status: 404 });
+      if (response.status === 401 || response.status === 403) return reply(403, { success: false, error: 'private', status: 403 });
+      return reply(502, { success: false, error: 'Yandex Music refused the request', status: response.status });
+    }
+    const text = await response.text();
+    if (text.length > 20e6) return reply(502, { success: false, error: 'Yandex Music sent too much data' });
+    const data = safeJsonParse(text, null);
+    const r = data && data.result && typeof data.result === 'object' ? data.result : (data || {});
+    const tracks = yandexTracks(r);
+    if (!tracks.length) return reply(404, { success: false, error: 'not found: the playlist is empty or private', status: 404 });
+    const cover = yandexCover(r.ogImage) || yandexCover(r.cover && (r.cover.uri || (Array.isArray(r.cover.itemsUri) && r.cover.itemsUri[0]))) || (typeof r.cover === 'string' ? yandexCover(r.cover) : '');
+    return reply(200, { success: true, name: lastfmText(r.title || r.name, 200) || 'Yandex Music playlist', cover, tracks });
+  } catch (err) {
+    const msg = String((err && err.message) || '');
+    const isNet = /timeout|abort|fetch|network|dns|econn|etimedout/i.test(msg) || (err && err.name === 'TimeoutError');
+    return reply(isNet ? 504 : 500, { success: false, error: isNet ? 'network' : 'unknown', status: isNet ? 504 : 500 });
+  }
+}
+
 // a throw inside a route must not become an unhandled rejection that leaves the request hanging
 const guardHandler = (handler) => (req, res) => {
   Promise.resolve().then(() => handler(req, res)).catch((e) => {
@@ -5121,6 +5451,14 @@ const server = http.createServer(guardHandler(async (req, res) => {
   if (parsedUrl.pathname === '/api/playlist-import') {
     const playlistUrl = parsedUrl.query.url || '';
     return handlePlaylistImport(req, res, playlistUrl);
+  }
+
+  if (parsedUrl.pathname === '/api/yandex-import') {
+    return handleYandexImport(req, res, parsedUrl.query.url || '');
+  }
+
+  if (parsedUrl.pathname.startsWith('/api/lastfm/')) {
+    return handleLastFmRoute(req, res, parsedUrl.pathname);
   }
 
   if (parsedUrl.pathname === '/api/albums/search') {

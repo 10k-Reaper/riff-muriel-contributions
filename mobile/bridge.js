@@ -71,6 +71,22 @@ globalThis.__murielFetch = async (input, init) => {
   try { return await Promise.race([request, deadline]); } finally { clearTimeout(timer); }
 };
 
+// ---- secrets server.js keeps (the Last.fm logins) ----
+// In the WebView's own storage, which only Muriel can read; not under /data, which on iPhone is the Muriel folder
+// the Files app shows (and backs up). One entry per device (profiles-core.js lists muriel_secret_ as a device key)
+// holding each profile's login, like lastfm-auth.enc on desktop. Never synced, never in an account export.
+globalThis.__murielVault = (name) => {
+  const key = `muriel_secret_${String(name).replace(/[^a-z0-9_]/gi, '')}`;
+  return {
+    read() {
+      const raw = localStorage.getItem(key);
+      if (raw == null) { const e = new Error('nothing saved'); e.code = 'ENOENT'; throw e; }
+      return JSON.parse(raw);
+    },
+    write(value) { localStorage.setItem(key, JSON.stringify(value)); },
+  };
+};
+
 // ---- the in-app "server" ----
 let ready;
 let server = null;

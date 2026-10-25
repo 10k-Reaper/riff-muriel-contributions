@@ -335,6 +335,10 @@ html.is-mobile #right-panel:not(.lyrics-empty) .lyrics-container { flex: 1 1 aut
    playlist links and the Spotify data-export files work on the phone */
 html.is-mobile #sp-modes button[data-mode="login"],
 html.is-mobile .sp-pane[data-mode="login"] { display: none !important; }
+/* YouTube / YouTube Music "Log in" needs the desktop app's separate Google login window (google-library.js);
+   playlist links work on the phone */
+html.is-mobile #link-modes,
+html.is-mobile .link-pane[data-mode="login"] { display: none !important; }
 
 /* ---------- Now Playing: drifting cover-colour glow ---------- */
 html.is-mobile #right-panel > .np-ambient {

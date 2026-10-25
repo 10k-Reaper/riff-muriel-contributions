@@ -4,6 +4,7 @@ const crypto = require('./shims/crypto');
 const store = require('./shims/store');
 const { Capacitor } = require('@capacitor/core');
 const { Share } = require('@capacitor/share');
+const { Filesystem, Directory, Encoding } = require('@capacitor/filesystem');
 
 function pickFiles(accept, multiple) {
   return new Promise((resolve) => {
@@ -123,6 +124,35 @@ module.exports = function electronAPI({ ready, port, fs, fileUrlFor }) {
     onWelcomeResult: noop,
     getLauncherInfo: async () => ({ platform: 'ios', canInstall: false, installed: true }),
     fileUrl: async (vpath) => { await ready; return fs.existsSync(vpath) ? fileUrlFor(vpath) : null; },
+    // playlist files and profile backups (backup.js): written to the app's cache, then handed to the share sheet,
+    // where "Save to Files" / Drive / Mail take it. In a desktop browser (dev harness) it's a plain download.
+    async saveTextFile({ defaultName, content } = {}) {
+      if (typeof content !== 'string') return { success: false, error: 'Nothing to save' };
+      const name = String(defaultName || 'muriel.json').replace(/[\\/:*?"<>|\u0000-\u001f]+/g, '_').replace(/^\.+/, '').slice(0, 120) || 'muriel.json';
+      if (!Capacitor.isNativePlatform()) {
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(new Blob([content], { type: 'application/json' }));
+        a.download = name;
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+        return { success: true };
+      }
+      const loc = { path: `exports/${name}`, directory: Directory.Cache };
+      try {
+        await Filesystem.writeFile({ ...loc, data: content, encoding: Encoding.UTF8, recursive: true });
+        const { uri } = await Filesystem.getUri(loc);
+        await Share.share({ title: name, files: [uri], dialogTitle: name });
+        return { success: true };
+      } catch (e) {
+        if (e && /cancel/i.test(String(e.message || e))) return { canceled: true };
+        return { success: false, error: "Couldn't share the file" };
+      } finally {
+        // the share sheet has its own copy by now
+        setTimeout(() => { Filesystem.deleteFile(loc).catch(() => {}); }, 60000);
+      }
+    },
+
     // native share sheet (WhatsApp, Mail, …); falls back to the clipboard
     async shareText(title, text) {
       try { await Share.share({ title, text, dialogTitle: title }); return 'shared'; } catch (e) {

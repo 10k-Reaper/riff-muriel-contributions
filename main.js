@@ -321,8 +321,9 @@ function runGUI() {
       if (mainWindow && !mainWindow.isDestroyed()) mainWindow.close();
     });
 
+    // Spotify's login page and Last.fm's approval page (lastfm.js)
     ipcMain.on('open-external', (e, u) => {
-      if (/^https:\/\/accounts\.spotify\.com\//.test(String(u))) shell.openExternal(u);
+      if (/^https:\/\/(?:accounts\.spotify\.com|www\.last\.fm\/api\/auth)\//.test(String(u))) shell.openExternal(String(u));
     });
 
     let mainLogCount = 0;
@@ -358,6 +359,31 @@ function runGUI() {
       ipcMain.handle('get-app-version', () => app.getVersion());
       ipcMain.handle('get-audio-output-info', async () => getSystemAudioOutputInfo());
       require('./plugins').register(() => mainWindow);
+      // YouTube / YouTube Music library import through a Google login (its own browser storage per profile)
+      require('./google-library').register(() => mainWindow);
+
+      // playlist files and profile backups (backup.js): the page hands over the text, the person picks where it goes
+      ipcMain.removeHandler('save-text-file');
+      ipcMain.handle('save-text-file', async (event, payload) => {
+        const content = payload && typeof payload.content === 'string' ? payload.content : null;
+        if (content === null || content.length > 64 * 1024 * 1024) return { success: false, error: 'Nothing to save' };
+        const isBackup = payload.kind === 'backup';
+        const base = path.basename(String(payload.defaultName || '')).replace(/[\\/:*?"<>|\u0000-\u001f]/g, '_').replace(/^\.+/, '');
+        const name = base || (isBackup ? 'muriel-backup.json' : 'playlists.json');
+        const win = BrowserWindow.fromWebContents(event.sender) || mainWindow;
+        const r = await dialog.showSaveDialog(win, {
+          title: isBackup ? 'Save a backup of this profile' : 'Export playlists',
+          defaultPath: path.join(app.getPath('documents'), name.toLowerCase().endsWith('.json') ? name : `${name}.json`),
+          filters: [{ name: 'JSON', extensions: ['json'] }],
+        });
+        if (r.canceled || !r.filePath) return { canceled: true };
+        try {
+          await fs.promises.writeFile(r.filePath, content, 'utf8');
+          return { success: true };
+        } catch (e) {
+          return { success: false, error: "Couldn't write the file there" };
+        }
+      });
 
       ipcMain.handle('get-cache-size', async () => {
         const fs = require('fs');

@@ -6652,6 +6652,76 @@ body.has-video-bg :is(.lyrics-header-actions, .right-panel .lyrics-header-action
   flex: 1;
 }
 
+/* "Create playlist" → "Or import one": round buttons for each service and for a playlist file */
+.cpm-import-bar {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--md-sys-color-outline-variant);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.cpm-import-label {
+  font-size: calc(13px * var(--font-scale, 1));
+  font-weight: 500;
+  color: var(--md-sys-color-on-surface-variant);
+  flex-shrink: 0;
+}
+.cpm-import-icons {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.cpm-service-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  background: var(--md-sys-color-surface-container);
+  color: var(--md-sys-color-on-surface);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+  transition: background 160ms cubic-bezier(0.2, 0, 0, 1), transform 160ms cubic-bezier(0.2, 0, 0, 1), border-color 160ms cubic-bezier(0.2, 0, 0, 1);
+}
+.cpm-service-btn:hover {
+  background: var(--md-sys-color-surface-container-high);
+  border-color: var(--md-sys-color-outline);
+  transform: scale(1.06);
+}
+.cpm-service-btn:active { transform: scale(0.96); }
+body.perf .cpm-service-btn { transition: none !important; transform: none !important; }
+
+/* YouTube / YouTube Music → Log in: the same buttons as Spotify's log in */
+#btn-google-login,
+#btn-google-logout {
+  background: var(--md-sys-color-surface-container-high);
+  border: 1px solid var(--md-sys-color-outline-variant, rgba(255, 255, 255, 0.12));
+  color: var(--md-sys-color-on-surface);
+  border-radius: var(--md-shape-corner-full, 9999px);
+  padding: 8px 18px;
+  font-size: calc(13px * var(--font-scale, 1));
+  font-weight: 500;
+  height: 36px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  transition: background var(--transition-short, 0.2s), border-color var(--transition-short, 0.2s);
+}
+#btn-google-login:not(:disabled):hover,
+#btn-google-logout:not(:disabled):hover {
+  background: var(--md-sys-color-surface-container-highest);
+  border-color: var(--md-sys-color-outline);
+}
+#btn-google-login:disabled,
+#btn-google-logout:disabled { opacity: 0.38; cursor: not-allowed; }
+#btn-google-logout.hidden { display: none !important; }
+
 #spotify-import-modal .dialog-actions {
   display: flex;
   justify-content: flex-end;

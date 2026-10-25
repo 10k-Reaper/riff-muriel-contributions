@@ -65,4 +65,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   openLogsFolder: () => ipcRenderer.send('open-logs-folder'),
   getDiagnostics: () => ipcRenderer.invoke('get-diagnostics'),
   getAudioOutputInfo: () => ipcRenderer.invoke('get-audio-output-info'),
+  // YouTube / YouTube Music library import (google-library.js) and playlist files / backups (backup.js)
+  googleLogin: (profile) => ipcRenderer.invoke('google-login', profile),
+  googleLogout: (profile) => ipcRenderer.invoke('google-logout', profile),
+  googleAuthStatus: (profile) => ipcRenderer.invoke('google-auth-status', profile),
+  googleImportLibrary: (opts) => ipcRenderer.invoke('google-import-library', opts),
+  saveTextFile: (payload) => ipcRenderer.invoke('save-text-file', payload),
 });

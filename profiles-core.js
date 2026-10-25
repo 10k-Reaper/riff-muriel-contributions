@@ -23,7 +23,8 @@
     'muriel_update_found', 'muriel_update_last', 'muriel_update_snooze', 'muriel_welcome_done', 'muriel_bg_asked',
     'muriel_scale_rebased_v2', 'muriel_debug_log',
   ]);
-  const DEVICE_PREFIXES = ['muriel_audio_analysis_']; // how a song sounds, worked out once per device
+  // how a song sounds, worked out once per device; logins the in-app server keeps for every profile (bridge.js)
+  const DEVICE_PREFIXES = ['muriel_audio_analysis_', 'muriel_secret_'];
   const isDevice = (k) => DEVICE.has(k) || DEVICE_PREFIXES.some((p) => k.startsWith(p));
 
   const COLORS = ['#D0BCFF', '#A8C7FA', '#7FD8C0', '#C5E1A5', '#FDD663', '#FFB59A', '#F4A7C6', '#B8C4D0'];
