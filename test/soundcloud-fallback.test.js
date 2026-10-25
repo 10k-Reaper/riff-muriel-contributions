@@ -49,8 +49,12 @@ childProcess.spawn = (bin, args) => {
       ] }));
       return p.emit('close', 0);
     }
-    if (args.includes('-g') && /soundcloud\.com/.test(target)) {
+    if (args.includes('-g') && /soundcloud\.com/.test(target) && !/broken/.test(target)) {
       p.stdout.emit('data', `https://cf-media.sndcdn.com/${target.split('/').pop()}.128.mp3\n`);
+      return p.emit('close', 0);
+    }
+    if (args.includes('-g') && /watch\?v=raeDawn0001/.test(target)) {
+      p.stdout.emit('data', 'https://rr1.googlevideo.com/videoplayback?id=raeDawn0001\n');
       return p.emit('close', 0);
     }
     p.stderr.emit('data', 'ERROR: Video unavailable');
@@ -58,8 +62,23 @@ childProcess.spawn = (bin, args) => {
   });
   return p;
 };
-// no internet: YouTube page searches fail at once
-https.get = () => { const r = new EventEmitter(); r.destroy = () => {}; setImmediate(() => r.emit('error', new Error('offline'))); return r; };
+// no internet: YouTube page searches fail at once, except the result pages a test sets up
+const ytPages = {};
+const ytPage = (videoId, title, owner, length) => `<script>var ytInitialData = ${JSON.stringify({ contents: { twoColumnSearchResultsRenderer: { primaryContents: { sectionListRenderer: { contents: [{ itemSectionRenderer: { contents: [{ videoRenderer: { videoId, title: { runs: [{ text: title }] }, ownerText: { runs: [{ text: owner }] }, lengthText: { simpleText: length } } }] } }] } } } } })};</script>`;
+https.get = (url, opts, cb) => {
+  const r = new EventEmitter();
+  r.destroy = () => {};
+  const q = (String(url).match(/search_query=([^&]+)/) || [])[1];
+  const page = q && ytPages[decodeURIComponent(q)];
+  setImmediate(() => {
+    if (!page) return r.emit('error', new Error('offline'));
+    const res = new EventEmitter();
+    (typeof opts === 'function' ? opts : cb)(res);
+    res.emit('data', Buffer.from(page));
+    res.emit('end');
+  });
+  return r;
+};
 
 const { startServer, stopServer, getServerToken } = require('../server');
 let port;
@@ -94,4 +113,12 @@ test('no full-length upload: the song fails instead of playing 30 seconds', asyn
   const r = await get(`/api/stream-info?url=${encodeURIComponent('https://www.youtube.com/watch?v=aaaaaaaaaaa')}&id=aaaaaaaaaaa&platform=youtube&title=${encodeURIComponent("God's Plan")}&artist=Drake&duration=420`);
   assert.equal(r.status, 500);
   assert.equal(JSON.parse(r.body).success, false);
+});
+
+test('a SoundCloud song that won\'t play falls back to the same song on YouTube', async () => {
+  ytPages['Viktor Vaughn Rae Dawn'] = ytPage('raeDawn0001', 'Viktor Vaughn - Rae Dawn', 'Viktor Vaughn - Topic', '3:20');
+  const r = await get(`/api/stream-info?url=${encodeURIComponent('https://soundcloud.com/someone/broken-rae-dawn')}&id=987654&platform=soundcloud&title=${encodeURIComponent('Rae Dawn')}&artist=${encodeURIComponent('Viktor Vaughn')}&duration=200`);
+  const data = JSON.parse(r.body);
+  assert.equal(data.success, true);
+  assert.equal(data.streamUrl, 'https://rr1.googlevideo.com/videoplayback?id=raeDawn0001');
 });

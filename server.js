@@ -1412,6 +1412,9 @@ async function downloadTrackToDisk(trackUrl, trackId, platform, meta = {}) {
   const job = new Promise((resolve) => {
     const proc = spawn(cmd.bin, cmd.args, { windowsHide: true, env: cmd.env });
     downloadProcs.set(cleanId, proc);
+    // yt-dlp's reason ("ERROR: ...") goes into the log, so a shared error log says why a song failed
+    let errText = '';
+    if (proc.stderr) proc.stderr.on('data', (d) => { errText = (errText + d).slice(-2000); });
     proc.on('close', async (code) => {
       if (downloadProcs.get(cleanId) === proc) downloadProcs.delete(cleanId);
       const found = findTemp();
@@ -1435,7 +1438,8 @@ async function downloadTrackToDisk(trackUrl, trackId, platform, meta = {}) {
           }
         } catch (e) {}
       } else {
-        try { logger.error('Download failure: ' + (meta.title || trackId) + ' (exit code ' + code + ')'); } catch (_) {}
+        const reason = (errText.match(/ERROR:[^\n]*/g) || []).pop();
+        try { logger.error('Download failure: ' + (meta.title || trackId) + ' (exit code ' + code + ')' + (reason ? ': ' + reason.slice(0, 300) : '')); } catch (_) {}
         if (found) try { await fs.promises.unlink(found); } catch (e) {}
       }
       resolve();
@@ -2031,7 +2035,8 @@ async function handleStreamInfo(req, res, trackUrl, trackId, platform = 'youtube
     });
     await downloadTrackToDisk(trackUrl, cleanId, platform, meta);
     if (gone) { resolveLookup({ success: false, error: 'cancelled' }); if (cacheKey && streamUrlCache.get(cacheKey) === inFlightEntry) streamUrlCache.delete(cacheKey); return; }
-    if (!await findCachedFile(cleanId) && platform === 'youtube' && (title || artist)) {
+    // any song that won't play (SoundCloud and YouTube Music included) tries other YouTube uploads of it
+    if (!await findCachedFile(cleanId) && platform !== 'local' && (title || artist)) {
       for (const alt of await alternativeUploads(cleanId, title, artist, duration)) {
         try { logger.log('warn', `stream: ${cleanId} unavailable, trying another upload ${alt}`); } catch (_) {}
         await downloadTrackToDisk(alt, cleanId, 'youtube', meta);
@@ -2071,7 +2076,7 @@ async function handleStreamInfo(req, res, trackUrl, trackId, platform = 'youtube
     }
   }
 
-  if (!streamUrl && platform === 'youtube' && (title || artist)) {
+  if (!streamUrl && platform !== 'local' && (title || artist)) {
     for (const alt of await alternativeUploads(cleanId, title, artist, duration)) {
       try {
         const raw = await executeYtDlp(['--no-config', '-g', '--no-warnings', '--no-playlist', '--prefer-free-formats', '-f', 'bestaudio/best', '--extractor-args', 'youtube:player_client=default,android', '--', alt], 18000);
