@@ -4,7 +4,7 @@ const { EventEmitter } = require('events');
 const fs = require('./fs');
 const store = require('./store');
 const ex = require('../extract');
-const { segmentsToAac } = require('../ts2aac');
+const { segmentsToAac, stripId3 } = require('../ts2aac');
 const { enforceCacheLimit } = require('../cache-limit');
 
 function fakeProcess(work) {
@@ -50,10 +50,30 @@ async function searchJson(target, limit) {
   return JSON.stringify({ entries });
 }
 
-// Fetches every segment of an HLS media playlist (4 at a time) and joins them into one .aac file.
-async function downloadHls(playlistUrl, headers, signal) {
+// Joins downloaded HLS segments into one playable file:
+//  'aac'  (default, YouTube): packed audio / MPEG-TS → raw ADTS .aac
+//  'mp3'  (SoundCloud): MP3 segments, ID3 tags stripped, frames appended → .mp3
+//  'fmp4' (SoundCloud): init segment + moof/mdat fragments appended → fragmented .m4a
+function joinSegments(parts, container) {
+  if (container === 'aac' || !container) return segmentsToAac(parts);
+  const pieces = container === 'mp3' ? parts.map(stripId3) : parts;
+  const out = new Uint8Array(pieces.reduce((n, x) => n + x.length, 0));
+  let o = 0;
+  for (const x of pieces) { out.set(x, o); o += x.length; }
+  return out;
+}
+
+// Fetches every segment of an HLS media playlist (4 at a time) and joins them into one file.
+async function downloadHls(playlistUrl, headers, signal, container) {
   const m3u = await (await globalThis.__murielFetch(playlistUrl, { headers, signal })).text();
-  const urls = m3u.split('\n').map((l) => l.trim()).filter((l) => l && !l.startsWith('#')).map((l) => new URL(l, playlistUrl).href);
+  const lines = m3u.split('\n').map((l) => l.trim());
+  const key = lines.find((l) => l.startsWith('#EXT-X-KEY') && !/METHOD=NONE/.test(l));
+  if (key) throw new Error('this song is only available encrypted (DRM)');
+  const urls = lines.filter((l) => l && !l.startsWith('#')).map((l) => new URL(l, playlistUrl).href);
+  // fragmented MP4 needs its init segment (EXT-X-MAP) in front of the first fragment
+  const map = lines.map((l) => l.startsWith('#EXT-X-MAP') && (l.match(/URI="([^"]+)"/) || [])[1]).find(Boolean);
+  if (map) urls.unshift(new URL(map, playlistUrl).href);
+  if (!urls.length) throw new Error('empty HLS playlist');
   const parts = new Array(urls.length);
   let next = 0;
   // once one segment has failed for good (or the download was cancelled) the other workers stop too,
@@ -79,19 +99,18 @@ async function downloadHls(playlistUrl, headers, signal) {
     }
   };
   await Promise.all(Array.from({ length: Math.min(4, urls.length) }, worker));
-  return segmentsToAac(parts);
+  return joinSegments(parts, container);
 }
 
 async function download(args, target, signal) {
   const audio = await ex.resolveAudio(target);
   if (signal && signal.aborted) throw new Error('download cancelled');
-  if (audio.ext === 'm3u8') throw new Error('this track is only available as a stream');
   let out = opt(args, '-o');
   // yt-dlp templates: the user-facing download keeps the real container (no ffmpeg on iOS to convert)
   out = out.includes('%(ext)s') ? out.replace('%(ext)s', audio.ext) : out;
   let size;
   if (audio.kind === 'hls') {
-    const bytes = await downloadHls(audio.url, audio.headers, signal);
+    const bytes = await downloadHls(audio.url, audio.headers, signal, audio.container);
     await store.writeBytes(out, bytes);
     size = bytes.length;
   } else {
@@ -115,4 +134,4 @@ function spawn(bin, args) {
   return fakeProcess(async () => { throw new Error(`unsupported yt-dlp call: ${args.join(' ')}`); });
 }
 
-module.exports = { spawn, execFile: () => { throw new Error('execFile is not available on iOS'); } };
+module.exports = { joinSegments, spawn, execFile: () => { throw new Error('execFile is not available on iOS'); } };

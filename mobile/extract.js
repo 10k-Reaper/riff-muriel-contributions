@@ -161,15 +161,45 @@ async function soundcloudSearch(query, limit) {
   return (r.collection || []).filter((t) => t.kind === 'track' && !isPreview(t)).map(scEntry);
 }
 
+// Which of a track's transcodings Muriel can play, best first. Many tracks no longer have a progressive MP3,
+// only HLS: plain HLS (MP3 segments, or AAC in fragmented MP4) is downloaded segment by segment and joined;
+// encrypted HLS (ctr-/cbc-encrypted-hls) needs DRM and can't be played outside SoundCloud's own player.
+function scCandidates(list) {
+  const mime = (x) => String((x.format && x.format.mime_type) || '').toLowerCase();
+  const proto = (x) => String((x.format && x.format.protocol) || '');
+  const kind = (x) => {
+    if (proto(x) === 'progressive') return { rank: 0, ext: 'mp3' };
+    if (proto(x) !== 'hls') return null; // encrypted or unknown
+    if (/audio\/mpeg/.test(mime(x))) return { rank: 1, kind: 'hls', container: 'mp3', ext: 'mp3' };
+    if (/audio\/mp4|mp4a|aac/.test(mime(x))) return { rank: 2, kind: 'hls', container: 'fmp4', ext: 'm4a' };
+    return null; // e.g. Opus in Ogg segments
+  };
+  return list
+    .filter((x) => x && x.url && !x.snipped)
+    .map((x) => ({ tc: x, ...kind(x) }))
+    .filter((c) => c.rank !== undefined)
+    .sort((a, b) => a.rank - b.rank);
+}
+
 async function soundcloudAudio(pageUrl) {
   const t = await scApi(`/resolve?url=${encodeURIComponent(pageUrl)}`);
   if (isPreview(t)) throw new Error('SoundCloud only has a 30-second preview of this song');
   const list = (t.media && t.media.transcodings) || [];
-  const tc = list.find((x) => x.format.protocol === 'progressive') || list[0];
-  if (!tc) throw new Error('no SoundCloud stream');
+  if (!list.length) throw new Error('no SoundCloud stream');
+  const candidates = scCandidates(list);
+  if (!candidates.length) throw new Error('SoundCloud only offers this song encrypted (DRM), it can\'t be played here');
   const auth = t.track_authorization ? `?track_authorization=${t.track_authorization}` : '';
-  const { url } = await scApi(tc.url.replace('https://api-v2.soundcloud.com', '') + auth);
-  return { url, ext: tc.format.protocol === 'progressive' ? 'mp3' : 'm3u8', artist: t.user && t.user.username, title: t.title, duration: Math.round(t.duration / 1000) };
+  const info = { artist: t.user && t.user.username, title: t.title, duration: Math.round(t.duration / 1000) };
+  let lastErr = null;
+  for (const c of candidates) {
+    try {
+      const { url } = await scApi(c.tc.url.replace('https://api-v2.soundcloud.com', '') + auth);
+      if (!url) throw new Error('no SoundCloud stream URL');
+      const headers = { 'User-Agent': DESKTOP_UA };
+      return c.kind === 'hls' ? { kind: 'hls', container: c.container, url, headers, ext: c.ext, ...info } : { url, headers, ext: c.ext, ...info };
+    } catch (e) { lastErr = e; }
+  }
+  throw lastErr || new Error('no SoundCloud stream');
 }
 
 // Resolve anything yt-dlp would accept as a target: a URL, ytsearch1:, scsearch1:.
@@ -251,4 +281,4 @@ async function playlist(pageUrl, limit = 500) {
   throw new Error(`unsupported link ${s}`);
 }
 
-module.exports = { youtubeSearch, ytMusicSearch, soundcloudSearch, resolveAudio, playlist };
+module.exports = { youtubeSearch, ytMusicSearch, soundcloudSearch, resolveAudio, playlist, scCandidates };

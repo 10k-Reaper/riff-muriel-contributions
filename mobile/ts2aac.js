@@ -52,4 +52,4 @@ function segmentsToAac(segments) {
   return out;
 }
 
-module.exports = { ts2aac, segmentsToAac };
+module.exports = { ts2aac, segmentsToAac, stripId3 };
