@@ -16,9 +16,9 @@
   const DEVICE = new Set([
     LIST, ACTIVE,
     // the window, the tray and the keyboard belong to the computer
-    'muriel_tray_on_close', 'muriel_global_media_keys',
+    'muriel_tray_on_close', 'muriel_global_media_keys', 'muriel_hide_titlebar',
     // what this device can handle
-    'muriel_perf_mode', 'muriel_battery_saver', 'muriel_fps_cap', 'muriel_cache_limit_mb',
+    'muriel_perf_mode', 'muriel_battery_saver', 'muriel_fps_cap', 'muriel_cache_limit_mb', 'muriel_stream_timeout',
     // asked, shown or done once per device
     'muriel_update_found', 'muriel_update_last', 'muriel_update_snooze', 'muriel_welcome_done', 'muriel_bg_asked',
     'muriel_scale_rebased_v2', 'muriel_debug_log',

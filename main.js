@@ -631,6 +631,7 @@ function runGUI() {
       powerMonitor.on('unlock-screen', registerMediaKeys);
       app.on('will-quit', () => globalShortcut.unregisterAll());
 
+      let preMiniLyricsH = null;
       ipcMain.removeHandler('toggle-mini-window');
       ipcMain.handle('toggle-mini-window', () => {
         if (!mainWindow || mainWindow.isDestroyed()) return false;
@@ -638,12 +639,13 @@ function runGUI() {
           isMiniWindow = true;
           preMiniBounds = mainWindow.isMaximized() ? mainWindow.getNormalBounds() : mainWindow.getBounds();
           if (mainWindow.isMaximized()) mainWindow.unmaximize();
-          mainWindow.setMinimumSize(320, 120);
+          mainWindow.setMinimumSize(280, 115);
           mainWindow.setSize(380, 160);
           mainWindow.setAlwaysOnTop(true);
           return true;
         } else {
           isMiniWindow = false;
+          preMiniLyricsH = null;
           mainWindow.setAlwaysOnTop(false);
           mainWindow.setMinimumSize(360, 500);
           if (preMiniBounds) {
@@ -653,6 +655,26 @@ function runGUI() {
           }
           return false;
         }
+      });
+
+      // lyrics under the mini player: the window grows to fit them (kept on screen) and shrinks back without them
+      ipcMain.removeHandler('set-mini-lyrics');
+      ipcMain.handle('set-mini-lyrics', (e, enabled) => {
+        if (!mainWindow || mainWindow.isDestroyed() || !isMiniWindow) return false;
+        const bounds = mainWindow.getBounds();
+        const area = screen.getDisplayMatching(bounds).workArea;
+        if (enabled) {
+          if (!preMiniLyricsH) preMiniLyricsH = bounds.height;
+          mainWindow.setMinimumSize(320, 240);
+          const targetH = Math.min(Math.max(bounds.height, 360), Math.floor(area.height * 0.9));
+          const y = bounds.y + targetH > area.y + area.height ? Math.max(area.y, area.y + area.height - targetH) : bounds.y;
+          mainWindow.setBounds({ x: bounds.x, y, width: bounds.width, height: targetH });
+        } else {
+          mainWindow.setMinimumSize(280, 115);
+          mainWindow.setSize(bounds.width, preMiniLyricsH || 160);
+          preMiniLyricsH = null;
+        }
+        return true;
       });
 
       function setupTray() {

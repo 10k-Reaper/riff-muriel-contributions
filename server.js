@@ -3155,6 +3155,67 @@ async function fetchLyricsDirect(title, artist, duration = 0) {
   return plain;
 }
 
+// ---------- Riff 43: Genius (plain lyrics) and NetEase (word timings) ----------
+const lyricsSources = require('./lyrics-sources');
+const BROWSER_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36';
+
+function lyricsPageText(url, headers = {}, timeoutMs = 8000) {
+  return new Promise((resolve) => {
+    const req = https.get(url, { headers: { 'User-Agent': BROWSER_UA, ...headers }, timeout: timeoutMs }, (res) => {
+      let data = '';
+      const dec = new StringDecoder('utf8');
+      res.on('data', (c) => { data += typeof c === 'string' ? c : dec.write(c); if (data.length > 4e6) req.destroy(); });
+      res.on('end', () => resolve(res.statusCode === 200 ? data : null));
+      res.on('error', () => resolve(null));
+    });
+    req.on('error', () => resolve(null));
+    req.on('timeout', () => { req.destroy(); resolve(null); });
+  });
+}
+const lyricsPageJson = async (url, headers) => { const t = await lyricsPageText(url, headers); try { return t ? JSON.parse(t) : null; } catch (e) { return null; } };
+
+// the song's page on Genius, found by its cleaned-up title and artist; only a real title match counts
+async function fetchGeniusLyrics(title, artist) {
+  const want = parseForLyrics(title, artist);
+  const t0 = want.titles[0];
+  const a0 = want.artists.find((a) => !/[,&]/.test(a)) || want.artists[0] || '';
+  if (!t0) return null;
+  const json = await lyricsPageJson(`https://genius.com/api/search/song?q=${encodeURIComponent(`${t0} ${a0}`.trim())}`);
+  const sections = (json && json.response && json.response.sections) || [];
+  const hits = sections.flatMap((s) => (s && s.hits) || []);
+  const url = lyricsSources.pickGeniusHit(hits, t0, want.artists.join(', '));
+  if (!url) return null;
+  const html = await lyricsPageText(url);
+  const text = html ? lyricsSources.extractGeniusLyrics(html) : '';
+  return text || null;
+}
+
+// NetEase's word-timed lyrics for karaoke: [{ start, end, text, words: [{ text, start, end }] }] or null
+const NETEASE_HEADERS = { Referer: 'https://music.163.com/' };
+const wordsCache = new Map();
+async function fetchNetEaseWords(title, artist, duration = 0) {
+  const want = parseForLyrics(title, artist);
+  const t0 = want.titles[0];
+  const a0 = want.artists.find((a) => !/[,&]/.test(a)) || want.artists[0] || '';
+  if (!t0) return null;
+  const key = `${t0}\u0000${a0}\u0000${Math.round(duration || 0)}`;
+  const hit = wordsCache.get(key);
+  if (hit && (!hit.expires || Date.now() < hit.expires)) return hit.lines;
+  let lines = null;
+  const search = await lyricsPageJson(`https://music.163.com/api/search/get?s=${encodeURIComponent(`${t0} ${a0}`.trim())}&type=1&limit=8`, NETEASE_HEADERS);
+  const songs = (search && search.result && search.result.songs) || [];
+  const id = lyricsSources.pickNetEaseSong(songs, t0, want.artists.join(', '), duration);
+  if (id) {
+    const lyr = await lyricsPageJson(`https://music.163.com/api/song/lyric?id=${encodeURIComponent(id)}&lv=1&kv=1&tv=-1&yv=1`, NETEASE_HEADERS);
+    const parsed = lyr && lyr.yrc && lyr.yrc.lyric ? lyricsSources.parseYrc(lyr.yrc.lyric) : [];
+    if (parsed.length) lines = parsed;
+  }
+  // nothing found looks the same as a network hiccup: ask again after 10 minutes
+  wordsCache.set(key, lines ? { lines } : { lines: null, expires: Date.now() + 10 * 60 * 1000 });
+  trimCache(wordsCache, 200);
+  return lines;
+}
+
 const crypto = require('crypto');
 
 const SERVER_TOKEN = crypto.randomBytes(24).toString('hex');
@@ -3237,12 +3298,14 @@ function getCustomLyricsPath(title, artist) {
   return path.join(CUSTOM_LYRICS_DIR, lyricsKey(title, artist) + '.lrc');
 }
 
-function getFetchedLyricsPath(title, artist) {
-  return path.join(LYRICS_DIR, lyricsKey(title, artist) + '.lrc');
+function getFetchedLyricsPath(title, artist, source = 'lrclib') {
+  return path.join(LYRICS_DIR, lyricsKey(title, artist) + (source === 'genius' ? '_genius' : '') + '.lrc');
 }
 
-async function handleLyrics(req, res, title, artist, allowOnline = true, duration = 0) {
-  const cacheKey = `${artist}:${title}`;
+async function handleLyrics(req, res, title, artist, allowOnline = true, duration = 0, source = 'lrclib') {
+  // Settings → Lyrics source picks which site is asked first; the other one is the fallback
+  const order = source === 'genius' ? ['genius', 'lrclib'] : ['lrclib', 'genius'];
+  const cacheKey = order[0] === 'genius' ? `${artist}:${title}:genius` : `${artist}:${title}`;
   let cached = lyricsCache.get(cacheKey);
   if (cached && cached.expires && Date.now() > cached.expires) {
     lyricsCache.delete(cacheKey);
@@ -3289,44 +3352,52 @@ async function handleLyrics(req, res, title, artist, allowOnline = true, duratio
     } catch (e) {}
   }
 
-  let fetchedLyricsPath = getFetchedLyricsPath(title, artist);
-  if (!fs.existsSync(fetchedLyricsPath) && /^[\x00-\x7F]*$/.test((title || '') + (artist || ''))) {
-    const legacyFetched = legacyFetchedLyricsPath(title, artist);
-    if (fs.existsSync(legacyFetched)) {
-      fetchedLyricsPath = legacyFetched;
-    }
-  }
-
-  if (fs.existsSync(fetchedLyricsPath)) {
-    try {
-      const diskLyrics = await fs.promises.readFile(fetchedLyricsPath, 'utf-8');
-      if (lyricsCache.get(cacheKey) === inFlightEntry) {
-        lyricsCache.set(cacheKey, { text: diskLyrics, isCustom: false });
+  // each site's lyrics are saved in their own file; the preferred site (saved or asked) comes first, then the other
+  let rawLyrics = null;
+  for (const backend of order) {
+    let fetchedLyricsPath = getFetchedLyricsPath(title, artist, backend);
+    if (backend === 'lrclib' && !fs.existsSync(fetchedLyricsPath) && /^[\x00-\x7F]*$/.test((title || '') + (artist || ''))) {
+      const legacyFetched = legacyFetchedLyricsPath(title, artist);
+      if (fs.existsSync(legacyFetched)) {
+        fetchedLyricsPath = legacyFetched;
       }
-      return sendLyrics(diskLyrics);
-    } catch (e) {}
+    }
+
+    if (fs.existsSync(fetchedLyricsPath)) {
+      try {
+        const diskLyrics = await fs.promises.readFile(fetchedLyricsPath, 'utf-8');
+        if (lyricsCache.get(cacheKey) === inFlightEntry) {
+          lyricsCache.set(cacheKey, { text: diskLyrics, isCustom: false });
+        }
+        return sendLyrics(diskLyrics);
+      } catch (e) {}
+    }
+
+    if (!allowOnline) continue;
+
+    try {
+      rawLyrics = backend === 'genius' ? await fetchGeniusLyrics(title, artist) : await fetchLyricsDirect(title, artist, duration);
+    } catch (err) {
+      rawLyrics = null;
+    }
+    if (rawLyrics && rawLyrics.trim().length > 0) {
+      try {
+        await fs.promises.writeFile(fetchedLyricsPath, rawLyrics, 'utf-8');
+      } catch (e) {}
+      break;
+    }
   }
 
   if (!allowOnline) {
     return sendLyrics('');
   }
 
-  try {
-    const rawLyrics = await fetchLyricsDirect(title, artist, duration);
-    if (rawLyrics && rawLyrics.trim().length > 0) {
-      try {
-        await fs.promises.writeFile(fetchedLyricsPath, rawLyrics, 'utf-8');
-      } catch (e) {}
-    }
-    if (lyricsCache.get(cacheKey) === inFlightEntry) {
-      // "nothing found" is also what a network hiccup looks like: look again after 10 minutes
-      // instead of showing no lyrics for this song until the app restarts
-      lyricsCache.set(cacheKey, rawLyrics ? { text: rawLyrics, isCustom: false } : { text: rawLyrics, isCustom: false, expires: Date.now() + 10 * 60 * 1000 });
-    }
-    return sendLyrics(rawLyrics);
-  } catch (err) {
-    return sendLyrics('');
+  if (lyricsCache.get(cacheKey) === inFlightEntry) {
+    // "nothing found" is also what a network hiccup looks like: look again after 10 minutes
+    // instead of showing no lyrics for this song until the app restarts
+    lyricsCache.set(cacheKey, rawLyrics ? { text: rawLyrics, isCustom: false } : { text: rawLyrics, isCustom: false, expires: Date.now() + 10 * 60 * 1000 });
   }
+  return sendLyrics(rawLyrics);
   } finally {
     if (!outcome) {
       outcome = { success: true, lyrics: '', isCustom: false };
@@ -3355,6 +3426,7 @@ async function handleSaveCustomLyrics(req, res, title, artist) {
 
       const cacheKey = `${artist}:${title}`;
       lyricsCache.delete(cacheKey);
+      lyricsCache.delete(`${cacheKey}:genius`);
 
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ success: true }));
@@ -6188,7 +6260,19 @@ const server = http.createServer(guardHandler(async (req, res) => {
     const artist = parsedUrl.query.artist || '';
     const allowOnline = parsedUrl.query.online !== '0';
     const duration = Number(parsedUrl.query.duration) || 0;
-    return handleLyrics(req, res, title, artist, allowOnline, duration);
+    const source = parsedUrl.query.source === 'genius' ? 'genius' : 'lrclib';
+    return handleLyrics(req, res, title, artist, allowOnline, duration, source);
+  }
+
+  // word timings for karaoke (Settings → Word-by-word source), lined up with the lyrics by app.js
+  if (parsedUrl.pathname === '/api/lyrics-words') {
+    const title = parsedUrl.query.title || '';
+    const artist = parsedUrl.query.artist || '';
+    const duration = Number(parsedUrl.query.duration) || 0;
+    let lines = null;
+    try { lines = await fetchNetEaseWords(title, artist, duration); } catch (e) {}
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    return res.end(JSON.stringify({ success: !!(lines && lines.length), lines: lines || [] }));
   }
 
   res.writeHead(404);

@@ -72,6 +72,50 @@
   });
 })();
 
+// Riff 43 splash: Muriel's star draws itself while the app starts (computers only; phones show their own launch
+// screen). styles.css also fades it out on its own after a few seconds, so a startup error can't leave it up.
+(function murielSplash() {
+  const splash = document.getElementById('splash');
+  const host = document.getElementById('splash-logo');
+  if (!splash || !host) return;
+  const perf = /^(1|true)$/.test(localStorage.getItem('muriel_perf_mode') || '');
+  const reduced = localStorage.getItem('muriel_adv_reduce_motion') === 'true' || (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  if (document.documentElement.classList.contains('is-mobile') || perf || reduced) { splash.remove(); return; }
+  const finish = () => {
+    if (!splash.isConnected || splash.classList.contains('hide')) return;
+    splash.classList.add('hide');
+    setTimeout(() => splash.remove(), 480);
+  };
+  const safety = setTimeout(finish, 1850);
+  try {
+    const paths = Array.from(host.querySelectorAll('path'));
+    const lengths = paths.map((p) => {
+      const len = typeof p.getTotalLength === 'function' ? p.getTotalLength() : 2000;
+      Object.assign(p.style, { fillOpacity: '0', stroke: 'var(--md-sys-color-primary, #D0BCFF)', strokeWidth: '14px', strokeLinejoin: 'round', strokeDasharray: String(len), strokeDashoffset: String(len) });
+      return len;
+    });
+    const t0 = performance.now();
+    const ease = (t) => 1 - Math.pow(1 - t, 3);
+    const tick = (now) => {
+      const p = Math.min(1, (now - t0) / 1150);
+      const draw = ease(Math.min(1, p / 0.72));
+      const fill = p < 0.5 ? 0 : ease((p - 0.5) / 0.5);
+      host.style.transform = `scale(${(1.28 - 0.28 * ease(p)).toFixed(3)})`;
+      paths.forEach((el, i) => {
+        el.style.strokeDashoffset = (lengths[i] * (1 - draw)).toFixed(1);
+        el.style.fillOpacity = fill.toFixed(3);
+        el.style.strokeOpacity = (1 - fill * 0.65).toFixed(3);
+      });
+      if (p < 1) requestAnimationFrame(tick);
+      else { clearTimeout(safety); finish(); }
+    };
+    requestAnimationFrame(tick);
+  } catch (e) {
+    clearTimeout(safety);
+    finish();
+  }
+})();
+
 document.addEventListener('DOMContentLoaded', async () => {
   try { localStorage.removeItem('muriel_stats'); } catch (e) {}
 
@@ -818,6 +862,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     const h = hsl.h;
     const intensityFactor = (typeof intensity === 'number' ? intensity : 100) / 100;
     const root = document.documentElement;
+    // Settings → "Apply intensity to background" (Riff 43): surfaces take on the accent as strongly as the
+    // intensity slider says, instead of the faint tint they always have
+    const tintSurfaces = getAdv('intensity_bg', false);
+    const surfSat = (n, factor) => tintSurfaces ? Math.min(85, Math.round((hsl.s || 60) * factor * 2.4)) : Math.round(n * factor);
 
     const setToken = (prop, val) => {
       if (SURFACE_TOKENS.has(prop)) {
@@ -889,15 +937,15 @@ document.addEventListener('DOMContentLoaded', async () => {
         setToken('--md-sys-color-on-secondary-container', hslToHex(hSec, satLow2, 15));
         setToken('--md-sys-color-tertiary', hslToHex(hTert, satLow, 45));
         setToken('--md-sys-color-tertiary-container', hslToHex(hTert, satLow, LB(90)));
-        setToken('--md-sys-color-background', hslToHex(h, Math.round(5 * surfFactor), LB(99)));
-        setToken('--md-sys-color-surface', hslToHex(h, Math.round(6 * surfFactor), LB(98)));
-        setToken('--md-sys-color-surface-dim', hslToHex(h, Math.round(5 * surfFactor), LB(87)));
-        setToken('--md-sys-color-surface-bright', hslToHex(h, Math.round(6 * surfFactor), LB(98)));
-        setToken('--md-sys-color-surface-container-lowest', hslToHex(h, Math.round(4 * surfFactor), LB(100)));
-        setToken('--md-sys-color-surface-container-low', hslToHex(h, Math.round(5 * surfFactor), LB(96)));
-        setToken('--md-sys-color-surface-container', hslToHex(h, Math.round(6 * surfFactor), LB(94)));
-        setToken('--md-sys-color-surface-container-high', hslToHex(h, Math.round(5 * surfFactor), LB(92)));
-        setToken('--md-sys-color-surface-container-highest', hslToHex(h, Math.round(5 * surfFactor), LB(90)));
+        setToken('--md-sys-color-background', hslToHex(h, surfSat(5, surfFactor), LB(99)));
+        setToken('--md-sys-color-surface', hslToHex(h, surfSat(6, surfFactor), LB(98)));
+        setToken('--md-sys-color-surface-dim', hslToHex(h, surfSat(5, surfFactor), LB(87)));
+        setToken('--md-sys-color-surface-bright', hslToHex(h, surfSat(6, surfFactor), LB(98)));
+        setToken('--md-sys-color-surface-container-lowest', hslToHex(h, surfSat(4, surfFactor), LB(100)));
+        setToken('--md-sys-color-surface-container-low', hslToHex(h, surfSat(5, surfFactor), LB(96)));
+        setToken('--md-sys-color-surface-container', hslToHex(h, surfSat(6, surfFactor), LB(94)));
+        setToken('--md-sys-color-surface-container-high', hslToHex(h, surfSat(5, surfFactor), LB(92)));
+        setToken('--md-sys-color-surface-container-highest', hslToHex(h, surfSat(5, surfFactor), LB(90)));
         setToken('--md-sys-color-on-surface', '#1C1B1F');
         setToken('--md-sys-color-on-surface-variant', '#49454F');
         setToken('--md-sys-color-outline', '#79747E');
@@ -949,15 +997,15 @@ document.addEventListener('DOMContentLoaded', async () => {
         setToken('--md-sys-color-tertiary', hslToHex(hTert, satLow2, 75));
         setToken('--md-sys-color-tertiary-container', hslToHex(hTert, satLow, 22));
         const B = (v) => Math.max(0, Math.min(100, Math.round(v * (br * 2))));
-        setToken('--md-sys-color-background', hslToHex(h, Math.round(5 * surfFactor), B(7)));
-        setToken('--md-sys-color-surface', hslToHex(h, Math.round(6 * surfFactor), B(8)));
-        setToken('--md-sys-color-surface-dim', hslToHex(h, Math.round(5 * surfFactor), B(7)));
-        setToken('--md-sys-color-surface-bright', hslToHex(h, Math.round(4 * surfFactor), B(24)));
-        setToken('--md-sys-color-surface-container-lowest', hslToHex(h, Math.round(5 * surfFactor), B(5)));
-        setToken('--md-sys-color-surface-container-low', hslToHex(h, Math.round(5 * surfFactor), B(10)));
-        setToken('--md-sys-color-surface-container', hslToHex(h, Math.round(6 * surfFactor), B(13)));
-        setToken('--md-sys-color-surface-container-high', hslToHex(h, Math.round(5 * surfFactor), B(16)));
-        setToken('--md-sys-color-surface-container-highest', hslToHex(h, Math.round(5 * surfFactor), B(20)));
+        setToken('--md-sys-color-background', hslToHex(h, surfSat(5, surfFactor), B(7)));
+        setToken('--md-sys-color-surface', hslToHex(h, surfSat(6, surfFactor), B(8)));
+        setToken('--md-sys-color-surface-dim', hslToHex(h, surfSat(5, surfFactor), B(7)));
+        setToken('--md-sys-color-surface-bright', hslToHex(h, surfSat(4, surfFactor), B(24)));
+        setToken('--md-sys-color-surface-container-lowest', hslToHex(h, surfSat(5, surfFactor), B(5)));
+        setToken('--md-sys-color-surface-container-low', hslToHex(h, surfSat(5, surfFactor), B(10)));
+        setToken('--md-sys-color-surface-container', hslToHex(h, surfSat(6, surfFactor), B(13)));
+        setToken('--md-sys-color-surface-container-high', hslToHex(h, surfSat(5, surfFactor), B(16)));
+        setToken('--md-sys-color-surface-container-highest', hslToHex(h, surfSat(5, surfFactor), B(20)));
         setToken('--md-sys-color-on-surface', '#e2e2e9');
         setToken('--md-sys-color-on-surface-variant', '#c4c6d0');
         setToken('--md-sys-color-outline', '#8e9099');
@@ -1698,7 +1746,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                           sliderTextAlpha: document.getElementById('slider-text-alpha'),
                           valTextAlpha: document.getElementById('val-text-alpha'),
                           btnResetTextAlpha: document.getElementById('btn-reset-text-alpha'),
-                          themeModeBtns: document.querySelectorAll('.theme-mode-btn'),
+                          themeModeBtns: document.querySelectorAll('.theme-mode-btn[data-theme-mode]'),
                           themeSwatches: document.querySelectorAll('.theme-swatch'),
                           customColorInput: document.getElementById('settings-custom-color-input'),
                           sliderHue: document.getElementById('slider-theme-hue'),
@@ -2216,6 +2264,98 @@ document.addEventListener('DOMContentLoaded', async () => {
     return { smooth, sens };
   }
 
+  // ---- Riff 43: visualizer drawn wide behind the player bar, and the "connected" (one liquid wave) style ----
+  // Same analyser and frame cap as the other visualizers; off in performance mode, and phones have no analyser.
+  var vizConnected = localStorage.getItem('muriel_viz_connected') === '1';
+  function isVizConnectedMode() { return vizConnected; }
+  let barBgSmoothed = null;
+  let barBgW = 0;
+  const BAR_BG_H = 36;
+  let barBgSettings = null;
+  let barBgSettingsAt = 0;
+  function drawConnectedLiquidWave(ctx, w, h, heights, color) {
+    const rawN = heights.length;
+    if (!rawN || w <= 0 || h <= 0) return;
+    // few bars (mini, karaoke): mirror them so the wave rises in the middle
+    let pts;
+    if (rawN < 40) {
+      const half = Math.min(18, rawN);
+      pts = new Float32Array(half * 2);
+      for (let i = 0; i < half; i++) { pts[half - 1 - i] = heights[i] || 0; pts[half + i] = heights[i] || 0; }
+    } else {
+      pts = Float32Array.from(heights);
+    }
+    const n = pts.length;
+    const stepX = w / (n + 1);
+    ctx.save();
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.moveTo(0, h);
+    let px = 0;
+    let py = h;
+    for (let i = 0; i <= n; i++) {
+      let x = w;
+      let y = h;
+      if (i < n) {
+        const avg = (pts[Math.max(0, i - 2)] * 0.12 + pts[Math.max(0, i - 1)] * 0.24 + pts[i] * 0.28 + pts[Math.min(n - 1, i + 1)] * 0.24 + pts[Math.min(n - 1, i + 2)] * 0.12);
+        const taper = Math.pow(Math.sin(((i + 0.5) / n) * Math.PI), 0.65);
+        x = (i + 1) * stepX;
+        y = h - Math.max(0, Math.min(h - 4, Math.max(0, avg - 3.5) * taper));
+      }
+      const midX = (px + x) * 0.5;
+      ctx.bezierCurveTo(midX, py, midX, y, x, y);
+      px = x;
+      py = y;
+    }
+    ctx.lineTo(w, h);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  }
+  function clearBarBgVisualizer(ctx) {
+    barBgSmoothed = null;
+    if (barBgW) ctx.clearRect(0, 0, barBgW, BAR_BG_H);
+  }
+  function drawBarBgVisualizer(ctx, data) {
+    const w = barBgW;
+    const h = BAR_BG_H;
+    if (!w || !data) return;
+    const now = performance.now();
+    if (!barBgSettings || now - barBgSettingsAt > 1000) { barBgSettings = vizSettings(); barBgSettingsAt = now; }
+    const { smooth, sens } = barBgSettings;
+    const half = 26;
+    const minH = 3;
+    if (!barBgSmoothed) barBgSmoothed = new Float32Array(half).fill(minH);
+    let any = false;
+    for (let i = 0; i < half; i++) {
+      let target = minH;
+      if (state.isPlaying) {
+        const raw = (((data[i * 2] || 0) + (data[Math.min(data.length - 1, i * 2 + 1)] || 0)) * 0.5) * sens;
+        target = minH + Math.pow(Math.min(1, Math.max(0, raw / 255)), 1.25) * (h - 6);
+      }
+      barBgSmoothed[i] = barBgSmoothed[i] * smooth + target * (1 - smooth);
+      if (barBgSmoothed[i] > minH + 0.5) any = true;
+    }
+    ctx.clearRect(0, 0, w, h);
+    if (!any && !state.isPlaying) { barBgSmoothed = null; return; }
+    const count = half * 2;
+    const sym = new Float32Array(count);
+    for (let i = 0; i < half; i++) { sym[half - 1 - i] = barBgSmoothed[i]; sym[half + i] = barBgSmoothed[i]; }
+    if (!cachedPrimaryColor) refreshCachedThemeColors();
+    const color = cachedPrimaryColor || '#ffffff';
+    if (vizConnected) { drawConnectedLiquidWave(ctx, w, h, sym, color); return; }
+    const gap = 2;
+    const barW = Math.max(2, (w - gap * (count - 1)) / count);
+    const startX = Math.max(0, (w - (count * barW + gap * (count - 1))) / 2);
+    ctx.fillStyle = color;
+    for (let i = 0; i < count; i++) {
+      const barH = Math.max(2, Math.min(h - 2, sym[i]));
+      ctx.beginPath();
+      ctx.roundRect(startX + i * (barW + gap), h - barH, barW, barH, 3);
+      ctx.fill();
+    }
+  }
+
   function resizeCanvases() {
     const dpr = window.devicePixelRatio || 1;
     if (el.scrubberTrack) {
@@ -2263,6 +2403,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         ctx.scale(dpr, dpr);
       }
     }
+    const barBgCanvas = document.getElementById('playbar-bg-visualizer');
+    if (barBgCanvas && el.playbar && !isPhoneApp) {
+      barBgW = Math.max(200, el.playbar.clientWidth - 32);
+      barBgCanvas.width = Math.round(barBgW * dpr);
+      barBgCanvas.height = Math.round(BAR_BG_H * dpr);
+      const bctx = barBgCanvas.getContext('2d');
+      if (bctx) { bctx.resetTransform(); bctx.scale(dpr, dpr); }
+    }
   }
   window.addEventListener('resize', resizeCanvases);
   setTimeout(resizeCanvases, 100);
@@ -2286,6 +2434,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     const miniCtx = miniCanvas ? miniCanvas.getContext('2d') : null;
     const tvkCanvas = document.getElementById('tvk-visualizer-canvas');
     const tvkCtx = tvkCanvas ? tvkCanvas.getContext('2d') : null;
+    const barBgCanvas = document.getElementById('playbar-bg-visualizer');
+    const barBgCtx = barBgCanvas ? barBgCanvas.getContext('2d') : null;
 
     let bufferLength = analyserNode ? analyserNode.frequencyBinCount : 0;
     let freqData = bufferLength > 0 ? new Uint8Array(bufferLength) : null;
@@ -2324,8 +2474,9 @@ document.addEventListener('DOMContentLoaded', async () => {
       const isVisualizerVisible = miniCanvas && miniCanvas.offsetParent !== null && !document.hidden;
       const isTvkVisualizerVisible = state.isTvKaraokeOpen && tvkCanvas && tvkCanvas.offsetParent !== null && !document.hidden;
       const needBassPulse = !!(state.vfx && state.vfx.bassPulse);
+      const isBehindVizVisible = !!(barBgCanvas && !state.isTvKaraokeOpen && barBgCanvas.offsetParent !== null);
 
-      if (!document.body.classList.contains('perf') && (isVisualizerVisible || isTvkVisualizerVisible || needBassPulse)) {
+      if (!document.body.classList.contains('perf') && (isVisualizerVisible || isTvkVisualizerVisible || isBehindVizVisible || needBassPulse)) {
         if (!freqData && audioEngine && audioEngine.getAnalyserNode) {
           const an = audioEngine.getAnalyserNode();
           if (an && an.frequencyBinCount) {
@@ -2354,11 +2505,14 @@ document.addEventListener('DOMContentLoaded', async () => {
               const barWidth = 3;
               const gap = 2;
               const startX = (60 - (barCount * (barWidth + gap))) / 2;
+              const connected = isVizConnectedMode();
+              const heights = connected ? [] : null;
 
               for (let i = 0; i < barCount; i++) {
                 const val = freqData[i * 2] || 0;
                 let barHeight = (val / 255) * (24 - 4);
                 if (barHeight < 2) barHeight = 2;
+                if (connected) { heights.push(barHeight); continue; }
 
                 const x = startX + i * (barWidth + gap);
                 const y = 24 - barHeight;
@@ -2368,6 +2522,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 miniCtx.roundRect(x, y, barWidth, barHeight, 2);
                 miniCtx.fill();
               }
+              if (connected) drawConnectedLiquidWave(miniCtx, 60, 24, heights, '#ffffff');
             }
           }
 
@@ -2401,6 +2556,7 @@ document.addEventListener('DOMContentLoaded', async () => {
               const startX = Math.max(0, (w - usedWidth) / 2);
               const minHeight = 4;
               const usableHeight = Math.max(10, h - minHeight - 2);
+              const connected = isVizConnectedMode();
 
               for (let i = 0; i < barCount; i++) {
                 const b0 = i * 2;
@@ -2413,6 +2569,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
                 const barH = targetHeight;
                 tvkSmoothedHeights[i] = barH;
+                if (connected) continue;
 
                 const x = startX + i * (barWidth + gap);
                 const y = h - barH;
@@ -2421,6 +2578,12 @@ document.addEventListener('DOMContentLoaded', async () => {
                 tvkCtx.beginPath();
                 tvkCtx.roundRect(x, y, barWidth, barH, Math.min(barWidth / 2, 3));
                 tvkCtx.fill();
+              }
+              if (connected) {
+                tvkCtx.save();
+                tvkCtx.translate(startX, 0);
+                drawConnectedLiquidWave(tvkCtx, usedWidth, h, tvkSmoothedHeights, '#ffffff');
+                tvkCtx.restore();
               }
             } else if (tvkSmoothedHeights) {
               let anyActive = false;
@@ -2431,10 +2594,12 @@ document.addEventListener('DOMContentLoaded', async () => {
               const usedWidth = barCount * barWidth + totalGap;
               const startX = Math.max(0, (w - usedWidth) / 2);
               const minHeight = 4;
+              const connected = isVizConnectedMode();
 
               for (let i = 0; i < barCount; i++) {
                 tvkSmoothedHeights[i] += (minHeight - tvkSmoothedHeights[i]) * 0.15;
                 if (tvkSmoothedHeights[i] > minHeight + 0.5) anyActive = true;
+                if (connected) continue;
 
                 const barH = tvkSmoothedHeights[i];
                 const x = startX + i * (barWidth + gap);
@@ -2445,11 +2610,19 @@ document.addEventListener('DOMContentLoaded', async () => {
                 tvkCtx.roundRect(x, y, barWidth, barH, Math.min(barWidth / 2, 3));
                 tvkCtx.fill();
               }
+              if (connected) {
+                tvkCtx.save();
+                tvkCtx.translate(startX, 0);
+                drawConnectedLiquidWave(tvkCtx, usedWidth, h, tvkSmoothedHeights, '#ffffff');
+                tvkCtx.restore();
+              }
               if (!anyActive) {
                 tvkSmoothedHeights = null;
               }
             }
           }
+
+          if (barBgCtx && isBehindVizVisible) drawBarBgVisualizer(barBgCtx, freqData);
         }
       } else {
         if (audioEngine && audioEngine.setAnalyserEnabled && !needBassPulse) audioEngine.setAnalyserEnabled(false);
@@ -2460,6 +2633,7 @@ document.addEventListener('DOMContentLoaded', async () => {
           const h = cachedTvkHeight || (tvkCanvas.height / (window.devicePixelRatio || 1)) || 64;
           tvkCtx.clearRect(0, 0, w, h);
         }
+        if (barBgCtx) clearBarBgVisualizer(barBgCtx);
       }
 
       let scrubberCanvas = document.getElementById('squiggly-canvas');
@@ -2498,6 +2672,8 @@ document.addEventListener('DOMContentLoaded', async () => {
           }
           if (state.isRightPanelOpen || state.isTvKaraokeOpen) {
             updateSyncedLyricsHighlight(cur);
+          } else if (miniLyricsShown()) {
+            updateMiniLyricsHighlight(cur);
           }
         }
 
@@ -3436,6 +3612,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     state.currentTranslations = null;
     // the iPhone lock screen / Dynamic Island lyrics (mobile/live-activity.js) follow state.syncedLyrics
     window.dispatchEvent(new Event('muriel:lyrics'));
+    renderMiniLyrics();
 
     try {
       // skipping through songs fired one lookup (several lrclib requests) per song and got rate limited
@@ -3443,7 +3620,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (token !== state.loadToken) return;
       const onlineParam = getAdv('online_lyrics', true) ? '1' : '0';
       const dur = state.currentTrack && (state.currentTrack.title || '') === title ? Math.round(Number(state.currentTrack.duration) || 0) : 0;
-      const res = await fetch(`http://127.0.0.1:${state.serverPort}/api/lyrics?title=${encodeURIComponent(title)}&artist=${encodeURIComponent(artist)}&online=${onlineParam}${dur ? `&duration=${dur}` : ''}`);
+      const res = await fetch(`http://127.0.0.1:${state.serverPort}/api/lyrics?title=${encodeURIComponent(title)}&artist=${encodeURIComponent(artist)}&online=${onlineParam}${dur ? `&duration=${dur}` : ''}&source=${lyricsSourcePref()}`);
       const data = await res.json();
 
       if (token !== state.loadToken || (state.currentTrack && (state.currentTrack.title || '') !== title)) return;
@@ -3471,9 +3648,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (match) {
           const min = parseInt(match[1], 10);
           const sec = parseFloat(match[2]);
-          const text = match[4].trim();
+          const raw = match[4].trim();
+          // enhanced LRC: <mm:ss.xx> before each word gives that word its own time
+          const words = raw.includes('<') && window.MurielLyricsSources ? window.MurielLyricsSources.parseEnhancedLrcWords(raw, min * 60 + sec + 4) : null;
+          const text = words ? raw.replace(/<\d+:\d+(?:\.\d+)?>/g, '').replace(/\s+/g, ' ').trim() : raw;
           if (text) {
-            parsed.push({ time: min * 60 + sec, text: text });
+            parsed.push(words ? { time: min * 60 + sec, text, words } : { time: min * 60 + sec, text: text });
           }
         } else if (line.trim()) {
           parsed.push({ time: -1, text: line.trim() });
@@ -3517,6 +3697,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       state.forceLyricsScroll = true;
       state.forceSnapLyrics = true;
       if (el.nativeAudio) updateSyncedLyricsHighlight(el.nativeAudio.currentTime || 0);
+      if (!data.isCustom) fetchAndUpgradeWords(title, artist, token);
     } catch (e) {
       if (token === state.loadToken) {
         if (el.lyricsStatus) el.lyricsStatus.textContent = '';
@@ -3550,12 +3731,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         div.classList.add('gradient-line');
         div.appendChild(fill);
       } else if (getAdv('karaoke_words', true) && state.lyricsMode === 'word') {
-        const cleanText = line.text.replace(/<[^>]+>/g, '').trim();
-        const words = cleanText.split(/\s+/).filter(Boolean);
-        div.innerHTML = words.map((w, wIdx) => {
-          const safeText = w.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-          return `<span class="lyric-word" data-word-idx="${wIdx}">${safeText}</span>`;
-        }).join(' ');
+        div.innerHTML = lyricWordSpans(line);
       } else {
         div.textContent = line.text;
       }
@@ -3962,9 +4138,13 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     const text = fill.textContent || '';
     const cache = getLineGradientWeights(lineEl, idx, text);
+    const timed = lineTimedWords(state.syncedLyrics[idx]);
+    const timedK = timed ? window.MurielLyricsSources.timedProgress(timed, t) : null;
 
     let k = tau;
-    if (cache.N > 0 && cache.totalWeight > 0) {
+    if (timedK !== null) {
+      k = timedK;
+    } else if (cache.N > 0 && cache.totalWeight > 0) {
       if (tau <= 0) {
         k = 0;
       } else if (tau >= 1) {
@@ -4031,6 +4211,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   function updateSyncedLyricsHighlight(currentTime) {
+    if (miniLyricsShown()) updateMiniLyricsHighlight(currentTime);
     if (state.syncedLyrics.length === 0 || !state.isWindowVisible) return;
     let activeIndex = -1;
 
@@ -4114,7 +4295,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
           const wordSpans = lineEl.querySelectorAll('.lyric-word');
           const totalWords = wordSpans.length;
-          const currentWordIndex = Math.floor(progress * totalWords);
+          const timed = lineTimedWords(state.syncedLyrics[idx]);
+          const currentWordIndex = timed && timed.length === totalWords ? timedWordIndex(timed, matchTime) : Math.floor(progress * totalWords);
 
           wordSpans.forEach((wSpan, wIdx) => {
             if (wIdx < currentWordIndex) {
@@ -4169,6 +4351,8 @@ document.addEventListener('DOMContentLoaded', async () => {
       state.lyricsMode = state.lyricsMode === 'line' ? 'word' : 'line';
       updateLyricsModeButton();
       renderLyricsView();
+      // word timings are only looked up for word-by-word karaoke
+      if (state.lyricsMode === 'word' && state.currentTrack && !state.isCustomLyrics) fetchAndUpgradeWords(state.currentTrack.title, state.currentTrack.artist, state.loadToken);
       if (el.nativeAudio) updateSyncedLyricsHighlight(el.nativeAudio.currentTime || 0);
     });
   }
@@ -4245,6 +4429,14 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
     }
 
+    // the song's own banner (Track art dialog), with its own blur / opacity / fade when it has them (Riff 43)
+    const songArt = state.currentTrack ? getTrackArt(state.currentTrack) : {};
+    applyTrackBannerFx(songArt);
+    if (bannerType === 'none' && songArt.banner) {
+      bannerType = /\.(mp4|webm)($|\?)/i.test(songArt.banner) ? 'video' : 'img';
+      bannerSrc = songArt.banner;
+    }
+
     // no banner (they're gone in Muriel): use the custom background if there is one, else the cover
     const customBg = localStorage.getItem('muriel_bg_url') || '';
     if (bannerType === 'none' && customBg) {
@@ -4259,6 +4451,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         bannerSrc = thumb;
       }
     }
+    setTvkAmbient(bannerType === 'fallback' || bannerType === 'none');
 
     const newKey = `${bannerType}:${bannerSrc}`;
     if (newKey === activeTvBannerKey) return;
@@ -4527,6 +4720,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     syncTvBanner();
     syncTvLayout();
     el.tvKaraoke.classList.remove('hidden');
+    syncTvkAmbientPlayback();
     applyTvk();
     syncTvkUI();
     resetTvIdleTimer();
@@ -4547,6 +4741,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const cur = el.nativeAudio.currentTime || 0;
         const dur = el.nativeAudio.duration || (state.currentTrack ? state.currentTrack.duration : 0);
         updateSyncedLyricsHighlight(cur);
+        syncTvkProgress(cur, dur);
       }
     };
     syncTvLyrics();
@@ -4577,6 +4772,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     el.tvKaraoke.classList.remove('tv-idle');
     el.tvKaraoke.classList.add('hidden');
+    syncTvkAmbientPlayback();
 
     const targetParent = (lyricsContainerParent && lyricsContainerParent.isConnected)
       ? lyricsContainerParent
@@ -5787,10 +5983,13 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     let lastTimeupdateSec = -1;
     el.nativeAudio.addEventListener('timeupdate', () => {
+      if (enforceTrackTrim()) return;
       const cur = (el.nativeAudio && Number.isFinite(el.nativeAudio.currentTime)) ? el.nativeAudio.currentTime : 0;
       const dur = (el.nativeAudio && Number.isFinite(el.nativeAudio.duration) && el.nativeAudio.duration > 0)
         ? el.nativeAudio.duration
         : (state.currentTrack && Number.isFinite(state.currentTrack.duration) ? state.currentTrack.duration : 0);
+      if (state.isTvKaraokeOpen) syncTvkProgress(cur, dur);
+      if (miniLyricsShown()) updateMiniLyricsHighlight(cur);
 
       const X = parseInt(localStorage.getItem('muriel_crossfade') || '0', 10);
       // "end of track" sleep timer: let the song end on its own so the ended handler can stop playback
@@ -11340,6 +11539,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   const btnBarWave = document.getElementById('btn-bar-wave');
   const barWaveOn = localStorage.getItem('muriel_bar_wave') !== '0';
   function applyBarWave(on) {
+    document.body.classList.toggle('bar-wave-off', !on);
     const vc = document.getElementById('visualizer-container');
     if (vc) {
       vc.style.display = on ? '' : 'none';
@@ -11985,7 +12185,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   async function toggleMiniWindow() {
     if (window.electronAPI && window.electronAPI.toggleMiniWindow) {
-      await window.electronAPI.toggleMiniWindow();
+      const isNowMini = await window.electronAPI.toggleMiniWindow();
+      // lyrics under the mini player (Riff 43): the window opens tall enough for them
+      if (isNowMini && localStorage.getItem('muriel_mini_lyrics') === '1' && window.electronAPI.setMiniLyrics) {
+        try { await window.electronAPI.setMiniLyrics(true); } catch (e) {}
+      }
     }
   }
   window.toggleMiniWindow = toggleMiniWindow;
@@ -14513,6 +14717,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         : (track.duration && Number(track.duration) > 0 ? Math.round(Number(track.duration)) : null);
       trimEndEl.value = dur ? formatDuration(dur) : '';
     }
+    prepareTrimPane(track);
 
     if (track.thumbnail) {
       if (el.downloadPreviewThumb) {
@@ -14558,6 +14763,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     trackToDownload = null;
     downloadBatch = { name: playlist.name || 'Playlist', tracks };
     el.downloadModal.classList.add('batch-mode');
+    showDownloadPane('download');
     const modalTitle = document.getElementById('download-modal-title');
     if (modalTitle) modalTitle.textContent = title;
     if (el.downloadPreviewTitle) el.downloadPreviewTitle.textContent = playlist.name || 'Playlist';
@@ -17328,6 +17534,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (el.rightPanelFallback) el.rightPanelFallback.style.display = 'none';
       }
       updateRightPanelBanner(thumb);
+      if (state.isTvKaraokeOpen) syncTvBanner();
       updateMediaSession();
       updateThemeFromState();
     }
@@ -17393,6 +17600,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (bannerPh) bannerPh.style.display = 'block';
     }
     if (bannerStatus) bannerStatus.textContent = art.banner ? 'Custom banner' : (localStorage.getItem('muriel_banner_media') ? 'Global banner' : 'Default art');
+    renderTrackBannerFxControls(t, art);
   }
 
   function openTrackArtModal(track, triggerEl = null) {
@@ -17894,6 +18102,944 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   if (el.btnDedupePlaylist) el.btnDedupePlaylist.addEventListener('click', removePlaylistDuplicates);
 
+  // ======================= Riff 43: player & look =======================
+  // Everything below is from Riff 43, fitted to Muriel. Variables are `var` because code above (lyrics, the
+  // player events) can call these functions before this part of the file has run.
+
+  // ---- hide the titlebar (desktop): it slides down when the pointer touches the top edge ----
+  (function setupHideTitlebar() {
+    const btn = document.getElementById('btn-hide-titlebar');
+    const titlebar = document.getElementById('titlebar');
+    if (!titlebar) return;
+    const zone = document.createElement('div');
+    zone.id = 'titlebar-reveal-zone';
+    document.body.appendChild(zone);
+    let hideTimer = null;
+    const peek = (on) => {
+      clearTimeout(hideTimer);
+      if (on) document.body.classList.add('titlebar-peek');
+      else hideTimer = setTimeout(() => document.body.classList.remove('titlebar-peek'), 350);
+    };
+    zone.addEventListener('mouseenter', () => peek(true));
+    zone.addEventListener('mouseleave', () => peek(false));
+    titlebar.addEventListener('mouseenter', () => peek(true));
+    titlebar.addEventListener('mouseleave', () => peek(false));
+    const apply = (on) => {
+      document.body.classList.toggle('hide-titlebar', on && !isPhoneApp);
+      if (!on) document.body.classList.remove('titlebar-peek');
+      if (btn) btn.classList.toggle('active', on);
+    };
+    apply(localStorage.getItem('muriel_hide_titlebar') === '1');
+    if (btn) btn.addEventListener('click', () => {
+      const next = !btn.classList.contains('active');
+      localStorage.setItem('muriel_hide_titlebar', next ? '1' : '0');
+      apply(next);
+    });
+  })();
+
+  // ---- "Apply intensity to background" (generateM3Palette reads it) ----
+  (function setupIntensityBg() {
+    const btn = document.getElementById('btn-intensity-bg');
+    if (!btn) return;
+    btn.classList.toggle('active', getAdv('intensity_bg', false));
+    btn.addEventListener('click', () => {
+      const next = !btn.classList.contains('active');
+      btn.classList.toggle('active', next);
+      setAdv('intensity_bg', next);
+      updateThemeFromState();
+    });
+  })();
+
+  // ---- icon packs: other shapes for the rail and the player controls ----
+  var REPEAT_ONE_MARK = '<polyline class="repeat-one-mark" points="10.5 10.5 12.5 9 12.5 15" stroke-linecap="round" stroke-linejoin="round"></polyline>';
+  var ICON_PACKS = {
+    sf: {
+      '#nav-discover svg': '<circle cx="12" cy="12" r="9.5"></circle><polygon points="15.5 8.5 13.5 13.5 8.5 15.5 10.5 10.5 15.5 8.5" fill="currentColor"></polygon>',
+      '#nav-favorites svg': '<path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"></path>',
+      '#nav-albums svg': '<circle cx="12" cy="12" r="9.5"></circle><circle cx="12" cy="12" r="3.2"></circle><circle cx="12" cy="12" r="1" fill="currentColor"></circle>',
+      '#nav-local svg': '<path d="M2.5 7A2.5 2.5 0 0 1 5 4.5h4.2c.8 0 1.5.4 1.9 1l1.2 1.8c.4.6 1.1 1 1.9 1H19A2.5 2.5 0 0 1 21.5 11v6.5a2.5 2.5 0 0 1-2.5 2.5H5a2.5 2.5 0 0 1-2.5-2.5V7z"></path>',
+      '#nav-history svg': '<circle cx="12" cy="12" r="9.5"></circle><polyline points="12 6.5 12 12 15.5 14"></polyline>',
+      '#nav-queue svg': '<path d="M4 6.5h16M4 12h16M4 17.5h16" stroke-linecap="round"></path>',
+      '#nav-settings svg': '<circle cx="12" cy="12" r="3.2"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>',
+      '#btn-shuffle svg': '<path d="M16 4h4v4M4 20l16-16M16 20h4v-4M4 4l5 5m6 6l5 5"></path>',
+      '#btn-prev svg': '<polygon points="19 20 9 12 19 4 19 20"></polygon><line x1="5" y1="19" x2="5" y2="5" stroke="currentColor" stroke-width="2.5"></line>',
+      '#btn-next svg': '<polygon points="5 4 15 12 5 20 5 4"></polygon><line x1="19" y1="5" x2="19" y2="19" stroke="currentColor" stroke-width="2.5"></line>',
+      '#btn-repeat svg': '<path d="M17 2l4 4-4 4M21 6H7a4 4 0 0 0-4 4v2M7 22l-4-4 4-4M3 18h14a4 4 0 0 0 4-4v-2"></path>' + REPEAT_ONE_MARK,
+      '#btn-toggle-lyrics-panel svg': '<path d="M9 18V5l12-2v13M9 9l12-2"></path><circle cx="6" cy="18" r="3"></circle><circle cx="18" cy="16" r="3"></circle>',
+      '#btn-open-settings svg': '<line x1="4" y1="21" x2="4" y2="14"></line><line x1="4" y1="10" x2="4" y2="3"></line><line x1="12" y1="21" x2="12" y2="12"></line><line x1="12" y1="8" x2="12" y2="3"></line><line x1="20" y1="21" x2="20" y2="16"></line><line x1="20" y1="12" x2="20" y2="3"></line><line x1="1" y1="14" x2="7" y2="14"></line><line x1="9" y1="8" x2="15" y2="8"></line><line x1="17" y1="16" x2="23" y2="16"></line>',
+      '#volume-icon': '<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13"></path>'
+    },
+    lucide: {
+      '#nav-discover svg': '<circle cx="12" cy="12" r="10"></circle><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"></polygon>',
+      '#nav-favorites svg': '<path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"></path>',
+      '#nav-albums svg': '<circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="12" r="4"></circle><circle cx="12" cy="12" r="1"></circle>',
+      '#nav-local svg': '<path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"></path>',
+      '#nav-history svg': '<circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline>',
+      '#nav-queue svg': '<line x1="4" y1="7" x2="20" y2="7"></line><line x1="4" y1="12" x2="20" y2="12"></line><line x1="4" y1="17" x2="14" y2="17"></line>',
+      '#nav-settings svg': '<path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"></path><circle cx="12" cy="12" r="3"></circle>',
+      '#btn-shuffle svg': '<path d="M2 18h1.4c1.3 0 2.5-.6 3.3-1.7l6.6-8.6c.8-1.1 2-1.7 3.3-1.7H22"></path><path d="m18 2 4 4-4 4"></path><path d="M2 6h1.4c1.3 0 2.5.6 3.3 1.7l1.7 2.2"></path><path d="M22 18h-5.9c-1.3 0-2.6-.7-3.3-1.8l-.5-.8"></path><path d="m18 14 4 4-4 4"></path>',
+      '#btn-prev svg': '<polygon points="19 20 9 12 19 4 19 20"></polygon><line x1="5" y1="19" x2="5" y2="5" stroke="currentColor" stroke-width="2"></line>',
+      '#btn-next svg': '<polygon points="5 4 15 12 5 20 5 4"></polygon><line x1="19" y1="5" x2="19" y2="19" stroke="currentColor" stroke-width="2"></line>',
+      '#btn-repeat svg': '<path d="m17 2 4 4-4 4"></path><path d="M3 11v-1a4 4 0 0 1 4-4h14"></path><path d="m7 22-4-4 4-4"></path><path d="M21 13v1a4 4 0 0 1-4 4H3"></path>' + REPEAT_ONE_MARK,
+      '#btn-toggle-lyrics-panel svg': '<path d="M9 18V5l12-2v13"></path><circle cx="6" cy="18" r="3"></circle><circle cx="18" cy="16" r="3"></circle>',
+      '#btn-open-settings svg': '<line x1="4" y1="21" x2="4" y2="14"></line><line x1="4" y1="10" x2="4" y2="3"></line><line x1="12" y1="21" x2="12" y2="12"></line><line x1="12" y1="8" x2="12" y2="3"></line><line x1="20" y1="21" x2="20" y2="16"></line><line x1="20" y1="12" x2="20" y2="3"></line><line x1="2" y1="14" x2="6" y2="14"></line><line x1="10" y1="8" x2="14" y2="8"></line><line x1="18" y1="16" x2="22" y2="16"></line>',
+      '#volume-icon': '<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path><path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path>'
+    },
+    solar: {
+      '#nav-discover svg': '<circle cx="12" cy="12" r="9.5"></circle><polygon points="16 8 13.8 13.8 8 16 10.2 10.2 16 8"></polygon>',
+      '#nav-favorites svg': '<path d="M12.62 20.89c-.38.14-.86.14-1.24 0C8.48 19.82 2 15.69 2 8.69A5.69 5.69 0 0 1 7.69 3c1.64 0 3.12.7 4.31 1.83A6.05 6.05 0 0 1 16.31 3 5.69 5.69 0 0 1 22 8.69c0 7-6.48 11.13-9.38 12.2z"></path>',
+      '#nav-albums svg': '<circle cx="12" cy="12" r="9.5"></circle><circle cx="12" cy="12" r="3"></circle>',
+      '#nav-local svg': '<path d="M2 11c0-2.83 0-4.24.88-5.12C3.76 5 5.17 5 8 5h.5c.78 0 1.43 0 1.98.24.54.23.97.66 1.52 1.48L13 8h3c2.83 0 4.24 0 5.12.88C22 9.76 22 11.17 22 14v2c0 2.83 0 4.24-.88 5.12C20.24 22 18.83 22 16 22H8c-2.83 0-4.24 0-5.12-.88C2 20.24 2 18.83 2 16v-5z"></path>',
+      '#nav-history svg': '<circle cx="12" cy="12" r="9.5"></circle><polyline points="12 7 12 12 15 13.5"></polyline>',
+      '#nav-queue svg': '<path d="M4 7h16M4 12h16M4 17h11"></path>',
+      '#nav-settings svg': '<circle cx="12" cy="12" r="3.5"></circle><path d="M12 2v2m0 16v2m10-10h-2M4 12H2m15.07-7.07-1.41 1.41M8.34 17.66l-1.41 1.41m12.14 0-1.41-1.41M8.34 6.34 6.93 4.93"></path>',
+      '#btn-shuffle svg': '<polyline points="16 3 21 3 21 8"></polyline><line x1="4" y1="20" x2="21" y2="3"></line><polyline points="21 16 21 21 16 21"></polyline><line x1="15" y1="15" x2="21" y2="21"></line><line x1="4" y1="4" x2="9" y2="9"></line>',
+      '#btn-prev svg': '<polygon points="19 20 9 12 19 4 19 20"></polygon><line x1="5" y1="19" x2="5" y2="5" stroke="currentColor" stroke-width="2.5"></line>',
+      '#btn-next svg': '<polygon points="5 4 15 12 5 20 5 4"></polygon><line x1="19" y1="5" x2="19" y2="19" stroke="currentColor" stroke-width="2.5"></line>',
+      '#btn-repeat svg': '<path d="M17 1l4 4-4 4H7a4 4 0 0 0-4 4v1M7 23l-4-4 4-4h10a4 4 0 0 0 4-4v-1"></path>' + REPEAT_ONE_MARK,
+      '#btn-toggle-lyrics-panel svg': '<path d="M9 18V5l12-2v13"></path><circle cx="6" cy="18" r="3"></circle><circle cx="18" cy="16" r="3"></circle>',
+      '#btn-open-settings svg': '<path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"></path>',
+      '#volume-icon': '<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path><path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path>'
+    }
+  };
+  var ICON_PACK_LABELS = { material: 'Google Symbols (Default)', sf: 'iOS / SF Symbols', lucide: 'Lucide Crisp', solar: 'Solar Duotone' };
+  function applyIconPack(pack) {
+    if (!ICON_PACK_LABELS[pack]) pack = 'material';
+    document.body.setAttribute('data-icon-pack', pack);
+    const selectors = new Set([...Object.keys(ICON_PACKS.sf), ...Object.keys(ICON_PACKS.lucide), ...Object.keys(ICON_PACKS.solar)]);
+    selectors.forEach((sel) => {
+      const svg = document.querySelector(sel);
+      if (!svg) return;
+      if (svg.dataset.origSvg === undefined) svg.dataset.origSvg = svg.innerHTML;
+      const shape = pack === 'material' ? svg.dataset.origSvg : (ICON_PACKS[pack] && ICON_PACKS[pack][sel]);
+      if (shape !== undefined && svg.innerHTML !== shape) svg.innerHTML = shape;
+    });
+    const label = document.getElementById('icon-pack-label');
+    if (label) label.textContent = ICON_PACK_LABELS[pack];
+    document.querySelectorAll('#icon-pack-menu .m3-dropdown-option').forEach((o) => o.classList.toggle('selected', o.dataset.value === pack));
+  }
+  // a Settings dropdown (trigger + menu of .m3-dropdown-option) that saves its value under `key`
+  function wireSettingDropdown(id, key, fallback, onPick) {
+    const dd = document.getElementById(`${id}-dropdown`);
+    const trigger = document.getElementById(`${id}-trigger`);
+    const menu = document.getElementById(`${id}-menu`);
+    const label = document.getElementById(`${id}-label`);
+    if (!dd || !trigger || !menu) return;
+    const show = (val) => {
+      menu.querySelectorAll('.m3-dropdown-option').forEach((o) => {
+        const sel = o.dataset.value === val;
+        o.classList.toggle('selected', sel);
+        if (sel && label) label.textContent = o.textContent;
+      });
+    };
+    show(localStorage.getItem(key) || fallback);
+    trigger.addEventListener('click', (e) => { e.stopPropagation(); dd.classList.toggle('open'); });
+    menu.querySelectorAll('.m3-dropdown-option').forEach((o) => o.addEventListener('click', (e) => {
+      e.stopPropagation();
+      localStorage.setItem(key, o.dataset.value);
+      show(o.dataset.value);
+      dd.classList.remove('open');
+      if (onPick) onPick(o.dataset.value);
+    }));
+    document.addEventListener('click', () => dd.classList.remove('open'));
+  }
+  applyIconPack(localStorage.getItem('muriel_icon_pack') || 'material');
+  wireSettingDropdown('icon-pack', 'muriel_icon_pack', 'material', applyIconPack);
+
+  // ---- the icon on the Home button: the classic glyph, Muriel's app icon or one of its styles, or your own ----
+  var HOME_ICONS = [
+    { id: 'classic', label: 'Classic' },
+    { id: 'muriel', label: 'Muriel', src: 'assets/icon.svg' },
+    { id: '01-default', label: 'Default' },
+    { id: '02-editor', label: 'Editor' },
+    { id: '03-orbit', label: 'Orbit' },
+    { id: '04-vinyl', label: 'Vinyl' },
+    { id: '06-cosmos', label: 'Cosmos' },
+    { id: '07-aurora', label: 'Aurora' },
+    { id: '08-sunset', label: 'Sunset' },
+    { id: '09-amethyst', label: 'Amethyst' },
+    { id: '10-y2k-disc', label: 'Y2K Disc' },
+    { id: '11-cassette', label: 'Cassette' },
+    { id: '12-invincible', label: 'Invincible' }
+  ];
+  var homeIconSrc = (val) => {
+    if (!val || val === 'classic') return '';
+    if (/^(file:|https?:|data:|capacitor:|blob:)/.test(val)) return val;
+    const item = HOME_ICONS.find((i) => i.id === val);
+    if (!item) return '';
+    return item.src || `assets/app-icons/${item.id}.svg`;
+  };
+  function applyHomeAppIcon(val) {
+    const src = homeIconSrc(val);
+    const img = document.getElementById('nav-home-app-icon');
+    const nav = document.getElementById('nav-discover');
+    if (img) {
+      if (src) img.src = src; else img.removeAttribute('src');
+      img.classList.toggle('hidden', !src);
+      img.onerror = src ? () => { if (img.getAttribute('src') === src) applyHomeAppIcon('classic'); } : null;
+    }
+    if (nav) nav.classList.toggle('has-app-icon', !!src);
+    document.querySelectorAll('#app-icon-picker-grid .app-icon-option').forEach((b) => b.classList.toggle('active', b.dataset.icon === (src ? val : 'classic')));
+  }
+  function setHomeAppIcon(val) {
+    localStorage.setItem('muriel_app_icon', val);
+    applyHomeAppIcon(val);
+  }
+  (function setupHomeIconPicker() {
+    const grid = document.getElementById('app-icon-picker-grid');
+    if (grid) {
+      const compass = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76" fill="currentColor"></polygon></svg>';
+      grid.innerHTML = HOME_ICONS.map((i) => `<button type="button" class="app-icon-option" data-icon="${i.id}" title="${escapeHtml(i.label)}"><div class="app-icon-option-box">${i.id === 'classic' ? compass : `<img src="${homeIconSrc(i.id)}" alt="" draggable="false" loading="lazy">`}</div><span class="app-icon-option-label">${escapeHtml(i.label)}</span></button>`).join('');
+      grid.querySelectorAll('.app-icon-option').forEach((b) => b.addEventListener('click', () => setHomeAppIcon(b.dataset.icon)));
+    }
+    const btnCustom = document.getElementById('btn-pick-custom-home-icon');
+    if (btnCustom) {
+      if (!window.electronAPI || !window.electronAPI.pickMedia) btnCustom.classList.add('hidden');
+      else btnCustom.addEventListener('click', async () => {
+        const url = await window.electronAPI.pickMedia();
+        if (!url) return;
+        if (/\.(mp4|webm)($|\?)/i.test(url)) { showToast('Pick an image for the icon', 'info'); return; }
+        setHomeAppIcon(url);
+      });
+    }
+    applyHomeAppIcon(localStorage.getItem('muriel_app_icon') || 'classic');
+  })();
+
+  // ---- playbar visualizer: compact (right of the bar) or wide behind the bar; bars or one liquid wave ----
+  (function setupBarVisualizer() {
+    const group = document.getElementById('bar-viz-pos-group');
+    const applyPos = (pos) => {
+      document.body.classList.toggle('bar-viz-behind', pos === 'behind' && !isPhoneApp);
+      if (group) group.querySelectorAll('.theme-mode-btn').forEach((b) => b.classList.toggle('active', b.dataset.barVizPos === pos));
+      resizeCanvases();
+      if (state.isPlaying) startVisualizers();
+    };
+    applyPos(localStorage.getItem('muriel_bar_viz_pos') || 'behind');
+    if (group) group.querySelectorAll('.theme-mode-btn').forEach((b) => b.addEventListener('click', () => {
+      localStorage.setItem('muriel_bar_viz_pos', b.dataset.barVizPos);
+      applyPos(b.dataset.barVizPos);
+    }));
+
+    const slider = document.getElementById('slider-bar-viz-opacity');
+    const val = document.getElementById('val-bar-viz-opacity');
+    const applyOpacity = (v) => {
+      const n = Math.max(5, Math.min(85, parseInt(v, 10) || 22));
+      document.documentElement.style.setProperty('--bar-viz-opacity', String(n / 100));
+      if (val) val.textContent = `${n}%`;
+      if (slider && String(slider.value) !== String(n)) slider.value = n;
+    };
+    applyOpacity(localStorage.getItem('muriel_bar_viz_opacity') || '22');
+    if (slider) slider.addEventListener('input', (e) => { localStorage.setItem('muriel_bar_viz_opacity', e.target.value); applyOpacity(e.target.value); });
+
+    const btns = [document.getElementById('btn-viz-connected'), document.getElementById('btn-tvk-viz-connected')].filter(Boolean);
+    const sync = () => btns.forEach((b) => b.classList.toggle('active', vizConnected));
+    btns.forEach((b) => b.addEventListener('click', () => {
+      vizConnected = !vizConnected;
+      localStorage.setItem('muriel_viz_connected', vizConnected ? '1' : '0');
+      sync();
+    }));
+    sync();
+  })();
+
+  // ---- fullscreen karaoke: seek bar, moving cover colors behind the lyrics, settings from the top edge ----
+  var tvkSeekDragging = false;
+  function syncTvkProgress(cur, dur) {
+    const slider = document.getElementById('tvk-seek-slider');
+    const curEl = document.getElementById('tvk-time-current');
+    const durEl = document.getElementById('tvk-time-duration');
+    if (!dur || !Number.isFinite(dur)) dur = (state.currentTrack && Number(state.currentTrack.duration)) || 0;
+    if (curEl && !tvkSeekDragging) { const t = formatDuration(cur || 0); if (curEl.textContent !== t) curEl.textContent = t; }
+    if (durEl) { const d = formatDuration(dur || 0); if (durEl.textContent !== d) durEl.textContent = d; }
+    if (slider && !tvkSeekDragging && dur > 0) {
+      const v = String(Math.round(Math.max(0, Math.min(1, (cur || 0) / dur)) * 1000));
+      if (slider.value !== v) slider.value = v;
+    }
+  }
+  (function setupTvkSeek() {
+    const slider = document.getElementById('tvk-seek-slider');
+    if (!slider) return;
+    const durNow = () => {
+      const a = el.nativeAudio;
+      return a && Number.isFinite(a.duration) && a.duration > 0 ? a.duration : ((state.currentTrack && Number(state.currentTrack.duration)) || 0);
+    };
+    slider.addEventListener('pointerdown', () => { tvkSeekDragging = true; });
+    slider.addEventListener('input', () => {
+      tvkSeekDragging = true;
+      const t = (Number(slider.value) / 1000) * durNow();
+      const curEl = document.getElementById('tvk-time-current');
+      if (curEl) curEl.textContent = formatDuration(t);
+    });
+    slider.addEventListener('change', () => {
+      const dur = durNow();
+      const t = (Number(slider.value) / 1000) * dur;
+      if (el.nativeAudio && dur > 0 && Number.isFinite(t)) {
+        el.nativeAudio.currentTime = t;
+        updateMediaPositionState();
+      }
+      tvkSeekDragging = false;
+    });
+    slider.addEventListener('pointerup', () => { setTimeout(() => { tvkSeekDragging = false; }, 0); });
+    // the slider must not start a lyrics drag or hide the controls
+    slider.addEventListener('mousemove', (e) => e.stopPropagation());
+  })();
+
+  var tvkAmbientCover = null;
+  var tvkPaletteCache = new Map();
+  function extractCoverPalette(src) {
+    const mono = [[22, 22, 26], [34, 34, 40], [48, 48, 56], [28, 28, 34], [42, 42, 50], [18, 18, 22], [58, 58, 68], [30, 30, 36], [40, 40, 46], [25, 25, 30]];
+    if (!src) return Promise.resolve(mono);
+    if (tvkPaletteCache.has(src)) return Promise.resolve(tvkPaletteCache.get(src));
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.crossOrigin = 'Anonymous';
+      img.onload = () => {
+        let out = mono;
+        try {
+          const c = document.createElement('canvas');
+          c.width = 40;
+          c.height = 40;
+          const ctx = c.getContext('2d');
+          ctx.drawImage(img, 0, 0, 40, 40);
+          const data = ctx.getImageData(0, 0, 40, 40).data;
+          const colorful = [];
+          for (let i = 0; i < data.length; i += 8) {
+            const hsl = rgbToHsl(data[i], data[i + 1], data[i + 2]);
+            if (hsl.l >= 12 && hsl.l <= 88 && hsl.s >= 18) colorful.push({ h: hsl.h, s: hsl.s, l: hsl.l, weight: (hsl.s / 100) * (1 - Math.abs(hsl.l - 50) / 55) });
+          }
+          if (colorful.length < 12) {
+            out = [];
+            for (let k = 0; k < 10; k++) { const v = 18 + Math.round((k / 9) * 52); out.push([v, v, Math.min(255, v + 3)]); }
+          } else {
+            colorful.sort((a, b) => b.weight - a.weight);
+            const picked = [];
+            for (let minHue = 22; picked.length < 6 && minHue >= 4; minHue -= 6) {
+              for (const p of colorful) {
+                if (picked.length >= 6) break;
+                if (!picked.some((q) => Math.min(Math.abs(q.h - p.h), 360 - Math.abs(q.h - p.h)) < minHue && Math.abs(q.l - p.l) < 15)) picked.push(p);
+              }
+            }
+            out = [];
+            for (let i = 0; i < 10; i++) {
+              const base = picked[i % picked.length];
+              const shift = i >= picked.length ? (i % 2 === 0 ? 10 : -10) : 0;
+              const rgb = hexToRgb(hslToHex(base.h, Math.max(35, Math.min(88, base.s)), Math.max(22, Math.min(56, base.l + shift))));
+              out.push([rgb.r, rgb.g, rgb.b]);
+            }
+          }
+        } catch (e) { out = mono; }
+        if (tvkPaletteCache.size >= 80) tvkPaletteCache.delete(tvkPaletteCache.keys().next().value);
+        tvkPaletteCache.set(src, out);
+        resolve(out);
+      };
+      img.onerror = () => resolve(mono);
+      img.src = src;
+    });
+  }
+  function paintTvkLayer(canvas, colors, seed) {
+    const ctx = canvas && canvas.getContext('2d');
+    if (!ctx) return;
+    const w = canvas.width;
+    const h = canvas.height;
+    const rgb = (c) => `${c[0]}, ${c[1]}, ${c[2]}`;
+    const c0 = colors[0];
+    const base = ctx.createLinearGradient(0, 0, w, h);
+    base.addColorStop(0, `rgb(${rgb(c0)})`);
+    base.addColorStop(0.5, `rgb(${rgb(colors[1] || c0)})`);
+    base.addColorStop(1, `rgb(${rgb(colors[2] || c0)})`);
+    ctx.fillStyle = base;
+    ctx.fillRect(0, 0, w, h);
+    const spots = [[0.12, 0.18], [0.85, 0.15], [0.22, 0.82], [0.82, 0.78], [0.48, 0.32], [0.55, 0.68], [0.18, 0.48], [0.88, 0.46], [0.36, 0.14], [0.66, 0.88]];
+    for (let i = 0; i < 10; i++) {
+      const [px, py] = spots[(i + seed) % spots.length];
+      const col = colors[(i + seed) % colors.length] || c0;
+      const r = (0.48 + (i % 3) * 0.12) * Math.max(w, h);
+      const g = ctx.createRadialGradient(px * w, py * h, 0, px * w, py * h, r);
+      g.addColorStop(0, `rgba(${rgb(col)}, 0.92)`);
+      g.addColorStop(0.45, `rgba(${rgb(col)}, 0.48)`);
+      g.addColorStop(1, `rgba(${rgb(col)}, 0)`);
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, w, h);
+    }
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.18)';
+    ctx.fillRect(0, 0, w, h);
+  }
+  async function syncTvkAmbientBg() {
+    const host = document.getElementById('tvk-ambient-bg');
+    if (!host) return;
+    if (!host.firstElementChild) host.innerHTML = '<canvas class="tvk-liquid-layer" width="96" height="54"></canvas><canvas class="tvk-liquid-layer tvk-liquid-layer-b" width="96" height="54"></canvas>';
+    const thumb = state.currentTrack ? getTrackThumbUrl(state.currentTrack) : '';
+    if (thumb === tvkAmbientCover) return;
+    tvkAmbientCover = thumb;
+    const colors = await extractCoverPalette(thumb);
+    if (tvkAmbientCover !== thumb) return;
+    const [a, b] = host.querySelectorAll('canvas');
+    paintTvkLayer(a, colors, 0);
+    paintTvkLayer(b, colors, 5);
+  }
+  function setTvkAmbient(on) {
+    const tv = el.tvKaraoke || document.getElementById('tv-karaoke');
+    if (!tv) return;
+    tv.classList.toggle('tvk-ambient-on', !!on);
+    if (on) syncTvkAmbientBg();
+  }
+  // the drifting layers only move while fullscreen karaoke is on screen
+  function syncTvkAmbientPlayback() {
+    const tv = el.tvKaraoke || document.getElementById('tv-karaoke');
+    if (!tv) return;
+    tv.classList.toggle('tvk-bg-paused', !state.isTvKaraokeOpen || tv.classList.contains('hidden') || document.hidden || isPhoneApp);
+  }
+  document.addEventListener('visibilitychange', syncTvkAmbientPlayback);
+
+  (function setupTvkTopHover() {
+    const zone = document.getElementById('tvk-top-hover-zone');
+    const panel = document.getElementById('tvk-panel');
+    const btnSettings = document.getElementById('btn-tvk-settings');
+    if (!zone || !panel || isPhoneApp) return;
+    let closeTimer = null;
+    const open = () => {
+      clearTimeout(closeTimer);
+      if (panel.classList.contains('open')) return;
+      panel.classList.add('open');
+      panel.dataset.hoverOpened = '1';
+      if (btnSettings) btnSettings.classList.add('open');
+      if (el.tvKaraoke) el.tvKaraoke.classList.remove('tv-idle');
+      clearTimeout(tvIdleTimer);
+    };
+    const scheduleClose = () => {
+      clearTimeout(closeTimer);
+      if (panel.dataset.hoverOpened !== '1') return;
+      closeTimer = setTimeout(() => {
+        const font = document.getElementById('tvk-font-dropdown');
+        if (font && font.classList.contains('open')) return;
+        panel.classList.remove('open');
+        delete panel.dataset.hoverOpened;
+        if (btnSettings) btnSettings.classList.remove('open');
+        resetTvIdleTimer();
+      }, 320);
+    };
+    zone.addEventListener('mouseenter', open);
+    zone.addEventListener('mouseleave', scheduleClose);
+    panel.addEventListener('mouseenter', () => clearTimeout(closeTimer));
+    panel.addEventListener('mouseleave', scheduleClose);
+    // opened by the gear: stays until closed the usual way
+    if (btnSettings) btnSettings.addEventListener('click', () => { delete panel.dataset.hoverOpened; });
+  })();
+
+  // ---- lyrics under the mini player (desktop) ----
+  var miniLyricsLastIdx = -2;
+  function miniLyricsShown() {
+    return document.body.classList.contains('mini') && document.body.classList.contains('mini-lyrics-on');
+  }
+  function renderMiniLyrics() {
+    const box = document.getElementById('mini-lyrics-container');
+    if (!box) return;
+    miniLyricsLastIdx = -2;
+    const lines = state.syncedLyrics || [];
+    if (!lines.length) { box.innerHTML = '<div class="mini-lyrics-empty">No lyrics</div>'; return; }
+    box.innerHTML = '';
+    const words = getAdv('karaoke_words', true) && state.lyricsMode === 'word';
+    lines.forEach((line, index) => {
+      const div = document.createElement('div');
+      div.className = 'mini-lyric-line';
+      div.id = `mini-lyric-line-${index}`;
+      div.setAttribute('dir', 'auto');
+      if (words) div.innerHTML = lyricWordSpans(line);
+      else div.textContent = line.text || '';
+      if (line.time >= 0) div.addEventListener('click', () => { const t = getLineStartTime(index); if (el.nativeAudio && t >= 0) el.nativeAudio.currentTime = t; });
+      box.appendChild(div);
+    });
+    if (miniLyricsShown() && el.nativeAudio) updateMiniLyricsHighlight(el.nativeAudio.currentTime || 0);
+  }
+  function updateMiniLyricsHighlight(currentTime) {
+    const lines = state.syncedLyrics || [];
+    const box = document.getElementById('mini-lyrics-container');
+    if (!box || !lines.length || !state.isWindowVisible || !miniLyricsShown()) return;
+    const t = currentTime + (state.isCustomLyrics ? 0.25 : 0);
+    let active = -1;
+    for (let i = 0; i < lines.length; i++) {
+      const start = getLineStartTime(i);
+      if (start >= 0 && start <= t) active = i;
+      else if (start > t) break;
+    }
+    if (active !== miniLyricsLastIdx) {
+      const prev = box.querySelector('.mini-lyric-line.active');
+      if (prev) {
+        prev.classList.remove('active');
+        prev.querySelectorAll('.lyric-word').forEach((w) => { w.className = 'lyric-word past-word'; });
+      }
+      const cur = active >= 0 ? document.getElementById(`mini-lyric-line-${active}`) : null;
+      if (cur) {
+        cur.classList.add('active');
+        const top = box.scrollTop + cur.getBoundingClientRect().top - box.getBoundingClientRect().top;
+        box.scrollTo({ top: Math.max(0, top - box.clientHeight / 2 + cur.clientHeight / 2), behavior: document.body.classList.contains('perf') ? 'auto' : 'smooth' });
+      }
+      miniLyricsLastIdx = active;
+    }
+    if (active < 0) return;
+    const cur = document.getElementById(`mini-lyric-line-${active}`);
+    const spans = cur ? cur.querySelectorAll('.lyric-word') : [];
+    if (!spans.length) return;
+    const timed = lineTimedWords(lines[active]);
+    let idx;
+    if (timed && timed.length === spans.length) idx = timedWordIndex(timed, t);
+    else {
+      const start = getLineStartTime(active);
+      const p = Math.min(0.999, Math.max(0, (t - start) / Math.max(0.5, getLineEndTime(active) - start)));
+      idx = Math.floor(p * spans.length);
+    }
+    spans.forEach((w, i) => { w.className = i < idx ? 'lyric-word past-word' : i === idx ? 'lyric-word active-word' : 'lyric-word'; });
+  }
+  (function setupMiniLyrics() {
+    const btn = document.getElementById('btn-mini-lyrics');
+    const wanted = () => localStorage.getItem('muriel_mini_lyrics') === '1';
+    const sync = () => {
+      const on = document.body.classList.contains('mini') && wanted();
+      document.body.classList.toggle('mini-lyrics-on', on);
+      if (btn) btn.classList.toggle('active', on);
+      if (on) renderMiniLyrics();
+    };
+    // the mini window is a body class set on resize (checkCompactLayout); follow it
+    new MutationObserver(() => {
+      const on = document.body.classList.contains('mini') && wanted();
+      if (on !== document.body.classList.contains('mini-lyrics-on')) sync();
+    }).observe(document.body, { attributes: true, attributeFilter: ['class'] });
+    sync();
+    if (btn) btn.addEventListener('click', async () => {
+      const next = !wanted();
+      localStorage.setItem('muriel_mini_lyrics', next ? '1' : '0');
+      if (window.electronAPI && window.electronAPI.setMiniLyrics) {
+        try { await window.electronAPI.setMiniLyrics(next); } catch (e) {}
+      }
+      sync();
+    });
+  })();
+
+  // ---- share the playing song: a one-song Muriel link, the same kind playlists use ----
+  (function setupPlaybarShare() {
+    const btn = document.getElementById('btn-playbar-share');
+    if (!btn) return;
+    btn.addEventListener('click', () => {
+      const t = state.currentTrack;
+      if (!t) { showToast('Nothing is playing', 'info'); return; }
+      if (t.platform === 'local') { showToast("Songs from your own files can't be shared", 'info'); return; }
+      sharePlaylist({ name: [t.title, t.artist].filter(Boolean).join(' · ') || 'A song', tracks: [t] });
+    });
+  })();
+
+  // ---- lyrics source (LRCLIB or Genius first) and word timings for word-by-word karaoke ----
+  function lyricsSourcePref() { return localStorage.getItem('muriel_lyrics_source') === 'genius' ? 'genius' : 'lrclib'; }
+  var CJK_WORD = /[぀-ヿ㐀-䶿一-鿿가-힯]/;
+  // the words to show for a line, with their times when the line has them (null: no times)
+  function lineTimedWords(line) {
+    if (!line || !Array.isArray(line.words) || !line.words.length || !window.MurielLyricsSources) return null;
+    if (line._timedFor !== line.words) {
+      line._timed = window.MurielLyricsSources.timedWords(line.text, line.words);
+      line._timedFor = line.words;
+    }
+    return line._timed;
+  }
+  // the word being sung at time t: the first one that hasn't finished yet
+  function timedWordIndex(timed, t) {
+    for (let i = 0; i < timed.length; i++) if (t < timed[i].end) return i;
+    return timed.length;
+  }
+  function lyricWordSpans(line) {
+    const timed = lineTimedWords(line);
+    const words = timed ? timed.map((w) => w.text) : String(line.text || '').replace(/<[^>]+>/g, '').trim().split(/\s+/).filter(Boolean);
+    return words.map((w, i) => {
+      const sep = i === 0 || (CJK_WORD.test(w) && CJK_WORD.test(words[i - 1])) ? '' : ' ';
+      return `${sep}<span class="lyric-word" data-word-idx="${i}">${escapeHtml(w)}</span>`;
+    }).join('');
+  }
+  var wordsSessionCache = new Map();
+  async function fetchAndUpgradeWords(title, artist, token) {
+    const source = localStorage.getItem('muriel_word_source') || 'auto';
+    const S = window.MurielLyricsSources;
+    if (source === 'estimate' || !S || state.isCustomLyrics || !getAdv('online_lyrics', true)) return;
+    // only word-by-word karaoke uses them: no lookup for line mode
+    if (state.lyricsMode !== 'word' || !getAdv('karaoke_words', true)) return;
+    const lines = state.syncedLyrics;
+    if (!lines.length) return;
+    // "Auto" keeps word times the lyrics brought themselves
+    if (source === 'auto' && lines.some((l) => Array.isArray(l.words) && l.words.length)) return;
+    const dur = Math.round(Number(state.currentTrack && state.currentTrack.duration) || (el.nativeAudio && el.nativeAudio.duration) || 0);
+    const key = `${artist}\u0000${title}`;
+    let data = wordsSessionCache.get(key);
+    if (!data || (data.failed && Date.now() - data.at > 10 * 60 * 1000)) {
+      try {
+        const res = await fetch(`http://127.0.0.1:${state.serverPort}/api/lyrics-words?title=${encodeURIComponent(title)}&artist=${encodeURIComponent(artist)}${dur ? `&duration=${dur}` : ''}`);
+        const json = await res.json();
+        data = json && json.success && Array.isArray(json.lines) && json.lines.length ? { lines: json.lines } : { failed: true, at: Date.now() };
+      } catch (e) {
+        data = { failed: true, at: Date.now() };
+      }
+      wordsSessionCache.set(key, data);
+      if (wordsSessionCache.size > 100) wordsSessionCache.delete(wordsSessionCache.keys().next().value);
+    }
+    if (token !== state.loadToken || state.syncedLyrics !== lines || !data.lines) return;
+    if (lines.some((l) => l.time >= 0)) {
+      const aligned = S.alignWordTimings(lines, data.lines);
+      if (!aligned) return;
+      aligned.forEach((words, i) => { if (words) lines[i].words = words; });
+    } else {
+      // plain lyrics: NetEase's timed lines take their place, when they are the same lyrics
+      const ok = data.lines.filter((wl) => lines.some((l) => S.lineSimilarity(l.text, wl.text) >= 0.6)).length / data.lines.length >= 0.6;
+      if (!ok) return;
+      state.syncedLyrics = data.lines.map((l) => ({ time: l.start, text: l.text, words: l.words }));
+      window.dispatchEvent(new Event('muriel:lyrics'));
+      if (el.lyricsStatus) el.lyricsStatus.textContent = 'Synced';
+      if (state.trActive) fetchAndApplyTranslation();
+    }
+    renderLyricsView();
+    renderMiniLyrics();
+    if (el.nativeAudio) updateSyncedLyricsHighlight(el.nativeAudio.currentTime || 0);
+  }
+  var reloadLyrics = () => { if (state.currentTrack) loadSyncedLyrics(state.currentTrack.title, state.currentTrack.artist, state.loadToken); };
+  wireSettingDropdown('lyrics-source', 'muriel_lyrics_source', 'lrclib', reloadLyrics);
+  wireSettingDropdown('word-source', 'muriel_word_source', 'auto', reloadLyrics);
+
+  // ---- stream timeout: a song that has loaded nothing for this long is given up on ----
+  (function setupStreamTimeout() {
+    const slider = document.getElementById('slider-stream-timeout');
+    const val = document.getElementById('val-stream-timeout');
+    const seconds = () => Math.max(5, Math.min(30, parseInt(localStorage.getItem('muriel_stream_timeout') || '12', 10) || 12));
+    const show = () => { if (val) val.textContent = `${seconds()}s`; if (slider) slider.value = seconds(); };
+    show();
+    if (slider) slider.addEventListener('input', (e) => { localStorage.setItem('muriel_stream_timeout', e.target.value); show(); });
+    const audio = el.nativeAudio;
+    if (!audio) return;
+    // checked once a second while a song with a source is loading; anything new buffered counts as progress
+    let poll = null;
+    let token = -1;
+    let lastProgressAt = 0;
+    let lastBuffered = -1;
+    const stop = () => { clearInterval(poll); poll = null; };
+    const bufferedEnd = () => { try { const b = audio.buffered; return b.length ? b.end(b.length - 1) : 0; } catch (e) { return 0; } };
+    const giveUp = () => {
+      stop();
+      if (hlsInstance) { try { hlsInstance.destroy(); } catch (e) {} hlsInstance = null; }
+      try { audio.pause(); audio.removeAttribute('src'); audio.load(); } catch (e) {}
+      state.isPlaying = false;
+      document.body.classList.remove('is-playing');
+      updatePlayPauseButton(false, false);
+      if (el.trackLoadingOverlay) el.trackLoadingOverlay.classList.add('hidden');
+      if (!skipUnplayable(token, state.currentTrack)) showToast('This song took too long to load. Try again or skip.', 'error');
+    };
+    const arm = () => {
+      stop();
+      if (!state.trackLoading || !state.currentTrack || state.currentTrack.platform === 'local') return;
+      if (!audio.getAttribute('src') && !hlsInstance) return;
+      token = state.loadToken;
+      lastProgressAt = Date.now();
+      lastBuffered = -1;
+      poll = setInterval(() => {
+        if (token !== state.loadToken || !state.trackLoading || (!audio.paused && audio.currentTime > 0)) { stop(); return; }
+        const b = bufferedEnd() + audio.readyState * 1e-3;
+        if (b !== lastBuffered) { lastBuffered = b; lastProgressAt = Date.now(); return; }
+        if (Date.now() - lastProgressAt > seconds() * 1000) giveUp();
+      }, 1000);
+    };
+    audio.addEventListener('loadstart', () => setTimeout(arm, 0));
+    audio.addEventListener('playing', stop);
+  })();
+
+  // ---- banner effects for one song (Track art dialog): its own blur, opacity and fade ----
+  function trackBannerFx(art) {
+    const fx = art && art.bannerFx;
+    return fx && fx.enabled ? fx : null;
+  }
+  function applyTrackBannerFx(art) {
+    const fx = trackBannerFx(art);
+    for (const node of [document.getElementById('right-panel-banner'), document.getElementById('tv-bg')]) {
+      if (!node) continue;
+      node.classList.toggle('has-track-fx', !!fx);
+      if (fx) {
+        node.style.setProperty('--banner-blur', `${document.body.classList.contains('perf') ? 0 : fx.blur}px`);
+        node.style.setProperty('--banner-opacity', String(fx.opacity / 100));
+        node.style.setProperty('--banner-fade-base', `${fx.fade}%`);
+      } else {
+        node.style.removeProperty('--banner-blur');
+        node.style.removeProperty('--banner-opacity');
+        node.style.removeProperty('--banner-fade-base');
+      }
+    }
+  }
+  function renderTrackBannerFxControls(track, art) {
+    const toggle = document.getElementById('btn-track-banner-custom-fx');
+    const box = document.getElementById('track-banner-fx-controls');
+    const sliders = { blur: document.getElementById('slider-track-banner-blur'), opacity: document.getElementById('slider-track-banner-opacity'), fade: document.getElementById('slider-track-banner-fade') };
+    const vals = { blur: document.getElementById('val-track-banner-blur'), opacity: document.getElementById('val-track-banner-opacity'), fade: document.getElementById('val-track-banner-fade') };
+    if (!toggle || !box) return;
+    // a song without its own effects starts from the ones in Settings
+    const global = {
+      blur: parseInt(localStorage.getItem('muriel_banner_blur') || '3', 10),
+      opacity: parseInt(localStorage.getItem('muriel_banner_opacity') || '100', 10),
+      fade: parseInt(localStorage.getItem('muriel_banner_fade') || '100', 10),
+    };
+    const fx = (art && art.bannerFx) || {};
+    const cur = { blur: fx.blur !== undefined ? fx.blur : global.blur, opacity: fx.opacity !== undefined ? fx.opacity : global.opacity, fade: fx.fade !== undefined ? fx.fade : global.fade };
+    const on = !!fx.enabled;
+    const unit = { blur: 'px', opacity: '%', fade: '%' };
+    toggle.classList.toggle('active', on);
+    box.style.display = on ? 'flex' : 'none';
+    for (const k of Object.keys(sliders)) {
+      if (sliders[k]) sliders[k].value = cur[k];
+      if (vals[k]) vals[k].textContent = `${cur[k]}${unit[k]}`;
+    }
+    const save = () => {
+      const next = { enabled: toggle.classList.contains('active') };
+      for (const k of Object.keys(sliders)) next[k] = sliders[k] ? parseInt(sliders[k].value, 10) : cur[k];
+      setTrackArt(track, { bannerFx: next });
+      if (state.currentTrack && isSameTrack(state.currentTrack, track)) applyTrackBannerFx(getTrackArt(track));
+      if (state.isTvKaraokeOpen) syncTvBanner();
+    };
+    toggle.onclick = () => {
+      const next = !toggle.classList.contains('active');
+      toggle.classList.toggle('active', next);
+      box.style.display = next ? 'flex' : 'none';
+      save();
+    };
+    for (const k of Object.keys(sliders)) {
+      if (!sliders[k]) continue;
+      sliders[k].oninput = () => { if (vals[k]) vals[k].textContent = `${sliders[k].value}${unit[k]}`; save(); };
+    }
+  }
+
+  // ---- Download dialog → "Trim best part": keep only part of a song; playback skips the rest ----
+  var trackTrims = null;
+  var trimDraft = { start: 0, end: 180, dur: 180 };
+  var TRIM_BARS = 84;
+  var trimPeaks = new Map();
+  function allTrackTrims() {
+    if (!trackTrims) trackTrims = safeJson('muriel_track_trims', {}) || {};
+    return trackTrims;
+  }
+  function getTrackTrim(track) {
+    const id = track ? getTrackCanonicalId(track) : '';
+    return id ? allTrackTrims()[id] || null : null;
+  }
+  function saveTrackTrim(track, trim) {
+    const id = track ? getTrackCanonicalId(track) : '';
+    if (!id) return;
+    const all = allTrackTrims();
+    if (trim) all[id] = { ...trim, updatedAt: Date.now() }; else delete all[id];
+    localStorage.setItem('muriel_track_trims', JSON.stringify(all));
+  }
+  window.addEventListener('storage', (e) => { if (!e.key || /muriel_track_trims$/.test(e.key)) trackTrims = null; });
+  // called on every timeupdate: before the kept part, jump to it; after it, the song is over
+  function enforceTrackTrim() {
+    const a = el.nativeAudio;
+    if (!a || !state.currentTrack || isDraggingScrubber || !window.MurielTrim) return false;
+    const trim = getTrackTrim(state.currentTrack);
+    const action = window.MurielTrim.trimAction(trim, a.currentTime);
+    if (action === 'start') { a.currentTime = trim.start; return true; }
+    if (action !== 'end' || a.paused) return false;
+    if (state.isRepeat) { a.currentTime = trim.start; return true; }
+    if ((state.sleepTimer && state.sleepTimer.mode === 'end') || queueFinished()) {
+      a.pause();
+      a.dispatchEvent(new Event('ended'));
+      return true;
+    }
+    state._isNaturalEnding = true;
+    try { playNext(); } finally { state._isNaturalEnding = false; }
+    return true;
+  }
+  if (el.nativeAudio) {
+    // a trimmed song starts at its trim
+    const toTrimStart = () => {
+      const trim = state.currentTrack && window.MurielTrim ? getTrackTrim(state.currentTrack) : null;
+      if (window.MurielTrim && window.MurielTrim.trimAction(trim, el.nativeAudio.currentTime) === 'start') el.nativeAudio.currentTime = trim.start;
+    };
+    el.nativeAudio.addEventListener('loadedmetadata', toTrimStart);
+    el.nativeAudio.addEventListener('play', toTrimStart);
+  }
+  function showDownloadPane(which) {
+    document.querySelectorAll('.dl-mode-tab').forEach((t) => t.classList.toggle('active', t.dataset.dlTab === which));
+    const dl = document.getElementById('dl-pane-download');
+    const tr = document.getElementById('dl-pane-trim');
+    if (dl) dl.classList.toggle('hidden', which !== 'download');
+    if (tr) tr.classList.toggle('hidden', which !== 'trim');
+    if (which === 'trim') { sizeTrimCanvas(); updateTrimmerUI(); }
+  }
+  function prepareTrimPane(track) {
+    const a = el.nativeAudio;
+    const dur = isSameTrack(track, state.currentTrack) && a && Number.isFinite(a.duration) && a.duration > 0
+      ? a.duration
+      : (Number(track.duration) > 0 ? Number(track.duration) : 180);
+    const saved = getTrackTrim(track);
+    trimDraft = { start: saved ? Math.max(0, saved.start) : 0, end: saved ? Math.min(dur, saved.end) : dur, dur };
+    const reset = document.getElementById('btn-cc-reset');
+    if (reset) reset.classList.toggle('hidden', !saved);
+    showDownloadPane('download');
+    // a saved trim also fills in the download's trim (computers: ffmpeg cuts the file)
+    if (saved) {
+      const s = document.getElementById('trim-start');
+      const e = document.getElementById('trim-end');
+      if (s) s.value = window.MurielTrim.formatPreciseTime(trimDraft.start);
+      if (e) e.value = window.MurielTrim.formatPreciseTime(trimDraft.end);
+    }
+  }
+  function sizeTrimCanvas() {
+    const canvas = document.getElementById('capcut-wave-canvas');
+    if (!canvas) return;
+    const r = canvas.getBoundingClientRect();
+    if (!r.width) return;
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = Math.round(r.width * dpr);
+    canvas.height = Math.round(r.height * dpr);
+  }
+  // the bars: the song's real waveform when it is on this device (decoded at a low sample rate, so a long song
+  // stays small), else a stand-in shape
+  function trimWavePeaks(track) {
+    const id = getTrackCanonicalId(track);
+    if (trimPeaks.has(id)) return trimPeaks.get(id);
+    const peaks = window.MurielTrim.placeholderPeaks(id, TRIM_BARS);
+    trimPeaks.set(id, peaks);
+    if (trimPeaks.size > 30) trimPeaks.delete(trimPeaks.keys().next().value);
+    (async () => {
+      try {
+        let url = '';
+        if (track.platform === 'local' && track.id) url = `http://127.0.0.1:${state.serverPort}/api/library-file?id=${encodeURIComponent(track.id)}`;
+        else if (track.id) {
+          const r = await fetch(`http://127.0.0.1:${state.serverPort}/api/check-cache?id=${encodeURIComponent(track.id)}`);
+          const c = await r.json();
+          if (c && c.cached) url = `http://127.0.0.1:${state.serverPort}/api/local-track?id=${encodeURIComponent(track.id)}`;
+        }
+        if (!url) return;
+        const res = await fetch(url);
+        if (!res.ok) return;
+        const buf = await res.arrayBuffer();
+        if (!buf.byteLength || buf.byteLength > 60e6) return;
+        const Offline = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+        if (!Offline) return;
+        const audio = await new Offline(1, 1, 8000).decodeAudioData(buf);
+        trimPeaks.set(id, window.MurielTrim.wavePeaks(audio.getChannelData(0), TRIM_BARS));
+        if (trackToDownload && getTrackCanonicalId(trackToDownload) === id) renderTrimWave();
+      } catch (e) {}
+    })();
+    return peaks;
+  }
+  function renderTrimWave() {
+    const canvas = document.getElementById('capcut-wave-canvas');
+    if (!canvas || !trackToDownload) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    const peaks = trimWavePeaks(trackToDownload);
+    const w = canvas.width;
+    const h = canvas.height;
+    const dpr = window.devicePixelRatio || 1;
+    ctx.clearRect(0, 0, w, h);
+    const dur = Math.max(1, trimDraft.dur);
+    const from = trimDraft.start / dur;
+    const to = trimDraft.end / dur;
+    if (!cachedPrimaryColor) refreshCachedThemeColors();
+    const step = w / TRIM_BARS;
+    const barW = step * 0.6;
+    for (let i = 0; i < TRIM_BARS; i++) {
+      const at = i / (TRIM_BARS - 1);
+      ctx.fillStyle = at >= from - 0.01 && at <= to + 0.01 ? (cachedPrimaryColor || '#a8c7fa') : 'rgba(255, 255, 255, 0.22)';
+      const barH = Math.max(6 * dpr, (peaks[i] || 0.3) * (h - 16 * dpr));
+      ctx.beginPath();
+      ctx.roundRect(i * step + (step - barW) / 2, (h - barH) / 2, barW, barH, 2 * dpr);
+      ctx.fill();
+    }
+  }
+  function updateTrimmerUI() {
+    const T = window.MurielTrim;
+    if (!T) return;
+    const dur = Math.max(1, trimDraft.dur);
+    const startPct = (trimDraft.start / dur) * 100;
+    const endPct = (trimDraft.end / dur) * 100;
+    const set = (id, fn) => { const n = document.getElementById(id); if (n) fn(n); };
+    set('cc-mask-left', (n) => { n.style.width = `${startPct}%`; });
+    set('cc-mask-right', (n) => { n.style.width = `${100 - endPct}%`; });
+    set('cc-selection-box', (n) => { n.style.left = `${startPct}%`; n.style.width = `${Math.max(0, endPct - startPct)}%`; });
+    const s = T.formatPreciseTime(trimDraft.start);
+    const e = T.formatPreciseTime(trimDraft.end);
+    set('cc-trim-start-val', (n) => { n.textContent = s; });
+    set('cc-trim-end-val', (n) => { n.textContent = e; });
+    set('cc-trim-dur-val', (n) => { n.textContent = T.formatPreciseTime(Math.max(0, trimDraft.end - trimDraft.start)); });
+    set('cc-float-left', (n) => { n.textContent = s; });
+    set('cc-float-right', (n) => { n.textContent = e; });
+    renderTrimWave();
+    updateTrimPlayhead();
+  }
+  function updateTrimPlayhead() {
+    const head = document.getElementById('cc-playhead');
+    if (!head) return;
+    const same = trackToDownload && state.currentTrack && isSameTrack(state.currentTrack, trackToDownload);
+    head.style.display = same ? '' : 'none';
+    if (same && el.nativeAudio) head.style.left = `${Math.max(0, Math.min(100, ((el.nativeAudio.currentTime || 0) / Math.max(1, trimDraft.dur)) * 100))}%`;
+  }
+  (function setupTrimmer() {
+    document.querySelectorAll('.dl-mode-tab').forEach((tab) => tab.addEventListener('click', () => showDownloadPane(tab.dataset.dlTab)));
+    const stage = document.getElementById('capcut-wave-stage');
+    if (!stage) return;
+    const minKeep = window.MurielTrim ? window.MurielTrim.MIN_KEEP : 1;
+    const ratioAt = (e) => { const r = stage.getBoundingClientRect(); return r.width ? Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)) : 0; };
+    const dragHandle = (handle, side) => {
+      if (!handle) return;
+      let dragging = false;
+      handle.addEventListener('pointerdown', (e) => { e.stopPropagation(); dragging = true; handle.setPointerCapture(e.pointerId); handle.classList.add('dragging'); });
+      handle.addEventListener('pointermove', (e) => {
+        if (!dragging) return;
+        const t = Math.round(ratioAt(e) * trimDraft.dur * 10) / 10;
+        if (side === 'start') trimDraft.start = Math.max(0, Math.min(t, trimDraft.end - minKeep));
+        else trimDraft.end = Math.min(trimDraft.dur, Math.max(t, trimDraft.start + minKeep));
+        updateTrimmerUI();
+      });
+      const stop = (e) => { if (!dragging) return; dragging = false; try { handle.releasePointerCapture(e.pointerId); } catch (_) {} handle.classList.remove('dragging'); };
+      handle.addEventListener('pointerup', stop);
+      handle.addEventListener('pointercancel', stop);
+    };
+    dragHandle(document.getElementById('cc-handle-left'), 'start');
+    dragHandle(document.getElementById('cc-handle-right'), 'end');
+    // tap the waveform to listen from there
+    const playFrom = async (t) => {
+      if (!trackToDownload || !el.nativeAudio) return;
+      if (!isSameTrack(state.currentTrack, trackToDownload)) await playTrack(trackToDownload);
+      el.nativeAudio.currentTime = t;
+      if (el.nativeAudio.paused) playSmooth();
+    };
+    stage.addEventListener('pointerdown', (e) => { if (!e.target.closest('.cc-handle')) playFrom(ratioAt(e) * trimDraft.dur); });
+    const btnPreview = document.getElementById('btn-cc-preview');
+    if (btnPreview) btnPreview.addEventListener('click', () => playFrom(trimDraft.start));
+    const btnSave = document.getElementById('btn-cc-save');
+    const btnReset = document.getElementById('btn-cc-reset');
+    if (btnSave) btnSave.addEventListener('click', () => {
+      if (!trackToDownload) return;
+      const trim = window.MurielTrim.normalizeTrim(trimDraft.start, trimDraft.end, trimDraft.dur);
+      saveTrackTrim(trackToDownload, trim);
+      if (btnReset) btnReset.classList.toggle('hidden', !trim);
+      const T = window.MurielTrim;
+      showToast(trim ? `Trim saved: ${T.formatPreciseTime(trim.start)} – ${T.formatPreciseTime(trim.end)}` : 'That keeps the whole song, so there is no trim', trim ? 'success' : 'info');
+      if (trim) {
+        const s = document.getElementById('trim-start');
+        const e = document.getElementById('trim-end');
+        if (s) s.value = T.formatPreciseTime(trim.start);
+        if (e) e.value = T.formatPreciseTime(trim.end);
+        if (state.currentTrack && isSameTrack(state.currentTrack, trackToDownload) && el.nativeAudio) {
+          const t = el.nativeAudio.currentTime;
+          if (t < trim.start || t > trim.end) el.nativeAudio.currentTime = trim.start;
+        }
+      }
+    });
+    if (btnReset) btnReset.addEventListener('click', () => {
+      if (!trackToDownload) return;
+      saveTrackTrim(trackToDownload, null);
+      trimDraft.start = 0;
+      trimDraft.end = trimDraft.dur;
+      updateTrimmerUI();
+      btnReset.classList.add('hidden');
+      showToast('Trim removed', 'info');
+    });
+    if (el.nativeAudio) el.nativeAudio.addEventListener('timeupdate', () => {
+      const pane = document.getElementById('dl-pane-trim');
+      if (pane && !pane.classList.contains('hidden') && el.downloadModal && !el.downloadModal.classList.contains('hidden')) updateTrimPlayhead();
+    });
+  })();
+  // ======================= end of Riff 43: player & look =======================
+
   restoreQueueState();
 
   emitPluginEvent('ready');
@@ -17997,6 +19143,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         state.riffFont = localStorage.getItem('muriel_font') || 'google';
         applyFont(state.riffFont);
       }
+      if (has('muriel_track_trims')) trackTrims = null;
+      if (has('muriel_icon_pack')) applyIconPack(localStorage.getItem('muriel_icon_pack') || 'material');
+      if (has('muriel_adv_intensity_bg')) updateThemeFromState();
       if (keys.some((k) => k === 'devsize_playlists' || k === 'devsize_favorites')) window.dispatchEvent(new Event('muriel:library'));
     },
   };

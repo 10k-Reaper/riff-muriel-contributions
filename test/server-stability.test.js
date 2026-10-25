@@ -313,3 +313,68 @@ test('YouTube Music search falls back to music videos where it has no songs', as
   assert.equal(tracks[0].artist, 'Daft Punk');
   assert.equal(tracks[0].duration, 248);
 });
+
+test('Genius first: its lyrics are used and kept, lrclib is the fallback', async () => {
+  const asked = [];
+  const geniusPage = '<div data-lyrics-container="true">[Chorus]<br>Genius line one<br>Genius line two</div>';
+  let geniusUp = true;
+  outbound = (req, res, target) => {
+    asked.push(new URL(target).hostname);
+    if (target.startsWith('https://genius.com/api/search')) {
+      if (!geniusUp) return req.socket.destroy();
+      return json(res, { response: { sections: [{ hits: [{ result: { title: 'Source Song', artist_names: 'Source Artist', url: 'https://genius.com/Source-artist-source-song-lyrics' } }] }] } });
+    }
+    if (target.startsWith('https://genius.com/Source')) { res.writeHead(200, { 'Content-Type': 'text/html' }); return res.end(geniusPage); }
+    if (target.includes('lrclib.net/api/get')) return json(res, { syncedLyrics: '[00:01.00] from lrclib' });
+    return json(res, []);
+  };
+  const g = parse(await call('GET', '/api/lyrics?title=Source%20Song&artist=Source%20Artist&source=genius'));
+  assert.equal(g.lyrics, 'Genius line one\nGenius line two');
+  assert.ok(!asked.includes('lrclib.net'), `lrclib asked although Genius had it: ${asked.join(', ')}`);
+  // the default source is still lrclib, cached separately
+  const l = parse(await call('GET', '/api/lyrics?title=Source%20Song&artist=Source%20Artist'));
+  assert.equal(l.lyrics, '[00:01.00] from lrclib');
+  // Genius down: its saved copy is used, nothing is fetched
+  geniusUp = false;
+  asked.length = 0;
+  const again = parse(await call('GET', '/api/lyrics?title=Source%20Song&artist=Source%20Artist&source=genius&online=0'));
+  assert.equal(again.lyrics, 'Genius line one\nGenius line two');
+  assert.deepEqual(asked, []);
+});
+
+test('lrclib without the song falls back to Genius', async () => {
+  outbound = (req, res, target) => {
+    if (target.startsWith('https://genius.com/api/search')) return json(res, { response: { sections: [{ hits: [{ result: { title: 'Only On Genius', artist_names: 'Someone', url: 'https://genius.com/Someone-only-on-genius-lyrics' } }] }] } });
+    if (target.startsWith('https://genius.com/Someone')) { res.writeHead(200); return res.end('<div data-lyrics-container="true">Just here</div>'); }
+    return json(res, target.includes('/api/get') ? {} : [], target.includes('/api/get') ? 404 : 200);
+  };
+  assert.equal(parse(await call('GET', '/api/lyrics?title=Only%20On%20Genius&artist=Someone')).lyrics, 'Just here');
+});
+
+test('word timings come from NetEase for the matching song', async () => {
+  const asked = [];
+  outbound = (req, res, target) => {
+    asked.push(target);
+    if (target.includes('music.163.com/api/search/get')) {
+      return json(res, { result: { songs: [
+        { id: 7, name: 'Timed Song', duration: 100000, artists: [{ name: 'Timed Artist' }] },
+        { id: 8, name: 'Timed Song', duration: 200000, artists: [{ name: 'Timed Artist' }] },
+      ] } });
+    }
+    if (target.includes('music.163.com/api/song/lyric')) {
+      assert.match(target, /id=8/);
+      return json(res, { yrc: { lyric: '[1000,2000](1000,500,0)Hello (1500,1500,0)world' } });
+    }
+    return json(res, {}, 404);
+  };
+  const r = parse(await call('GET', '/api/lyrics-words?title=Timed%20Artist%20-%20Timed%20Song%20(Official%20Video)&artist=TimedArtistVEVO&duration=201'));
+  assert.equal(r.success, true);
+  assert.deepEqual(r.lines[0].words, [{ text: 'Hello', start: 1, end: 1.5 }, { text: 'world', start: 1.5, end: 3 }]);
+  // asked once; the answer is kept
+  const before = asked.length;
+  parse(await call('GET', '/api/lyrics-words?title=Timed%20Artist%20-%20Timed%20Song%20(Official%20Video)&artist=TimedArtistVEVO&duration=201'));
+  assert.equal(asked.length, before);
+  const none = parse(await call('GET', '/api/lyrics-words?title=Unknown&artist=Nobody'));
+  assert.equal(none.success, false);
+  assert.deepEqual(none.lines, []);
+});

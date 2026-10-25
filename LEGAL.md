@@ -14,8 +14,8 @@ Muriel works with.
 - Muriel is a player. It does not host, upload, sell or share any music. Songs are played from publicly
   available sources on the listener's own device, and nothing is sent to the developers.
 - There are no ads, no accounts, no tracking and no payments. Nobody earns money from Muriel.
-- Lyrics come from public lyrics databases (such as LRCLIB); covers and song details from the services
-  that publish them.
+- Lyrics come from public lyrics sources (LRCLIB, Genius, and NetEase Cloud Music for word timings); covers
+  and song details from the services that publish them.
 
 **Your responsibility as a user**
 - Use Muriel for your own private listening only.
@@ -46,8 +46,8 @@ nur genannt, um zu beschreiben, womit Muriel funktioniert.
   Songs werden aus öffentlich zugänglichen Quellen auf dem eigenen Gerät abgespielt; an die Entwickler wird
   nichts gesendet.
 - Es gibt keine Werbung, keine Konten, kein Tracking und keine Zahlungen. Niemand verdient Geld mit Muriel.
-- Liedtexte stammen aus öffentlichen Datenbanken (z. B. LRCLIB), Cover und Songinfos von den Diensten, die
-  sie veröffentlichen.
+- Liedtexte stammen aus öffentlichen Quellen (LRCLIB, Genius und NetEase Cloud Music für Wort-Timings), Cover
+  und Songinfos von den Diensten, die sie veröffentlichen.
 
 **Deine Verantwortung als Nutzer**
 - Nutze Muriel nur zum privaten Anhören.

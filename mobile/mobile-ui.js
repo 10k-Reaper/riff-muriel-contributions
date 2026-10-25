@@ -77,7 +77,7 @@
       return url || u;
     };
     let bgChanged = false;
-    for (const key of ['muriel_bg_url', 'muriel_banner_media']) {
+    for (const key of ['muriel_bg_url', 'muriel_banner_media', 'muriel_app_icon']) {
       const cur = localStorage.getItem(key);
       if (!cur) continue;
       const next = await fresh(cur);

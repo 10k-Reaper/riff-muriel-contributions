@@ -560,3 +560,17 @@ html.is-mobile .audio-panel[data-audio-panel="eq"] { display: none !important; }
   html.is-mobile #right-panel::before { background: rgba(255, 255, 255, .3); }
   html.is-mobile #right-panel .lyric-line.active .lyric-word { color: rgba(255, 255, 255, .38); }
 }
+
+/* ---------- Riff 43 player & look on phones ----------
+   no Web Audio graph here (see mobile-ui.js), so the playbar visualizer settings had nothing to draw with;
+   the titlebar is the phone's top bar; the download's trim needs ffmpeg, which phones don't have ("Trim best part"
+   still works: it only skips through the song while it plays); there is no pointer to hover the karaoke top edge */
+html.is-mobile :is(#setting-hide-titlebar-row, #setting-bar-viz-pos, #setting-bar-viz-opacity, #setting-viz-connected, #download-trim-section, .tvk-top-hover-zone, .playbar-bg-visualizer) { display: none !important; }
+html.is-mobile .tvk-row:has(#btn-tvk-viz-connected) { display: none !important; }
+html.is-mobile .tvk-liquid-layer { animation: none !important; }
+html.is-mobile .nav-home-app-icon { width: 28px; height: 28px; border-radius: 8px; }
+html.is-mobile .tvk-progress-row { width: min(86vw, 360px); }
+html.is-mobile .cc-handle { width: 24px; }
+html.is-mobile .cc-handle-left { left: -12px; }
+html.is-mobile .cc-handle-right { right: -12px; }
+html.is-mobile .app-icon-picker-grid { grid-template-columns: repeat(auto-fill, minmax(68px, 1fr)); }

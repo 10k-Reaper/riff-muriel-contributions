@@ -48,6 +48,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   trimMemory: () => { try { webFrame.clearCache(); } catch (e) {} },
   onMediaCommand: (cb) => ipcRenderer.on('media-command', (e, cmd) => cb(cmd)),
   toggleMiniWindow: () => ipcRenderer.invoke('toggle-mini-window'),
+  setMiniLyrics: (enabled) => ipcRenderer.invoke('set-mini-lyrics', enabled),
   isWindows: process.platform === 'win32',
   setMediaKeys: (v) => ipcRenderer.send('set-media-keys', v),
   mediaKeysActive: () => ipcRenderer.send('media-keys-active'),
