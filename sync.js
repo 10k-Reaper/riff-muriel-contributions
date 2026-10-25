@@ -1,4 +1,4 @@
-// Muriel sync (early access for GitHub sponsors): link your devices with a code or a QR code, and playlists,
+// Muriel sync (free, no account): link your devices with a code or a QR code, and playlists,
 // favorites, history, Encore stats, the look of the app and what you're listening to stay the same on all of
 // them. There is no Muriel server and no account: every device keeps its own data, and linked devices talk to
 // each other directly (WebRTC, encrypted) whenever they're open at the same time. A public PeerJS server only
@@ -7,22 +7,16 @@
   const Core = window.MurielSyncCore;
   if (!Core || !window.localStorage) return;
 
-  // GitHub OAuth app (device flow) used to check sponsorship. Public by design; there is no secret.
-  const GITHUB_CLIENT_ID = '';
-  const SPONSORED = 'cloverscripts';
-  const SPONSOR_URL = `https://github.com/sponsors/${SPONSORED}`;
   const LINK_PAGE = 'https://cloverscripts.github.io/riff-muriel/link.html';
   const DAY = 864e5;
-  const SPONSOR_VALID = 35 * DAY; // a sponsor check counts this long on every linked device
-  const SPONSOR_RECHECK = 7 * DAY;
   const LINK_TTL = 5 * 60e3;
   const KEEP_TOMBSTONES = 120 * DAY;
   const CONTINUE_WITHIN = 12 * 3600e3;
 
   const K = {
     device: 'muriel_sync_device', group: 'muriel_sync_group', members: 'muriel_sync_members', meta: 'muriel_sync_meta',
-    listens: 'muriel_sync_listens', np: 'muriel_sync_np', gh: 'muriel_sync_gh', sponsor: 'muriel_sync_sponsor',
-    cats: 'muriel_sync_cats', seen: 'muriel_sync_seen', dismissed: 'muriel_sync_np_dismissed',
+    listens: 'muriel_sync_listens', np: 'muriel_sync_np', cats: 'muriel_sync_cats', seen: 'muriel_sync_seen',
+    dismissed: 'muriel_sync_np_dismissed', invite: 'muriel_sync_invite',
   };
 
   // ---------- storage ----------
@@ -50,15 +44,13 @@
 
   let group = read(K.group); // { id, secret }
   let members = read(K.members, {}); // { deviceId: { name, kind, t, del? } }
-  let sponsor = read(K.sponsor); // { login, ok, at }
   let meta = read(K.meta) || {}; // { lists: { playlists, favorites, history }, settings, listensT }
   let listens = read(K.listens, {}); // other devices' Encore data { deviceId: { t, name, db } }
   let np = read(K.np, {}); // what each device last played { deviceId: { t, name, track, pos, playing } }
   let seen = read(K.seen, {});
   const catsOn = () => ({ library: true, history: true, look: true, continue: true, ...read(K.cats, {}) });
 
-  const unlocked = () => !!(sponsor && sponsor.ok && Date.now() - sponsor.at < SPONSOR_VALID);
-  const active = () => !!(group && unlocked());
+  const active = () => !!group;
   const liveMembers = () => Object.entries(members).filter(([id, m]) => id !== device.id && m && !m.del);
 
   // ---------- what syncs ----------
@@ -104,7 +96,7 @@
   function snapshot(only) {
     const want = (x) => !only || only.includes(x);
     const cats = catsOn();
-    const s = { members, sponsor };
+    const s = { members };
     for (const [name, l] of Object.entries(LISTS)) {
       if (!cats[l.cat] || !want(name)) continue;
       stamp(name);
@@ -127,7 +119,6 @@
       if (m.changed) { members = m.value; write(K.members, members); any = true; }
       if (members[device.id] && members[device.id].del) { leaveLocally('This device was unlinked'); return true; }
     }
-    if (takesOver(r.sponsor)) { sponsor = r.sponsor; write(K.sponsor, sponsor); any = true; }
     const cats = catsOn();
     for (const [name, l] of Object.entries(LISTS)) {
       const theirs = r.lists && r.lists[name];
@@ -318,7 +309,7 @@
   }
 
   function startLinking() {
-    if (!unlocked() || typeof window.Peer !== 'function') return;
+    if (typeof window.Peer !== 'function') return;
     stopLinking();
     ensureGroup();
     startPeer();
@@ -336,7 +327,7 @@
         if (!msg || msg.t !== 'join' || !msg.id || msg.id === device.id) return;
         members = { ...members, [msg.id]: { name: String(msg.name || 'Device').slice(0, 40), kind: msg.kind === 'phone' ? 'phone' : 'computer', t: Date.now() } };
         write(K.members, members);
-        conn.send({ t: 'welcome', group, members, sponsor, from: { id: device.id, name: device.name } });
+        conn.send({ t: 'welcome', group, members, from: { id: device.id, name: device.name } });
         toast(`Linked with ${members[msg.id].name}`);
         setTimeout(() => { stopLinking(); broadcast({ members }); }, 1500);
         [2000, 5000, 9000].forEach((ms) => setTimeout(dialAll, ms)); // the new device needs a moment to come online
@@ -371,10 +362,13 @@
         if (group && group.id !== msg.group.id) leaveLocally();
         group = msg.group;
         members = Core.mergeById(msg.members || {}, { [device.id]: { name: device.name, kind, t: Date.now() } }, null).value;
-        if (takesOver(msg.sponsor)) { sponsor = msg.sponsor; write(K.sponsor, sponsor); }
+        // this device takes on the look of the devices it joins (if the theme syncs), so linking never
+        // swaps someone's theme at random: dated before everything there, its own look loses the first merge
+        if (!meta.settings) { meta.settings = Core.stampMap(null, settingValues(), Date.now(), 0); saveMeta(); }
         write(K.group, group);
         write(K.members, members);
         toast(`Linked with ${(msg.from && msg.from.name) || 'your device'}`);
+        wantCode = false;
         done('');
         stopPeer();
         startPeer();
@@ -407,98 +401,6 @@
     try { window.MurielEncore && window.MurielEncore.refresh && window.MurielEncore.refresh(); } catch (e) {}
     updateContinue();
     if (msg) toast(msg);
-    render();
-  }
-
-  // ---------- sponsor check (GitHub sign-in with a code) ----------
-  const clientId = () => read('muriel_sync_gh_client') || GITHUB_CLIENT_ID;
-  let signin = null; // { user_code, verification_uri, busy, error, notSponsor }
-  const form = (o) => Object.entries(o).map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join('&');
-
-  async function checkSponsor(token) {
-    const res = await fetch('https://api.github.com/graphql', {
-      method: 'POST',
-      headers: { Authorization: `bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ query: `query { viewer { login } user(login: "${SPONSORED}") { viewerIsSponsoring } }` }),
-    });
-    if (res.status === 401) return { revoked: true };
-    const data = await res.json();
-    const login = data && data.data && data.data.viewer && data.data.viewer.login;
-    if (!login) throw new Error('GitHub did not answer');
-    const ok = login.toLowerCase() === SPONSORED || !!(data.data.user && data.data.user.viewerIsSponsoring);
-    return { login, ok };
-  }
-  // A valid unlock beats "not a sponsor", whoever signed in last; between two unlocks the newer one counts.
-  // "Not a sponsor" only replaces an unlock when it's the same person (their sponsorship ended).
-  const valid = (x) => !!(x && x.ok && Date.now() - x.at < SPONSOR_VALID);
-  function takesOver(s) {
-    if (!s || !s.at || !sponsor) return !!(s && s.at);
-    if (valid(s)) return !valid(sponsor) || s.at > sponsor.at;
-    if (valid(sponsor)) return s.login === sponsor.login && s.at > sponsor.at;
-    return s.at > sponsor.at;
-  }
-  function setSponsor(r) {
-    const next = { login: r.login, ok: r.ok, at: Date.now() };
-    if (!takesOver(next)) return;
-    sponsor = next;
-    write(K.sponsor, sponsor);
-    broadcast({ sponsor });
-    if (unlocked()) { if (group) startPeer(); } else stopPeer();
-    render();
-  }
-
-  async function startSignIn() {
-    if (!clientId()) return;
-    signin = { busy: true };
-    render();
-    try {
-      const res = await fetch('https://github.com/login/device/code', {
-        method: 'POST',
-        headers: { Accept: 'application/json', 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: form({ client_id: clientId(), scope: 'read:user' }),
-      });
-      const d = await res.json();
-      if (!d.device_code) throw new Error(d.error_description || 'GitHub did not answer');
-      signin = { user_code: d.user_code, verification_uri: d.verification_uri || 'https://github.com/login/device', until: Date.now() + (d.expires_in || 900) * 1000 };
-      render();
-      let wait = Math.max(5, d.interval || 5) * 1000;
-      while (signin && signin.user_code === d.user_code && Date.now() < signin.until) {
-        await new Promise((r) => setTimeout(r, wait));
-        if (!signin || signin.user_code !== d.user_code) return;
-        const t = await (await fetch('https://github.com/login/oauth/access_token', {
-          method: 'POST',
-          headers: { Accept: 'application/json', 'Content-Type': 'application/x-www-form-urlencoded' },
-          body: form({ client_id: clientId(), device_code: d.device_code, grant_type: 'urn:ietf:params:oauth:grant-type:device_code' }),
-        })).json();
-        if (t.error === 'authorization_pending') continue;
-        if (t.error === 'slow_down') { wait += 5000; continue; }
-        if (!t.access_token) throw new Error(t.error === 'access_denied' ? 'Sign-in was cancelled.' : 'The code ran out. Try again.');
-        const r = await checkSponsor(t.access_token);
-        write(K.gh, { token: t.access_token, login: r.login });
-        setSponsor(r);
-        signin = r.ok ? null : { notSponsor: r.login };
-        render();
-        return;
-      }
-      if (signin && signin.user_code === d.user_code) { signin = { error: 'The code ran out. Try again.' }; render(); }
-    } catch (e) {
-      signin = { error: (e && e.message) || "Couldn't reach GitHub." };
-      render();
-    }
-  }
-  async function recheck(force) {
-    const gh = read(K.gh);
-    if (!gh || !gh.token) return;
-    if (!force && sponsor && Date.now() - sponsor.at < SPONSOR_RECHECK) return;
-    try {
-      const r = await checkSponsor(gh.token);
-      if (r.revoked) { rawRemove.call(localStorage, K.gh); render(); return; }
-      setSponsor(r);
-    } catch (e) {}
-  }
-  function signOut() {
-    try { rawRemove.call(localStorage, K.gh); } catch (e) {}
-    signin = null;
     render();
   }
 
@@ -604,103 +506,121 @@
     section.dataset.cat = 'sync';
     about.parentElement.insertBefore(section, about);
     section.addEventListener('click', onClick);
-    section.addEventListener('submit', (e) => { e.preventDefault(); const i = section.querySelector('#sync-code-input'); if (i) joinWithCode(i.value); });
+    section.addEventListener('submit', onSubmit);
     render();
   }
 
+  // pieces shared by Settings → Sync and the invite on the home screen
+  const linkButtons = () => `<div class="sync-row"><button class="btn-pill-primary" data-act="link">Show a code</button><button class="btn-outline-pill" data-act="want-code">I have a code</button></div>`;
+  function linkPanel() {
+    const left = Math.max(0, Math.round((linking.until - Date.now()) / 1000));
+    return `<div class="sync-pair">
+      <div class="sync-qr">${qrSvg(`${LINK_PAGE}#${linking.code}`)}</div>
+      <div class="sync-pair-text"><span>On your other device open <b>Settings → Sync → I have a code</b>, or scan this with your phone's camera.</span>
+      <div class="sync-code">${showCode(linking.code)}</div>
+      ${linking.error ? `<span class="sync-note sync-error">${esc(linking.error)}</span>` : `<span class="sync-note" data-countdown>Works for ${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}</span>`}
+      <div class="sync-row"><button class="btn-outline-pill" data-act="stop-link">Done</button></div></div></div>`;
+  }
+  function joinForm() {
+    const note = joining && joining.error ? `<span class="sync-note sync-error">${esc(joining.error)}</span>`
+      : joining && joining.busy ? '<span class="sync-note">Linking…</span>'
+        : '<span class="sync-note">Enter the code your other device shows.</span>';
+    return `<form class="sync-join">
+      <input class="m3-input sync-code-input" placeholder="Code" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="9">
+      <button class="btn-pill-primary" type="submit"${joining && joining.busy ? ' disabled' : ''}>Link</button></form>${note}`;
+  }
+  let wantCode = false; // "I have a code" was tapped
+
   function render() {
+    renderInvite();
     if (!section) return;
     const cats = catsOn();
-    const gh = read(K.gh);
-    const parts = [`<span class="settings-section-title">Sync <span class="sync-badge">Early access</span></span>`];
+    const parts = [`<span class="settings-section-title">Sync <span class="sync-badge">New</span></span>`];
     parts.push(`<div class="m3-group"><div class="setting-item"><div class="sync-intro">
       <b>Your music on all your devices</b>
-      <span>Link your phone and computer: playlists, favorites, history, Encore stats, the look of the app and what you're listening to stay the same everywhere. Your data stays on your devices; linked devices talk to each other directly while they're open.</span>
+      <span>Link your phone and computer: playlists, favorites, history, Encore stats and what you're listening to stay the same everywhere. Free, no account. Your data stays on your devices; linked devices talk to each other directly while they're open.</span>
     </div></div></div>`);
-
-    if (!unlocked()) {
-      let body;
-      if (!clientId()) body = '<span class="sync-note">Sync opens for sponsors very soon.</span>';
-      else if (signin && signin.user_code) {
-        body = `<div class="sync-pair">
-          <div class="sync-qr">${qrSvg(signin.verification_uri)}</div>
-          <div class="sync-pair-text"><span>Open <b>${esc(signin.verification_uri.replace(/^https:\/\//, ''))}</b> and enter</span>
-          <div class="sync-code">${esc(signin.user_code)}</div>
-          <div class="sync-row"><button class="btn-pill-primary" data-act="open-gh">Open GitHub</button><button class="btn-outline-pill" data-act="cancel-signin">Cancel</button></div>
-          <span class="sync-note">Waiting for GitHub…</span></div></div>`;
-      } else if (signin && signin.busy) body = '<span class="sync-note">Asking GitHub…</span>';
-      else {
-        const msg = signin && signin.notSponsor ? `<span class="sync-note">@${esc(signin.notSponsor)} isn't sponsoring yet. Once you are, check again.</span>`
-          : signin && signin.error ? `<span class="sync-note sync-error">${esc(signin.error)}</span>`
-            : sponsor && !sponsor.ok && sponsor.login ? `<span class="sync-note">@${esc(sponsor.login)} isn't a sponsor right now, so sync is paused. Your data stays on each device.</span>`
-              : group ? '<span class="sync-note">Sync is paused: a sponsor has to sign in with GitHub again on one of your devices.</span>' : '';
-        body = `<span class="sync-note">Sync is for everyone sponsoring Muriel on GitHub, at any amount.</span>${msg}
-          <div class="sync-row"><button class="btn-pill-primary" data-act="sponsor">Become a sponsor</button>
-          <button class="btn-outline-pill" data-act="${gh && gh.token ? 'recheck' : 'signin'}">${gh && gh.token ? 'Check again' : "I'm a sponsor"}</button></div>`;
-      }
-      parts.push(`<div class="m3-group"><div class="setting-item sync-block">${body}</div></div>`);
-      if (!group) parts.push(joinBlock(true));
-    } else {
-      // devices
-      const rows = [];
-      rows.push(`<div class="setting-item sync-device"><span class="sync-dev-icon">${deviceIcon(kind)}</span><div class="sync-dev-text"><b>${esc(device.name)}</b><span>This device</span></div></div>`);
+    if (group) {
+      const rows = [`<div class="setting-item sync-device"><span class="sync-dev-icon">${deviceIcon(kind)}</span><div class="sync-dev-text"><b>${esc(device.name)}</b><span>This device</span></div></div>`];
       for (const [id, m] of liveMembers()) {
         const on = conns.get(id) && conns.get(id).ok;
         rows.push(`<div class="setting-item sync-device"><span class="sync-dev-icon">${deviceIcon(m.kind)}</span><div class="sync-dev-text"><b>${esc(m.name)}</b><span class="${on ? 'sync-online' : ''}">${on ? 'Connected' : ago(seen[id])}</span></div><button class="btn-outline-pill" data-act="unlink" data-id="${esc(id)}">Unlink</button></div>`);
       }
       parts.push(`<div class="m3-group">${rows.join('')}</div>`);
-      if (linking) {
-        const left = Math.max(0, Math.round((linking.until - Date.now()) / 1000));
-        parts.push(`<div class="m3-group"><div class="setting-item sync-block"><div class="sync-pair">
-          <div class="sync-qr">${qrSvg(`${LINK_PAGE}#${linking.code}`)}</div>
-          <div class="sync-pair-text"><span>On your other device open <b>Settings → Sync → Enter a code</b>, or scan this with your phone's camera.</span>
-          <div class="sync-code">${showCode(linking.code)}</div>
-          ${linking.error ? `<span class="sync-note sync-error">${esc(linking.error)}</span>` : `<span class="sync-note" data-countdown>Works for ${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}</span>`}
-          <div class="sync-row"><button class="btn-outline-pill" data-act="stop-link">Done</button></div></div></div></div></div>`);
-      } else {
-        parts.push(`<div class="m3-group"><div class="setting-item sync-block"><div class="sync-row"><button class="btn-pill-primary" data-act="link">Link a device</button></div></div></div>`);
-      }
-      parts.push(joinBlock(false));
-      // what syncs
-      const sw = (c, name, hint) => `<div class="setting-item"><div class="setting-item-top" style="align-items:center;"><div style="display:flex;flex-direction:column;gap:2px;"><span class="setting-name">${name}</span><span class="sync-note">${hint}</span></div><button class="effect-switch-btn${cats[c] ? ' active' : ''}" type="button" data-act="cat" data-cat-key="${c}" aria-label="${name}"><span class="thumb"></span></button></div></div>`;
-      parts.push(`<div class="m3-group">
-        ${sw('library', 'Library', 'Playlists and favorites')}
-        ${sw('history', 'History and stats', 'Recently played and Encore')}
-        ${sw('look', 'Look', 'Theme, colors, font and lyrics style')}
-        ${sw('continue', 'Continue listening', 'Pick up where another device left off')}
-      </div>`);
-      parts.push(`<div class="m3-group"><div class="setting-item sync-block">
-        <span class="sync-note">${sponsor && sponsor.login ? `Unlocked by @${esc(sponsor.login)}. Thank you for sponsoring!` : ''}</span>
-        <div class="sync-row">${group ? '<button class="btn-outline-pill" data-act="leave">Stop syncing this device</button>' : ''}${gh && gh.token ? '<button class="btn-outline-pill" data-act="signout">Sign out of GitHub</button>' : ''}</div>
-      </div></div>`);
     }
-    const focused = document.activeElement && document.activeElement.id === 'sync-code-input' ? document.activeElement.value : null;
-    section.innerHTML = parts.join('');
-    if (focused !== null) { const i = section.querySelector('#sync-code-input'); if (i) { i.value = focused; i.focus(); } }
-  }
-  function joinBlock(locked) {
-    const note = joining && joining.error ? `<span class="sync-note sync-error">${esc(joining.error)}</span>`
-      : joining && joining.busy ? '<span class="sync-note">Linking…</span>'
-        : locked ? '<span class="sync-note">Linking to a sponsor\'s device? Enter the code it shows.</span>' : '';
-    return `<div class="m3-group"><div class="setting-item sync-block"><form class="sync-join">
-      <input id="sync-code-input" class="m3-input" placeholder="Enter a code" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="9">
-      <button class="btn-outline-pill" type="submit"${joining && joining.busy ? ' disabled' : ''}>Link</button></form>${note}</div></div>`;
+    const pairing = linking ? linkPanel() : wantCode || (joining && (joining.busy || joining.error)) ? joinForm() : linkButtons();
+    parts.push(`<div class="m3-group"><div class="setting-item sync-block">${group && !linking ? '<span class="setting-name">Link another device</span>' : ''}${pairing}</div></div>`);
+    const sw = (c, name, hint) => `<div class="setting-item"><div class="setting-item-top" style="align-items:center;"><div style="display:flex;flex-direction:column;gap:2px;"><span class="setting-name">${name}</span><span class="sync-note">${hint}</span></div><button class="effect-switch-btn${cats[c] ? ' active' : ''}" type="button" data-act="cat" data-cat-key="${c}" aria-label="${name}"><span class="thumb"></span></button></div></div>`;
+    parts.push(`<div class="m3-group">
+      ${sw('library', 'Library', 'Playlists and favorites')}
+      ${sw('history', 'History and stats', 'Recently played and Encore')}
+      ${sw('look', 'Theme', 'Same colors, font and lyrics style on every device')}
+      ${sw('continue', 'Continue listening', 'Pick up where another device left off')}
+    </div>`);
+    if (group) parts.push(`<div class="m3-group"><div class="setting-item sync-block"><div class="sync-row"><button class="btn-outline-pill" data-act="leave">Stop syncing this device</button></div></div></div>`);
+    paint(section, parts.join(''));
   }
 
+  // re-renders keep a half-typed code
+  function paint(el, html) {
+    const typing = document.activeElement && document.activeElement.classList.contains('sync-code-input') && el.contains(document.activeElement) ? document.activeElement.value : null;
+    el.innerHTML = html;
+    if (typing !== null) { const i = el.querySelector('.sync-code-input'); if (i) { i.value = typing; i.focus(); } }
+  }
+
+  // ---------- home screen: "Sync your devices?" ----------
+  // asks once (until linked or "Not now"), then whether the theme should follow too, then links
+  let inviteStep = 'ask';
+  function renderInvite() {
+    const box = document.getElementById('section-sync-invite');
+    if (!box) return;
+    const show = !group && read(K.invite) !== 'dismissed';
+    box.hidden = !show;
+    if (!show) { if (box.innerHTML) box.innerHTML = ''; return; }
+    let body;
+    if (inviteStep === 'theme') {
+      body = `<div class="sync-invite-text"><b>Keep the same theme on every device?</b><span>Colors, font and lyrics style follow you too. You can change this later in Settings → Sync.</span></div>
+        <div class="sync-row"><button class="btn-pill-primary" data-act="theme-yes">Yes, sync my theme</button><button class="btn-outline-pill" data-act="theme-no">No, just my music</button></div>`;
+    } else if (inviteStep === 'pair') {
+      const pairing = linking ? linkPanel() : wantCode || (joining && (joining.busy || joining.error)) ? joinForm() : linkButtons();
+      body = `<div class="sync-invite-text"><b>Link your other device</b><span>Show a code here and enter it on the other device (or scan the QR code with your phone), or enter the code your other device shows.</span></div>${pairing}`;
+    } else {
+      body = `<div class="sync-invite-text"><b>Sync your devices?</b><span>Keep playlists, favorites and history the same on your phone and computer. Free, no account.</span></div>
+        <div class="sync-row"><button class="btn-pill-primary" data-act="invite-setup">Set up sync</button><button class="btn-outline-pill" data-act="invite-dismiss">Not now</button></div>`;
+    }
+    paint(box, `<div class="sync-invite"><span class="sync-invite-icon">${ICON}</span><div class="sync-invite-body">${body}</div></div>`);
+  }
+  function mountInvite() {
+    const box = document.getElementById('section-sync-invite');
+    if (!box || box._sync) return;
+    box._sync = true;
+    box.addEventListener('click', onClick);
+    box.addEventListener('submit', onSubmit);
+    renderInvite();
+  }
+
+  function onSubmit(e) {
+    e.preventDefault();
+    const i = e.target.querySelector('.sync-code-input');
+    if (i) joinWithCode(i.value);
+  }
   function onClick(e) {
     const b = e.target.closest('[data-act]');
     if (!b) return;
     const act = b.dataset.act;
-    if (act === 'sponsor') openUrl(SPONSOR_URL);
-    else if (act === 'signin') startSignIn();
-    else if (act === 'recheck') { signin = { busy: true }; render(); recheck(true).then(() => { signin = sponsor && sponsor.ok ? null : { notSponsor: sponsor && sponsor.login }; render(); }); }
-    else if (act === 'open-gh' && signin) openUrl(signin.verification_uri);
-    else if (act === 'cancel-signin') { signin = null; render(); }
-    else if (act === 'link') startLinking();
-    else if (act === 'stop-link') stopLinking();
+    if (act === 'link') { wantCode = false; startLinking(); }
+    else if (act === 'want-code') {
+      const where = b.closest('#section-sync-invite') ? '#section-sync-invite' : '.sync-section';
+      wantCode = true; joining = null; render();
+      const f = document.querySelector(`${where} .sync-code-input`);
+      if (f) f.focus();
+    }
+    else if (act === 'stop-link') { wantCode = false; stopLinking(); }
     else if (act === 'unlink') { const m = members[b.dataset.id]; if (m && confirm(`Unlink ${m.name}? Its music stays on it, it just stops syncing.`)) unlink(b.dataset.id); }
     else if (act === 'leave') { if (confirm('Stop syncing this device? Everything stays on it.')) leave(); }
-    else if (act === 'signout') signOut();
+    else if (act === 'invite-setup') { inviteStep = 'theme'; renderInvite(); }
+    else if (act === 'invite-dismiss') { write(K.invite, 'dismissed'); renderInvite(); }
+    else if (act === 'theme-yes' || act === 'theme-no') { write(K.cats, { ...read(K.cats, {}), look: act === 'theme-yes' }); inviteStep = 'pair'; render(); }
     else if (act === 'cat') {
       const c = b.dataset.catKey;
       const next = { ...read(K.cats, {}), [c]: !catsOn()[c] };
@@ -722,14 +642,17 @@
   // ---------- start ----------
   function wake() {
     if (document.hidden) return;
-    recheck(false);
     if (active()) { startPeer(); if (peer && peer.disconnected) try { peer.reconnect(); } catch (e) {} dialAll(); }
     updateContinue();
     render();
   }
   document.addEventListener('visibilitychange', () => { if (!document.hidden) wake(); else if (group) publishNp(true); });
   window.addEventListener('online', wake);
-  setInterval(() => { if (linking && section) { const c = section.querySelector('[data-countdown]'); const left = Math.max(0, Math.round((linking.until - Date.now()) / 1000)); if (c) c.textContent = `Works for ${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}`; } }, 1000);
+  setInterval(() => {
+    if (!linking) return;
+    const left = Math.max(0, Math.round((linking.until - Date.now()) / 1000));
+    document.querySelectorAll('[data-countdown]').forEach((c) => { c.textContent = `Works for ${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}`; });
+  }, 1000);
 
   function hook() {
     const C = window.MurielCore;
@@ -740,8 +663,8 @@
       C.audio.addEventListener('timeupdate', () => publishNp(false));
     }
     mount();
+    mountInvite();
     if (active()) startPeer();
-    setTimeout(() => recheck(false), 5000);
     updateContinue();
   }
   if (window.MurielCore) hook(); else window.addEventListener('muriel:ready', hook, { once: true });
@@ -749,7 +672,7 @@
   window.MurielSync = {
     // other devices' Encore data, for encore.js
     listenDbs: () => (catsOn().history ? Object.entries(listens).filter(([id]) => id !== device.id && members[id] && !members[id].del).map(([, e]) => e.db).filter(Boolean) : []),
-    status: () => ({ device, group: !!group, unlocked: unlocked(), members, connected: [...conns].filter(([, s]) => s.ok).map(([id]) => id) }),
+    status: () => ({ device, group: !!group, members, connected: [...conns].filter(([, s]) => s.ok).map(([id]) => id) }),
     link: startLinking,
     join: joinWithCode,
     handleLink,

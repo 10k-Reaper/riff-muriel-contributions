@@ -7525,7 +7525,36 @@ document.addEventListener('DOMContentLoaded', async () => {
     renderFallback();
   }
 
+  // Home: "Your playlists". They only lived in a side drawer, and many people never found them.
+  function renderHomePlaylists() {
+    const box = document.getElementById('section-home-playlists');
+    if (!box) return;
+    const lists = state.playlists || [];
+    box.innerHTML = `<div class="onrepeat-head"><h3 class="section-title">Your playlists</h3></div><div class="home-pl-row"></div>`;
+    const row = box.querySelector('.home-pl-row');
+    const card = (cls, onClick) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = `home-pl-card ${cls}`;
+      b.addEventListener('click', onClick);
+      row.appendChild(b);
+      return b;
+    };
+    const add = card('home-pl-new', () => { if (el.btnNewPlaylist) el.btnNewPlaylist.click(); });
+    add.innerHTML = `<span class="home-pl-cover"><svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg></span><b>New playlist</b><span>${lists.length ? '&nbsp;' : 'Make your first one'}</span>`;
+    lists.forEach((pl) => {
+      const b = card('', () => openPlaylistDetail(pl.id));
+      const cover = document.createElement('span');
+      cover.className = 'home-pl-cover';
+      renderPlaylistCover(cover, pl, 150);
+      const n = (pl.tracks || []).length;
+      b.append(cover);
+      b.insertAdjacentHTML('beforeend', `<b>${escapeHtml(pl.name || 'Untitled')}</b><span>${n} song${n === 1 ? '' : 's'}</span>`);
+    });
+  }
+
   function renderPlaylistsList() {
+    renderHomePlaylists();
     if (!el.playlistsList) return;
     el.playlistsList.innerHTML = '';
     if (!state.playlists || state.playlists.length === 0) {
