@@ -151,7 +151,8 @@ test('server: Last.fm logins are per profile, kept encrypted, and never handed t
         const p = Object.fromEntries(params);
         calls.push(p);
         // every call is signed: md5 of the sorted params (minus format) and the secret
-        const secret = p.api_key === CUSTOM.key ? CUSTOM.secret : '716cc0a784bb62835de5bd674e65eb57';
+        assert.equal(p.api_key, CUSTOM.key, 'no built-in key: every call uses the key the person entered');
+        const secret = CUSTOM.secret;
         const sig = crypto.createHash('md5').update(Object.keys(p).filter((k) => k !== 'format' && k !== 'api_sig').sort().map((k) => k + p[k]).join('') + secret).digest('hex');
         assert.equal(p.api_sig, sig, `bad signature for ${p.method}`);
         let answer;
@@ -180,7 +181,12 @@ test('server: Last.fm logins are per profile, kept encrypted, and never handed t
     assert.equal((await post(port, '/api/lastfm/status', { profile: 'default' }, token)).data.connected, false);
 
     // browser sign-in: token, a first poll before approval, then the session
-    const start = await post(port, '/api/lastfm/token', { profile: 'default' }, token);
+    // Muriel has no Last.fm API account of its own yet: without a key the dialog says what's needed
+    assert.equal((await post(port, '/api/lastfm/status', { profile: 'default' }, token)).data.needsKey, true);
+    const noKey = await post(port, '/api/lastfm/token', { profile: 'default' }, token);
+    assert.equal(noKey.status, 400);
+    assert.match(noKey.data.error, /API key/);
+    const start = await post(port, '/api/lastfm/token', { profile: 'default', apiKey: CUSTOM.key, apiSecret: CUSTOM.secret }, token);
     assert.equal(start.data.success, true);
     assert.match(start.data.authUrl, /^https:\/\/www\.last\.fm\/api\/auth\/\?api_key=[a-f0-9]{32}&token=tok12345678$/);
     assert.equal((await post(port, '/api/lastfm/session', { profile: 'default' }, token)).data.pending, true);
@@ -244,10 +250,10 @@ test('server: Last.fm logins are per profile, kept encrypted, and never handed t
     revoked = false;
 
     // log out
-    await post(port, '/api/lastfm/mobile-session', { profile: 'default', username: 'u', password: 'right' }, token);
+    await post(port, '/api/lastfm/mobile-session', { profile: 'default', username: 'u', password: 'right', apiKey: CUSTOM.key, apiSecret: CUSTOM.secret }, token);
     assert.equal((await post(port, '/api/lastfm/logout', { profile: 'default' }, token)).data.success, true);
     assert.equal((await post(port, '/api/lastfm/status', { profile: 'default' }, token)).data.connected, false);
-    assert.equal((await post(port, '/api/lastfm/token', { profile: 'default' }, token)).status, 200);
+    assert.equal((await post(port, '/api/lastfm/token', { profile: 'default', apiKey: CUSTOM.key, apiSecret: CUSTOM.secret }, token)).status, 200);
   } finally {
     if (server) await server.stopServer();
     delete require.cache[require.resolve('../server')];
@@ -277,7 +283,7 @@ test('server: without a keychain the login lasts until Muriel closes, and says s
     server = require('../server');
     const port = await server.startServer(0);
     const token = server.getServerToken();
-    const r = await post(port, '/api/lastfm/mobile-session', { profile: 'default', username: 'u', password: 'p' }, token);
+    const r = await post(port, '/api/lastfm/mobile-session', { profile: 'default', username: 'u', password: 'p', apiKey: 'c'.repeat(32), apiSecret: 'd'.repeat(32) }, token);
     assert.equal(r.data.success, true);
     assert.equal(r.data.saved, false);
     assert.match(r.data.error, /until Muriel closes|saved securely/);

@@ -70,6 +70,13 @@
     try { profiles = window.MurielProfiles ? window.MurielProfiles.list().map((p) => p.id) : []; } catch (e) {}
     const r = await api('status', profiles.length ? { profiles } : {});
     if (r && r.success) account = { connected: !!r.connected, username: String(r.username || ''), error: r.error ? String(r.error) : '' };
+    // no built-in Muriel key yet (server.js): the key fields are needed, not optional
+    const keyBox = $('lastfm-input-key') && $('lastfm-input-key').closest('details');
+    if (r && r.success && r.needsKey && keyBox) {
+      keyBox.open = true;
+      const summary = keyBox.querySelector('summary');
+      if (summary) summary.textContent = 'Your Last.fm API key (needed)';
+    }
     render();
   }
 
