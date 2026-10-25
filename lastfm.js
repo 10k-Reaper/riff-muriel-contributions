@@ -39,6 +39,13 @@
     s.classList.toggle('hidden', !text);
   }
 
+  // UI language (i18n.js); the Last.fm name is filled in after translating, so it's never sent
+  const I18N = window.MurielI18n;
+  const T = (s) => (I18N ? I18N.T(s) : s);
+  const Tf = (s, ...a) => (I18N ? I18N.Tf(s, ...a) : s.replace(/\{(\d+)\}/g, (m, i) => a[i]));
+  // the card's line is drawn before the words of another language arrive: draw it again when they do
+  window.addEventListener('muriel:i18n', () => render());
+
   function cardLine(text) {
     const label = $('lastfm-status-label');
     if (label) label.textContent = text;
@@ -47,8 +54,8 @@
   function render() {
     const on = account.connected;
     const who = on ? `@${account.username || 'you'}` : '';
-    if (!on) cardLine(account.error || 'Not connected');
-    else cardLine(enabled ? `Scrobbling as ${who}` : `Paused (${who})`);
+    if (!on) cardLine(account.error || T('Not connected'));
+    else cardLine(enabled ? Tf('Scrobbling as {0}', who) : Tf('Paused ({0})', who));
     const toggle = $('btn-lastfm-toggle');
     if (toggle) {
       toggle.classList.toggle('active', on && enabled);
