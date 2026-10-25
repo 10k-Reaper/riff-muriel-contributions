@@ -1,4 +1,4 @@
-## Muriel 1.2.4
+## Muriel 1.2.5
 
 **Downloads**
 - **iPhone:** [ios-latest](https://github.com/cloverscripts/riff-muriel/releases/tag/ios-latest) (`Muriel.ipa`, install with SideStore, AltStore or Sideloadly). Needs iOS 16.2 or newer
@@ -9,9 +9,7 @@
 
 Or get it from the website: https://cloverscripts.github.io/riff-muriel/
 
-**New**
-- **Download all favorites:** Favorites has a "Download all" button, like playlists. Downloaded songs play straight from your device, no waiting for them to load
-- **Download what you select:** tap Select in favorites or a playlist, pick songs, and tap Download
-- **Updates on your phone:** the "Update available" banner now names the new version (like "Muriel 1.2.4 is ready") on iPhone and Android too, and sits below the notch / Dynamic Island
+**Fixed**
+- **Speed and pitch stay on:** the speed and pitch you set in Sound settings (or with a preset like slowed or nightcore) no longer reset to normal when the next song starts, mostly seen on iPhone
 
-Everything from 1.2.3 is included too: sync from the home screen shows its code again, playlists open at the top, Play and Shuffle buttons, repeat in three steps, the iPhone Dynamic Island player and free sync between your devices.
+Everything from 1.2.4 is included too: Download all favorites, download the songs you select, "Update available" with the version number on phones, Play and Shuffle buttons, repeat in three steps and free sync between your devices.
