@@ -5302,11 +5302,8 @@ async function handleHotPicks(req, res, parsedUrl) {
 // not kept. Nothing here logs a key, token or password.
 // The default key pair is upstream Riff's Last.fm application (published in its source). Muriel can register its
 // own at last.fm/api/account/create and put it here; people can also enter their own pair in the Last.fm dialog.
-// Muriel's own Last.fm API account (last.fm/api/account/create). While these are empty, people enter their own
-// key and shared secret in the Last.fm dialog.
-const LASTFM_API_KEY = '';
-const LASTFM_API_SECRET = '';
-const LASTFM_NEEDS_KEY = 'Enter a Last.fm API key and shared secret below (free at last.fm/api/account/create)';
+const LASTFM_API_KEY = '4b4f73bda181868353f9b438604adf52';
+const LASTFM_API_SECRET = '716cc0a784bb62835de5bd674e65eb57';
 const LASTFM_KEY_RE = /^[a-f0-9]{32}$/i;
 const LASTFM_PROFILE_RE = /^(?:default|[a-z0-9]{4,16})$/;
 const lastfmAuthPath = path.join(DATA_DIR, 'lastfm-auth.enc');
@@ -5413,7 +5410,7 @@ function lastfmCall(params, pair, method = 'POST') {
 function lastfmPairFrom(body) {
   const key = String(body.apiKey || '').trim();
   const secret = String(body.apiSecret || '').trim();
-  if (!key && !secret) return LASTFM_API_KEY ? { pair: null } : { error: LASTFM_NEEDS_KEY };
+  if (!key && !secret) return { pair: null };
   if (!LASTFM_KEY_RE.test(key) || !LASTFM_KEY_RE.test(secret)) return { error: 'An API key and its shared secret are 32 letters and digits each' };
   return { pair: { key, secret } };
 }
@@ -5423,7 +5420,7 @@ const lastfmMessage = (r) => lastfmText(r && r.message, 200) || 'Last.fm refused
 
 function lastfmStatus(profile) {
   const a = lastfmLoad()[profile];
-  return { connected: !!a, username: a ? a.user : '', saved: !!a && !!lastfmVault(), error: lastfmStoreError, needsKey: !LASTFM_API_KEY };
+  return { connected: !!a, username: a ? a.user : '', saved: !!a && !!lastfmVault(), error: lastfmStoreError };
 }
 
 function lastfmConnect(profile, session, pair) {
