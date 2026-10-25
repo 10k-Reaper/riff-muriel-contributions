@@ -7288,6 +7288,14 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   if (el.playbarArtist) {
     el.playbarArtist.addEventListener('click', (e) => {
+      // On phones the mini player opens Now Playing wherever it's tapped (mobile-ui.js); the artist is a tap away
+      // there. The line spans the whole bar, so only the name itself opens the artist: a tap just under a short
+      // title used to.
+      if (isPhoneApp && !document.body.classList.contains('np-open')) return;
+      const name = document.createRange();
+      name.selectNodeContents(el.playbarArtist);
+      const box = name.getBoundingClientRect();
+      if (box.width && (e.clientX < box.left - 4 || e.clientX > box.right + 4)) return;
       e.stopPropagation();
       if (state.currentTrack && state.currentTrack.artist) {
         openTrackArtist(state.currentTrack);
