@@ -574,7 +574,8 @@
   function renderInvite() {
     const box = document.getElementById('section-sync-invite');
     if (!box) return;
-    const show = !group && read(K.invite) !== 'dismissed';
+    // "Show a code" sets up the group right away: the card stays up while that code is on screen
+    const show = (!group && read(K.invite) !== 'dismissed') || (inviteStep === 'pair' && !!linking);
     box.hidden = !show;
     if (!show) { if (box.innerHTML) box.innerHTML = ''; return; }
     let body;

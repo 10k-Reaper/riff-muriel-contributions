@@ -7937,6 +7937,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   function openPlaylistDetail(playlistId) {
     const pl = state.playlists.find(p => p.id === playlistId);
     if (!pl) return;
+    // the page shares its scroll with the view it was opened from: opened from "Your playlists" low on the
+    // home screen, it showed up halfway down its song list with the header out of sight
+    const opening = state.currentView !== 'playlist-detail' || state.currentPlaylistId !== playlistId;
     state.currentPlaylistId = playlistId;
     if (el.playlistDetailTitle) el.playlistDetailTitle.textContent = pl.name;
     const query = el.playlistSearchInput ? normalizeSearch(el.playlistSearchInput.value) : '';
@@ -7971,6 +7974,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         document.documentElement.style.removeProperty('--playlist-accent-color');
       }
     }
+    if (opening) { const main = document.querySelector('.main-content'); if (main) main.scrollTop = 0; }
     if (el.playlistTracksList) renderTracks(el.playlistTracksList, filtered, 'playlist');
     switchView('playlist-detail');
     renderPlaylistsList();
