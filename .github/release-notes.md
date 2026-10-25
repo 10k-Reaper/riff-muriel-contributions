@@ -1,4 +1,4 @@
-## Muriel 1.2.1
+## Muriel 1.2.2
 
 **Downloads**
 - **iPhone:** [ios-latest](https://github.com/cloverscripts/riff-muriel/releases/tag/ios-latest) (`Muriel.ipa`, install with SideStore, AltStore or Sideloadly). Needs iOS 16.2 or newer
@@ -10,11 +10,10 @@
 Or get it from the website: https://cloverscripts.github.io/riff-muriel/
 
 **New**
-- **iPhone Dynamic Island player:** long-press the Dynamic Island while music plays for the song, the line being sung, a live progress bar and **shuffle, previous, play / pause and next** buttons (buttons need iOS 17). The lock screen card shows the progress too
-- **Android player:** **shuffle and repeat buttons** in the quick-settings and lock-screen player, next to previous and next, lit when they're on
-- **Sort playlists and favorites** by **album** or by title **Z to A**, besides date added, title A to Z, artist and length. "Date added (order added)" keeps the order you added the songs in
+- **Play and Shuffle buttons on every playlist**, right under its name. Shuffle plays the whole playlist in random order
+- **Repeat has three steps now:** tap once to repeat the playlist, tap again to repeat the song (the icon gets a **1**), a third tap turns it off. Works from the Android player buttons too
 
-**Changed**
-- The iPhone app now needs iOS 16.2 or newer
+**Fixed**
+- "It only plays the same song over and over": the repeat button used to repeat the song only, which was easy to switch on by accident. Repeat off now plays the playlist once and stops at the end; press play to start it over
 
-Everything from 1.2.0 is included too: free sync between your devices (code or QR code, no account), "Your playlists" on the home screen, and all earlier fixes.
+Everything from 1.2.1 is included too: the iPhone Dynamic Island player, shuffle and repeat in the Android player, sorting playlists by album or Z to A, free sync between your devices and "Your playlists" on the home screen.
