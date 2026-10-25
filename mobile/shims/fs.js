@@ -86,6 +86,14 @@ const fs = {
     nodes.set(p, { isDir: false, size, mtimeMs: Date.now() });
   },
   _flush: () => chain,
+  // A picked file (File/Blob) straight to disk, in pieces: never read into memory whole (store.writeBlob).
+  // Resolves once it's written; if that failed, the file isn't there.
+  _writeBlob(p, blob) {
+    p = norm(p);
+    ensureParents(p);
+    nodes.set(p, { isDir: false, size: blob.size, mtimeMs: Date.now() });
+    return persist(() => store.writeBlob(p, blob).catch((e) => { nodes.delete(p); throw e; }));
+  },
 
   existsSync: (p) => nodes.has(norm(p)),
   accessSync: (p) => { if (!nodes.has(norm(p))) throw err('ENOENT', p); },

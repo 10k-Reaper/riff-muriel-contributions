@@ -40,7 +40,8 @@ module.exports = function electronAPI({ ready, port, fs, fileUrlFor }) {
       if (!file) return null;
       await ready;
       const vpath = `/data/backgrounds/bg_${Date.now()}.${extOf(file.name)}`;
-      fs.writeFileSync(vpath, new Uint8Array(await file.arrayBuffer()));
+      await fs._writeBlob(vpath, file);
+      if (!fs.existsSync(vpath)) return null;
       // the absolute file URL changes when iOS moves the app container (every reinstall); mobile-ui.js
       // rebuilds saved ones on launch from the file name
       return fileUrlFor(vpath);
@@ -62,17 +63,18 @@ module.exports = function electronAPI({ ready, port, fs, fileUrlFor }) {
     async importAudioFiles() {
       const files = await pickFiles('audio/*,.mp3,.m4a,.flac,.wav,.aac,.ogg,.opus', true);
       await ready;
+      // lossless files take a while to copy; say so, or the app looks stuck
+      const total = files.reduce((n, f) => n + f.size, 0);
+      if (total > 20e6 && window.MurielCore) window.MurielCore.toast(`Adding ${files.length} song${files.length === 1 ? '' : 's'}…`, 'info');
       const out = [];
       for (const f of files) {
         const ext = extOf(f.name);
         const id = 'local_' + crypto._sha1(f.name + f.size).slice(0, 12);
         const file = `${id}.${ext}`;
-        if (!fs.existsSync(`/data/library/${file}`)) {
-          fs.writeFileSync(`/data/library/${file}`, new Uint8Array(await f.arrayBuffer()));
-          // finish writing this file before reading the next: queued writes each held a whole song in
-          // memory (20 FLACs could take the app down)
-          await fs._flush();
-        }
+        const target = `/data/library/${file}`;
+        // one at a time, each in pieces (fs._writeBlob); a copy cut short (app closed mid-import) is redone
+        if (!fs.existsSync(target) || fs.statSync(target).size !== f.size) await fs._writeBlob(target, f);
+        if (!fs.existsSync(target)) continue; // couldn't be saved (storage full): the app has said so
         out.push({ id, file, ext, name: f.name.replace(/\.[^.]+$/, '') });
       }
       await fs._flush();

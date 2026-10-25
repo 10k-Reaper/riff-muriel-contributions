@@ -7415,7 +7415,8 @@ document.addEventListener('DOMContentLoaded', async () => {
           });
         }
       }
-      await Promise.all([worker(), worker()]);
+      // one at a time on phones: each probe can pull a whole (lossless, so big) file into memory there
+      await Promise.all(isPhoneApp ? [worker()] : [worker(), worker()]);
 
       await renderLocalView(true);
       showToast(`Added ${items.length} tracks`);

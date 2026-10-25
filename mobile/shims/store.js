@@ -17,6 +17,28 @@ function b64FromBytes(bytes) {
   return btoa(s);
 }
 
+// Files reach the native side as base64 text. A FLAC (30-150 MB) used to go over as one string, held several
+// times over on both sides of the bridge, and that crashed the app. Now they go in pieces this big
+// (a multiple of 3, so the base64 of the pieces joins up into the base64 of the whole file).
+const PIECE = 3 * 256 * 1024;
+
+async function writeInPieces(vpath, size, piece) {
+  const path = toReal(vpath);
+  let at = 0;
+  try {
+    do {
+      const data = b64FromBytes(await piece(at, Math.min(size, at + PIECE)));
+      if (at === 0) await Filesystem.writeFile({ path, directory: DIR, data, recursive: true });
+      else await Filesystem.appendFile({ path, directory: DIR, data });
+      at += PIECE;
+    } while (at < size);
+  } catch (e) {
+    // no half-written file left behind (it would look like the whole song)
+    try { await Filesystem.deleteFile({ path, directory: DIR }); } catch (x) {}
+    throw e;
+  }
+}
+
 async function walk(rpath, out) {
   let res;
   try { res = await Filesystem.readdir({ path: rpath, directory: DIR }); } catch (e) { return; }
@@ -47,9 +69,10 @@ module.exports = {
     await Filesystem.writeFile({ path: toReal(vpath), directory: DIR, data: text, encoding: Encoding.UTF8, recursive: true });
   },
 
-  async writeBytes(vpath, bytes) {
-    await Filesystem.writeFile({ path: toReal(vpath), directory: DIR, data: b64FromBytes(bytes), recursive: true });
-  },
+  writeBytes: (vpath, bytes) => writeInPieces(vpath, bytes.length, async (from, to) => bytes.subarray(from, to)),
+
+  // a picked File: only one piece of it is ever read into memory
+  writeBlob: (vpath, blob) => writeInPieces(vpath, blob.size, async (from, to) => new Uint8Array(await blob.slice(from, to).arrayBuffer())),
 
   async remove(vpath, isDir) {
     if (isDir) await Filesystem.rmdir({ path: toReal(vpath), directory: DIR, recursive: true });
