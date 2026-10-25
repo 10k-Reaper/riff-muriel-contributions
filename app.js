@@ -6304,6 +6304,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             albumArtist: albumArtist,
             duration: Math.round((t.durationMs || 0) / 1000),
             durationMs: t.durationMs || 0,
+            album: album.title || '',
             cover: album.cover,
             thumbnail: album.cover,
             no: t.no || (idx + 1),

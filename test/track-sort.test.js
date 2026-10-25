@@ -110,3 +110,24 @@ test('every declared sort mode is available to the picker', () => {
   assert.ok(TRACK_SORT_MODES.includes('artist-asc'));
   assert.ok(TRACK_SORT_MODES.includes('duration-asc'));
 });
+
+test('title Z to A, songs without a title last', () => {
+  const list = [{ id: 'a', title: 'apple' }, { id: 'x', title: '' }, { id: 'z', title: 'Zebra' }, { id: 'm', title: 'mango' }];
+  assert.deepStrictEqual(sortTracks(list, 'title-desc').map((t) => t.id), ['z', 'm', 'a', 'x']);
+});
+
+test('by album: albums A to Z, track order inside, songs without an album last in the order added', () => {
+  const list = [
+    { id: 'loose2', addedAt: 9 },
+    { id: 'blue3', album: 'Blue Album', no: 3, addedAt: 1 },
+    { id: 'pink1', album: 'Pinkerton', no: 1, addedAt: 2 },
+    { id: 'blue1', album: 'Blue Album', no: 1, addedAt: 8 },
+    { id: 'loose1', addedAt: 3 },
+    { id: 'blueX', album: 'blue album', addedAt: 4 },
+  ];
+  assert.deepStrictEqual(sortTracks(list, 'album-asc').map((t) => t.id), ['blue1', 'blue3', 'blueX', 'pink1', 'loose1', 'loose2']);
+});
+
+test('every listed sort mode is handled', () => {
+  for (const mode of TRACK_SORT_MODES) assert.strictEqual(sortTracks([{ id: 'a' }, { id: 'b' }], mode).length, 2);
+});
