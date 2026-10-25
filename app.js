@@ -5704,6 +5704,16 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
     });
 
+    // speed / pitch (Sound settings) for every song: iPhones put playbackRate back to 1 once a new song
+    // has loaded, which undid the settings applied when it started loading (issue #5)
+    const keepPlaybackRate = () => {
+      if (!audioEngine || !audioEngine.playbackFor) return;
+      const { rate, preservePitch } = audioEngine.playbackFor();
+      const a = el.nativeAudio;
+      if (Math.abs(a.playbackRate - rate) > 0.001 || a.preservesPitch !== preservePitch) audioEngine.applySettings(a);
+    };
+    ['loadedmetadata', 'canplay', 'playing'].forEach(ev => el.nativeAudio.addEventListener(ev, keepPlaybackRate));
+
     el.nativeAudio.addEventListener('durationchange', () => {
       const audio = el.nativeAudio;
       if (state.currentTrack && Number.isFinite(audio.duration) && audio.duration > 1) {

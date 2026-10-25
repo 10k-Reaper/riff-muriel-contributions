@@ -471,22 +471,25 @@
       this._applyMasterVolume();
     }
 
+    // the element's rate for the current speed / pitch settings
+    playbackFor() {
+      const s = this.audioSettings;
+      if (s.speedPitch !== 1.0 || s.pitch !== 0) return { rate: s.speedPitch * Math.pow(2, s.pitch / 12), preservePitch: false };
+      return { rate: s.speed, preservePitch: true };
+    }
+
     applySettings(audioElement) {
       const s = this.audioSettings;
 
       if (audioElement) {
-        if (s.speedPitch !== 1.0 || s.pitch !== 0) {
-          audioElement.preservesPitch = false;
-          audioElement.webkitPreservesPitch = false;
-          audioElement.mozPreservesPitch = false;
-          const pitchMultiplier = Math.pow(2, s.pitch / 12);
-          audioElement.playbackRate = s.speedPitch * pitchMultiplier;
-        } else {
-          audioElement.preservesPitch = true;
-          audioElement.webkitPreservesPitch = true;
-          audioElement.mozPreservesPitch = true;
-          audioElement.playbackRate = s.speed;
-        }
+        const { rate, preservePitch } = this.playbackFor();
+        audioElement.preservesPitch = preservePitch;
+        audioElement.webkitPreservesPitch = preservePitch;
+        audioElement.mozPreservesPitch = preservePitch;
+        // loading a new song resets playbackRate to defaultPlaybackRate (WebKit only does it once the song
+        // has loaded, after this ran): with both set, speed and pitch carry over to the next song
+        audioElement.defaultPlaybackRate = rate;
+        audioElement.playbackRate = rate;
       }
 
       if (s.eq) this.setEq(s.eq);
