@@ -380,7 +380,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   const DEFAULT_AUDIO_SETTINGS = { speed: 1.0, speedPitch: 1.0, pitch: 0, reverb: 0, distortion: 0, volume: 1.0, echo: 0, eq: { low: 0, mid: 0, high: 0 }, eqBands: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0] };
   const DEFAULT_HQ_SETTINGS = { engine: 'hqmusic-3', preset: 'studio', vocal: 0, air: 0, bass: 0 };
-  let soundPersistenceEnabled = localStorage.getItem('muriel_persist_sound_settings') === '1';
+  // on unless switched off: speed, pitch and effects reset every launch was mistaken for a bug (issue #5)
+  let soundPersistenceEnabled = localStorage.getItem('muriel_persist_sound_settings') !== '0';
 
   function loadSoundSettings() {
     if (!soundPersistenceEnabled) {
