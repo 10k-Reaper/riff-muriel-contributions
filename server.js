@@ -16,6 +16,7 @@ const STREAM_VIA_CACHE = !!require('./platform').STREAM_VIA_CACHE;
 const logger = require('./logger');
 const { getSystemAudioOutputInfo } = require('./audio-output');
 const ytmArtist = require('./ytm-artist');
+const libraryPages = require('./library-pages');
 
 const MAX_BODY_BYTES = 2 * 1024 * 1024;
 const SAFE_MEDIA_URL = /^https?:\/\//i;
@@ -1277,6 +1278,7 @@ function directYoutubeSearch(query, filterSpam = false) {
                 }
 
                 const isCached = await findCachedFile(vidId);
+                const isExplicit = libraryPages.isExplicitText(title) || (v.badges || []).some((b) => /explicit/i.test((b.metadataBadgeRenderer && b.metadataBadgeRenderer.label) || ''));
 
                 tracks.push({
                   id: vidId,
@@ -1287,7 +1289,8 @@ function directYoutubeSearch(query, filterSpam = false) {
                   thumbnail: thumbnail,
                   url: `https://www.youtube.com/watch?v=${vidId}`,
                   platform: 'youtube',
-                  isCached: !!isCached
+                  isCached: !!isCached,
+                  ...(isExplicit ? { isExplicit: true } : {})
                 });
               }
             }
@@ -1621,7 +1624,8 @@ function parseYtmSongs(json) {
       thumbnail = thumbnail.replace(/=w\d+-h\d+[^&]*$/, '=w544-h544');
 
       if (!title || (duration && duration < 30)) continue;
-      out.push({ id: videoId, title, artist: artist || 'Unknown Artist', artistId: artistRun && artistRun.id, album, duration, thumbnail });
+      const isExplicit = ytmArtist.explicitBadge(r) || libraryPages.isExplicitText(title);
+      out.push({ id: videoId, title, artist: artist || 'Unknown Artist', artistId: artistRun && artistRun.id, album, duration, thumbnail, ...(isExplicit ? { isExplicit: true } : {}) });
     }
   }
   return out;
@@ -1654,7 +1658,8 @@ async function searchYtmTracks(query, limit = 16) {
         duration: s.duration || 180,
         thumbnail: s.thumbnail || `https://i.ytimg.com/vi/${s.id}/hqdefault.jpg`,
         url: `https://www.youtube.com/watch?v=${s.id}`,
-        platform: 'youtube'
+        platform: 'youtube',
+        ...(s.isExplicit ? { isExplicit: true } : {})
       };
     });
     if (tracks.length > 0) {
@@ -1730,7 +1735,7 @@ async function handleSearch(req, res, query, platform = 'youtube', limit = 20) {
             ytArtistCache.set(s.id, s.artist);
             trimCache(ytArtistCache, 2000);
             const isCached = await findCachedFile(s.id);
-            return { id: s.id, title: s.title, artist: s.artist, artistId: s.artistId, duration: s.duration, thumbnail: s.thumbnail, url: `https://www.youtube.com/watch?v=${s.id}`, platform: 'youtube', isCached: !!isCached };
+            return { id: s.id, title: s.title, artist: s.artist, artistId: s.artistId, duration: s.duration, thumbnail: s.thumbnail, url: `https://www.youtube.com/watch?v=${s.id}`, platform: 'youtube', isCached: !!isCached, ...(s.isExplicit ? { isExplicit: true } : {}) };
           }));
           const result = { success: true, tracks: entries };
           cacheSearchResult(cacheKey, result);
@@ -2211,6 +2216,9 @@ async function lookupYtmArtist(id, cleanName, cacheKey) {
     name: page.name,
     bio: page.bio,
     avatar: page.avatar || (tracks[0] ? tracks[0].thumbnail : ''),
+    banner: page.banner || page.avatar || '',
+    fans: page.fans || 0,
+    fansText: page.fansText || '',
     isVerified: page.isVerified,
     tracks,
     releases: page.releases
@@ -2240,6 +2248,7 @@ async function lookupArtistInfo(cleanName, cacheKey) {
   let bio = '';
   let avatar = '';
   let isVerified = false;
+  let fans = 0;
   let tracks = [];
   let resolvedName = cleanName;
 
@@ -2248,10 +2257,13 @@ async function lookupArtistInfo(cleanName, cacheKey) {
     const dzData = await httpsJson(dzUrl, 4000);
 
     if (dzData && dzData.data && dzData.data.length > 0) {
-      const topArtist = dzData.data[0];
+      // Deezer's first hit for "Queen" is "Queen(Ares)": the best-known artist of exactly that name first
+      const sameName = dzData.data.filter((a) => a && ytmArtist.nameKey(a.name) === ytmArtist.nameKey(cleanName));
+      const topArtist = sameName.sort((a, b) => (b.nb_fan || 0) - (a.nb_fan || 0))[0] || dzData.data[0];
       if (topArtist.name) resolvedName = topArtist.name;
       avatar = topArtist.picture_xl || topArtist.picture_big || topArtist.picture_medium || '';
       isVerified = (topArtist.nb_fan || 0) > 30000;
+      fans = topArtist.nb_fan || 0;
 
       if (topArtist.tracklist) {
         const tlistData = await httpsJson(topArtist.tracklist, 4000);
@@ -2269,7 +2281,8 @@ async function lookupArtistInfo(cleanName, cacheKey) {
                           url: `https://www.youtube.com/results?search_query=${encodeURIComponent(cleanName + ' - ' + item.title + ' official audio')}`,
                           searchQuery: `${cleanName} - ${item.title} official audio`,
                           platform: 'youtube',
-                          isCached: false
+                          isCached: false,
+                          ...(item.explicit_lyrics || libraryPages.isExplicitText(item.title) ? { isExplicit: true } : {})
               });
             }
           }
@@ -2282,7 +2295,8 @@ async function lookupArtistInfo(cleanName, cacheKey) {
     const wikiUrl = `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(cleanName)}`;
     const wikiData = await httpsJson(wikiUrl, 3500, 'devsize/2.0');
 
-    if (wikiData && wikiData.extract) {
+    // not a list of everything called that ("Queen most commonly refers to...")
+    if (wikiData && wikiData.extract && wikiData.type !== 'disambiguation') {
       bio = wikiData.extract;
       if (!avatar && wikiData.originalimage?.source) {
         avatar = wikiData.originalimage.source;
@@ -2301,6 +2315,8 @@ async function lookupArtistInfo(cleanName, cacheKey) {
     name: resolvedName,
     bio: (bio || '').trim(),
     avatar: avatar || (tracks[0] ? tracks[0].thumbnail : ''),
+    banner: avatar || (tracks[0] ? tracks[0].thumbnail : ''),
+    fans,
     isVerified: isVerified,
     tracks: tracks.slice(0, 35)
   };
@@ -4538,13 +4554,18 @@ function setAlbumCache(key, data) {
 }
 
 // iTunes serves a different catalog per storefront; use the user's region when known.
-function itunesCountryParam() {
+function itunesCountryCode() {
   try {
     const code = process.versions.electron ? require('electron').app.getLocaleCountryCode() : '';
-    return /^[A-Za-z]{2}$/.test(code) ? `&country=${code.toUpperCase()}` : '';
+    return /^[A-Za-z]{2}$/.test(code) ? code.toLowerCase() : '';
   } catch (e) {
     return '';
   }
+}
+
+function itunesCountryParam() {
+  const code = itunesCountryCode();
+  return code ? `&country=${code.toUpperCase()}` : '';
 }
 
 function fetchItunesJson(url) {
@@ -4796,14 +4817,89 @@ async function handleArtistAlbums(req, res, parsedUrl) {
   }
 }
 
+// An album's songs: by its iTunes id (Muriel's albums come from iTunes), by its Deezer id (source=deezer), and by
+// title and artist when the id finds nothing (a saved album synced from a phone in another country, where iTunes
+// gives the album another id). Also at /api/album and /api/album-tracks.
+function itunesAlbumTracks(results, albumItem) {
+  return results
+    .filter(r => r && r.wrapperType === 'track' && (!albumItem || r.collectionId === albumItem.collectionId))
+    .map(item => {
+      const t = {
+        no: item.trackNumber || 1,
+        disc: item.discNumber || 1,
+        title: item.trackName || '',
+        artist: item.artistName || '',
+        durationMs: item.trackTimeMillis || 0
+      };
+      if (item.trackExplicitness === 'explicit' || libraryPages.isExplicitText(item.trackName)) t.isExplicit = true;
+      return t;
+    })
+    .sort((a, b) => (a.disc - b.disc) || (a.no - b.no));
+}
+
+async function lookupItunesAlbum(id) {
+  const data = await fetchItunesJson(`https://itunes.apple.com/lookup?id=${id}&entity=song${itunesCountryParam()}`);
+  const results = (data && Array.isArray(data.results)) ? data.results : [];
+  const albumItem = results.find(r => r && r.wrapperType === 'collection');
+  if (!albumItem) return null;
+  const album = {
+    id: String(albumItem.collectionId),
+    title: albumItem.collectionName || '',
+    artist: albumItem.artistName || '',
+    year: albumItem.releaseDate ? albumItem.releaseDate.slice(0, 4) : '',
+    trackCount: albumItem.trackCount || 0,
+    cover: (albumItem.artworkUrl100 || '').replace('100x100', '600x600')
+  };
+  return { album, tracks: itunesAlbumTracks(results, albumItem) };
+}
+
+async function lookupDeezerAlbum(id) {
+  const data = await httpsJson(`https://api.deezer.com/album/${id}`, 6000);
+  const items = (data && data.tracks && Array.isArray(data.tracks.data)) ? data.tracks.data : [];
+  if (!data || data.error || !items.length) return null;
+  const artist = (data.artist && data.artist.name) || '';
+  const album = {
+    id: String(data.id || id),
+    title: data.title || '',
+    artist,
+    year: data.release_date ? String(data.release_date).slice(0, 4) : '',
+    trackCount: data.nb_tracks || items.length,
+    cover: data.cover_xl || data.cover_big || data.cover_medium || '',
+    source: 'deezer'
+  };
+  const tracks = items.map((item, idx) => {
+    const t = {
+      no: item.track_position || idx + 1,
+      disc: item.disk_number || 1,
+      title: item.title || '',
+      artist: (item.artist && item.artist.name) || artist,
+      durationMs: (Number(item.duration) || 0) * 1000
+    };
+    if (item.explicit_lyrics || item.explicit_content_lyrics === 1 || libraryPages.isExplicitText(item.title)) t.isExplicit = true;
+    return t;
+  }).sort((a, b) => (a.disc - b.disc) || (a.no - b.no));
+  return { album, tracks };
+}
+
+async function findItunesAlbum(title, artist) {
+  const data = await fetchItunesJson(`https://itunes.apple.com/search?term=${encodeURIComponent(`${artist} ${title}`.trim())}&entity=album&limit=25${itunesCountryParam()}`);
+  const results = (data && Array.isArray(data.results)) ? data.results : [];
+  const hit = results.find(r => r && r.collectionId != null && ytmArtist.sharedTitles([title], [r.collectionName]) > 0
+    && (!artist || ytmArtist.nameKey(r.artistName) === ytmArtist.nameKey(artist)));
+  return hit ? lookupItunesAlbum(String(hit.collectionId)) : null;
+}
+
 async function handleAlbumTracks(req, res, parsedUrl) {
   const id = (parsedUrl.query.id || '').trim();
-  if (!/^\d+$/.test(id)) {
+  const title = (parsedUrl.query.title || '').trim();
+  const artist = (parsedUrl.query.artist || '').trim();
+  const source = parsedUrl.query.source === 'deezer' ? 'deezer' : 'itunes';
+  if ((id && !/^\d+$/.test(id)) || (!id && !title)) {
     res.writeHead(400, { 'Content-Type': 'application/json' });
     return res.end(JSON.stringify({ success: false, error: 'Invalid album id' }));
   }
 
-  const cacheKey = `tracks:${id}`;
+  const cacheKey = id ? `tracks:${source === 'deezer' ? 'dz:' : ''}${id}` : `tracks:${ytmArtist.nameKey(artist)}:${ytmArtist.nameKey(title)}`;
   const cached = getAlbumCache(cacheKey);
   if (cached) {
     res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -4830,33 +4926,20 @@ async function handleAlbumTracks(req, res, parsedUrl) {
   };
 
   try {
-    const url = `https://itunes.apple.com/lookup?id=${id}&entity=song${itunesCountryParam()}`;
-    const data = await fetchItunesJson(url);
-    const results = (data && Array.isArray(data.results)) ? data.results : [];
-    const albumItem = results.find(r => r && r.wrapperType === 'collection');
-    if (!albumItem) {
-      return sendResponse(404, { success: false, error: 'Album not found' });
-    }
-    const album = {
-      id: String(albumItem.collectionId),
-      title: albumItem.collectionName || '',
-      artist: albumItem.artistName || '',
-      year: albumItem.releaseDate ? albumItem.releaseDate.slice(0, 4) : '',
-      trackCount: albumItem.trackCount || 0,
-      cover: (albumItem.artworkUrl100 || '').replace('100x100', '600x600')
+    let found = null;
+    let failed = false;
+    const attempt = async (fn) => {
+      if (found && found.tracks.length) return;
+      try { found = (await fn()) || found; } catch (e) { failed = true; }
     };
-    const tracks = results
-      .filter(r => r && r.wrapperType === 'track')
-      .map(item => ({
-        no: item.trackNumber || 1,
-        disc: item.discNumber || 1,
-        title: item.trackName || '',
-        artist: item.artistName || '',
-        durationMs: item.trackTimeMillis || 0
-      }))
-      .sort((a, b) => (a.disc - b.disc) || (a.no - b.no));
-
-    const responseData = { success: true, album, tracks };
+    if (id) await attempt(() => (source === 'deezer' ? lookupDeezerAlbum(id) : lookupItunesAlbum(id)));
+    if (title) await attempt(() => findItunesAlbum(title, artist));
+    if (!found || !found.tracks.length) {
+      return failed && !found
+        ? sendResponse(502, { success: false, error: 'Album service unavailable' })
+        : sendResponse(404, { success: false, error: 'Album not found' });
+    }
+    const responseData = { success: true, album: found.album, tracks: found.tracks };
     setAlbumCache(cacheKey, responseData);
     return sendResponse(200, responseData);
   } catch (err) {
@@ -4870,6 +4953,52 @@ async function handleAlbumTracks(req, res, parsedUrl) {
       albumCache.delete(cacheKey);
     }
   }
+}
+
+// ---- Trending now (the Spotify-style home): Apple Music's most played songs in your country, or else Deezer's
+// chart. Played by YouTube search (searchQuery), like the Deezer songs of Discover.
+let trendingCache = { at: 0, tracks: [] };
+const TRENDING_TTL = 2 * 3600 * 1000;
+
+function parseAppleTopSongs(json) {
+  const results = (json && json.feed && Array.isArray(json.feed.results)) ? json.feed.results : [];
+  return results.map((r) => {
+    const title = (r && r.name) || '';
+    const artist = (r && r.artistName) || '';
+    if (!title || !artist) return null;
+    const query = `${artist} - ${title} official audio`;
+    const t = {
+      id: `am_${r.id || title}`, title, artist, duration: 0,
+      thumbnail: String(r.artworkUrl100 || '').replace(/\/\d+x\d+bb\./i, '/600x600bb.'),
+      url: `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`,
+      searchQuery: query, platform: 'youtube', isCached: false
+    };
+    // Apple spells it "Explict"
+    if (/^explic/i.test(r.contentAdvisoryRating || '') || libraryPages.isExplicitText(title)) t.isExplicit = true;
+    return t;
+  }).filter(Boolean);
+}
+
+async function handleTrending(req, res) {
+  if (trendingCache.tracks.length && Date.now() - trendingCache.at < TRENDING_TTL) {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    return res.end(JSON.stringify({ success: true, tracks: trendingCache.tracks }));
+  }
+  // the computer's region; on phones (no Electron) the language's region: "de-AT" is at
+  const lang = (typeof navigator !== 'undefined' && navigator.language) || '';
+  const region = itunesCountryCode() || ((/-([A-Za-z]{2})$/.exec(lang) || [])[1] || 'us').toLowerCase();
+  let tracks = parseAppleTopSongs(await httpsJson(`https://rss.marketingtools.apple.com/api/v2/${region}/music/most-played/25/songs.json`, 6000));
+  if (!tracks.length) {
+    const chart = await httpsJson('https://api.deezer.com/chart/0/tracks?limit=24', 6000);
+    tracks = ((chart && Array.isArray(chart.data)) ? chart.data : []).filter(t => t && t.title && t.artist).map((t) => {
+      const track = deezerTrackToTrack(t);
+      if (t.explicit_lyrics || t.explicit_content_lyrics === 1) track.isExplicit = true;
+      return track;
+    });
+  }
+  if (tracks.length) trendingCache = { at: Date.now(), tracks };
+  res.writeHead(200, { 'Content-Type': 'application/json' });
+  return res.end(JSON.stringify({ success: tracks.length > 0, tracks }));
 }
 
 let hotPicksCache = { data: null, expires: 0 };
@@ -4912,7 +5041,7 @@ async function handleHotPicks(req, res, parsedUrl) {
     const rawItems = (data && Array.isArray(data.data)) ? data.data : [];
     const candidates = rawItems
       .filter(item => item && item.title && item.artist && item.artist.name)
-      .map(item => ({ artist: item.artist.name, title: item.title }));
+      .map(item => ({ artist: item.artist.name, title: item.title, isExplicit: !!(item.explicit_lyrics || item.explicit_content_lyrics === 1) }));
     if (candidates.length === 0) {
       return sendResponse(200, { success: false });
     }
@@ -4928,6 +5057,7 @@ async function handleHotPicks(req, res, parsedUrl) {
         try {
           const track = await resolveCandidate(c);
           if (track && !seenIds.has(track.id)) {
+            if (c.isExplicit) track.isExplicit = true;
             seenIds.add(track.id);
             if (resolvedTracks.length < 12) {
               resolvedTracks.push(track);
@@ -5472,8 +5602,12 @@ const server = http.createServer(guardHandler(async (req, res) => {
     return handleArtistAlbums(req, res, parsedUrl);
   }
 
-  if (parsedUrl.pathname === '/api/albums/tracks') {
+  if (parsedUrl.pathname === '/api/albums/tracks' || parsedUrl.pathname === '/api/album' || parsedUrl.pathname === '/api/album-tracks') {
     return handleAlbumTracks(req, res, parsedUrl);
+  }
+
+  if (parsedUrl.pathname === '/api/trending') {
+    return handleTrending(req, res);
   }
 
   if (parsedUrl.pathname === '/api/hot') {

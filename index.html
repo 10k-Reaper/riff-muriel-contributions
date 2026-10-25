@@ -119,6 +119,13 @@
           </div>
         </button>
 
+        <button class="nav-item nav-collapsed" data-view="albums" id="nav-albums" title="Albums">
+          <div class="nav-indicator">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/></svg>
+            <span class="nav-badge" id="albums-count">0</span>
+          </div>
+        </button>
+
         <button class="nav-item" data-view="local" id="nav-local" title="My files">
           <div class="nav-indicator">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -244,8 +251,27 @@
             </div>
             <div class="home-hero-dots" id="home-hero-dots"></div>
           </div>
+          <!-- the Spotify-style home (Settings > Advanced > Home layout): rows of mixes and quick picks instead of the carousel -->
+          <div class="sp-home" id="sp-home">
+            <section class="sp-section" id="sp-quick-sec" hidden>
+              <div class="sp-quick" id="sp-quick"></div>
+            </section>
+            <section class="sp-section" id="sp-made-sec" hidden>
+              <h2><svg class="sp-ico" viewBox="0 0 24 24"><path d="M4 10a1 1 0 0 1 1 1v2a1 1 0 0 1-2 0v-2a1 1 0 0 1 1-1zm4-4a1 1 0 0 1 1 1v10a1 1 0 1 1-2 0V7a1 1 0 0 1 1-1zm4-4a1 1 0 0 1 1 1v18a1 1 0 1 1-2 0V3a1 1 0 0 1 1-1zm4 4a1 1 0 0 1 1 1v10a1 1 0 1 1-2 0V7a1 1 0 0 1 1-1zm4 4a1 1 0 0 1 1 1v2a1 1 0 1 1-2 0v-2a1 1 0 0 1 1-1z"/></svg><span>Made for you</span><button class="btn-icon-pill sp-head-btn" id="btn-regen-mixes" type="button" aria-label="New mixes" title="New mixes"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg></button></h2>
+              <div class="sp-row" id="sp-made"></div>
+            </section>
+            <section class="sp-section" id="sp-trend-sec" hidden>
+              <h2><svg class="sp-ico" viewBox="0 0 24 24"><path d="M12 2c1 4 5 5.5 5 10a5 5 0 0 1-10 0c0-2 1-3 2-4 0 2 1 3 2 3 0-3-1-6 1-9z"/></svg><span>Trending now</span></h2>
+              <div class="sp-row" id="sp-trend"></div>
+            </section>
+            <section class="sp-section" id="sp-artists-sec" hidden>
+              <h2><svg class="sp-ico" viewBox="0 0 24 24"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg><span>Your artists</span></h2>
+              <div class="sp-row fav-artists-row" id="sp-artists"></div>
+            </section>
+          </div>
           <div id="section-sync-invite" class="section-block" hidden></div>
           <div id="section-home-playlists" class="section-block"></div>
+          <div id="section-home-artists" class="section-block" hidden></div>
           <div id="section-on-repeat" class="section-block"></div>
           <div id="section-for-you"></div>
         </div>
@@ -270,7 +296,7 @@
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
             <span>Download all</span>
           </button>
-          <select class="pill-select" id="favorites-sort" title="Sort favorites" aria-label="Sort favorites">
+          <select class="pill-select" id="favorites-sort" title="Sort favorites" aria-label="Sort favorites" hidden>
             <option value="manual">Manual order</option>
             <option value="added-desc">Date added (newest)</option>
             <option value="added-asc">Date added (order added)</option>
@@ -280,6 +306,14 @@
             <option value="album-asc">Album</option>
             <option value="duration-asc">Duration (shortest)</option>
           </select>
+          <div class="m3-dropdown sort-dropdown" id="favorites-sort-dropdown">
+            <button class="m3-dropdown-trigger" id="favorites-sort-trigger" type="button" title="Sort favorites" aria-label="Sort favorites" aria-haspopup="listbox">
+              <svg class="sort-dropdown-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="4" y1="6" x2="20" y2="6"></line><line x1="7" y1="12" x2="17" y2="12"></line><line x1="10" y1="18" x2="14" y2="18"></line></svg>
+              <span id="favorites-sort-label">Manual order</span>
+              <svg class="m3-dropdown-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </button>
+            <div class="m3-dropdown-menu" id="favorites-sort-menu" role="listbox"></div>
+          </div>
         </div>
         <div class="view-search-box" id="favorites-search-box">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"></circle><line x1="21" y1="21" x2="16.5" y2="16.5"></line></svg>
@@ -288,6 +322,16 @@
         <div class="tracks-list" id="favorites-tracks-list">
           <div class="empty-hint">No favorite tracks yet. Click the heart icon on any song to save it.</div>
         </div>
+      </section>
+
+      <section class="content-view" id="view-albums">
+        <div class="view-header">
+          <div>
+            <h2>Albums</h2>
+            <span class="view-subtitle" id="albums-subtitle">0 albums saved</span>
+          </div>
+        </div>
+        <div class="saved-albums-grid" id="saved-albums-grid"></div>
       </section>
 
       <section class="content-view" id="view-local">
@@ -338,6 +382,7 @@
           <div class="playlist-meta">
             <span class="playlist-type-badge">Playlist</span>
             <h2 id="playlist-detail-title">Playlist title</h2>
+            <div id="playlist-detail-desc" class="playlist-inline-desc" data-placeholder="Add a description..." role="textbox" aria-label="Playlist description"></div>
             <span class="view-subtitle" id="playlist-detail-count">0 tracks</span>
             <div class="action-bar playlist-actions">
               <button id="btn-play-playlist" title="Play" aria-label="Play">
@@ -354,7 +399,7 @@
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
                 <span id="btn-dedupe-playlist-label">Remove duplicates</span>
               </button>
-              <select class="pill-select" id="playlist-sort" title="Sort playlist" aria-label="Sort playlist">
+              <select class="pill-select" id="playlist-sort" title="Sort playlist" aria-label="Sort playlist" hidden>
                 <option value="manual">Manual order</option>
                 <option value="added-desc">Date added (newest)</option>
                 <option value="added-asc">Date added (order added)</option>
@@ -364,6 +409,14 @@
                 <option value="album-asc">Album</option>
                 <option value="duration-asc">Duration (shortest)</option>
               </select>
+              <div class="m3-dropdown sort-dropdown" id="playlist-sort-dropdown">
+                <button class="m3-dropdown-trigger" id="playlist-sort-trigger" type="button" title="Sort playlist" aria-label="Sort playlist" aria-haspopup="listbox">
+                  <svg class="sort-dropdown-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="4" y1="6" x2="20" y2="6"></line><line x1="7" y1="12" x2="17" y2="12"></line><line x1="10" y1="18" x2="14" y2="18"></line></svg>
+                  <span id="playlist-sort-label">Manual order</span>
+                  <svg class="m3-dropdown-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                </button>
+                <div class="m3-dropdown-menu" id="playlist-sort-menu" role="listbox"></div>
+              </div>
               <button class="btn-outline-pill" id="btn-select-playlist" title="Select tracks" aria-label="Select tracks">
                 <span>Select</span>
               </button>
@@ -404,9 +457,13 @@
             <h2 id="album-detail-title">Album title</h2>
             <button class="album-artist-btn" id="album-detail-artist" type="button"></button>
             <div class="album-meta-line" id="album-detail-count">0 tracks</div>
-            <button class="btn-pill-primary" id="btn-play-album" type="button" title="Play" aria-label="Play" style="margin-top:16px;width:64px;height:64px;min-width:64px;padding:0;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;" disabled>
-              <svg width="30" height="30" viewBox="0 0 24 24" fill="currentColor" style="margin-left:3px;"><polygon points="6 4 20 12 6 20 6 4"></polygon></svg>
-            </button>
+            <div class="album-actions">
+              <button class="btn-pill-primary" id="btn-play-album" type="button" title="Play" aria-label="Play" style="margin-top:16px;width:64px;height:64px;min-width:64px;padding:0;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;" disabled>
+                <svg width="30" height="30" viewBox="0 0 24 24" fill="currentColor" style="margin-left:3px;"><polygon points="6 4 20 12 6 20 6 4"></polygon></svg>
+              </button>
+              <button type="button" class="btn-icon-pill" id="btn-save-album" title="Save album" aria-label="Save album" aria-pressed="false"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg></button>
+            </div>
+            <div class="daily-mix-feedback hidden" id="daily-mix-feedback"><span class="daily-mix-feedback-label">Do you like these songs?</span><div class="daily-mix-feedback-actions"><button type="button" class="btn-icon-pill daily-mix-rate-btn" id="btn-dm-like" title="I like this mix" aria-label="I like this mix"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"/></svg></button><button type="button" class="btn-icon-pill daily-mix-rate-btn" id="btn-dm-dislike" title="Not my taste" aria-label="Not my taste"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3zm7-13h2.67A2.31 2.31 0 0 1 22 4v7a2.31 2.31 0 0 1-2.33 2H17"/></svg></button></div></div>
           </aside>
           <div class="album-tracks-col">
             <div class="tracks-list" id="album-tracks-list"></div>
@@ -415,26 +472,30 @@
       </section>
 
       <section class="content-view" id="view-artist">
-        <div class="artist-hero-card">
-          <div class="artist-hero-backdrop hero-fx" id="artist-hero-backdrop"></div>
-          <button class="btn-icon-pill btn-back-artist" id="btn-back-artist" title="Back">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
-          </button>
-          <div class="artist-card-body">
-            <div class="artist-avatar-wrap loading" id="artist-avatar-wrap">
-              <img id="artist-avatar-img" class="artist-avatar-img" src="" alt="" onload="this.parentElement.classList.remove('loading')" onerror="this.style.display='none'; this.parentElement.classList.remove('loading')">
-              <div id="artist-avatar-fallback" class="artist-avatar-fallback">
-                <svg width="40" height="40" viewBox="0 0 24 24" fill="currentColor"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"></path></svg>
+        <div class="artist-hero-wrap">
+          <div class="artist-hero" id="artist-hero">
+            <img id="artist-hero-img" class="artist-hero-img" src="" alt="" decoding="async">
+            <button class="btn-icon-pill btn-back-artist" id="btn-back-artist" title="Back" aria-label="Back">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
+            </button>
+            <div class="artist-hero-info">
+              <div class="artist-name-row">
+                <h1 class="artist-title" id="artist-profile-name">Artist</h1>
+                <svg class="artist-verified-check hidden" id="artist-verified-badge" viewBox="0 0 24 24" width="24" height="24" role="img" aria-label="Verified artist"><title>Verified artist</title><circle cx="12" cy="12" r="10" fill="#1d9bf0"/><path d="M9 12l2 2 4-4" stroke="#ffffff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>
+              </div>
+              <div class="artist-fans-line" id="artist-fans-line"></div>
+              <div class="artist-hero-actions">
+                <button type="button" class="artist-play-btn" id="btn-play-artist-tracks" title="Play" aria-label="Play" disabled>
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><polygon points="7 4 20 12 7 20 7 4"></polygon></svg>
+                </button>
+                <button type="button" class="btn-outline-pill artist-follow-btn" id="btn-artist-follow" aria-pressed="false">Follow</button>
               </div>
             </div>
-            <div class="artist-meta-box">
-              <div class="artist-verified-badge hidden" id="artist-verified-badge">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"></path></svg>
-                <span>Verified artist</span>
-              </div>
-              <h1 class="artist-title" id="artist-profile-name">Artist</h1>
-              <p class="artist-bio-snippet hidden" id="artist-profile-bio"></p>
-            </div>
+          </div>
+          <div class="artist-about-card hidden" id="artist-about-card">
+            <div class="artist-about-title">About</div>
+            <div class="artist-about-bio" id="artist-profile-bio"></div>
+            <button type="button" class="btn-text artist-about-more hidden" id="btn-artist-bio-more">Show all</button>
           </div>
         </div>
 
@@ -445,20 +506,32 @@
           <div class="fy-row" id="artist-matches-row"></div>
         </div>
 
-        <div class="artist-content-section" id="artist-albums-section" style="display:none;">
-          <div class="section-sub-header">
-            <h3>Albums</h3>
-            <span class="view-subtitle" id="artist-albums-count"></span>
-          </div>
-          <div id="artist-albums-grid" style="display:flex;flex-wrap:wrap;gap:16px;"></div>
-        </div>
-
         <div class="artist-content-section">
-          <div class="section-sub-header">
-            <h3>Popular tracks</h3>
-            <span class="view-subtitle" id="artist-tracks-count">0 tracks</span>
+          <nav class="artist-horiz-tabs" id="artist-horiz-tabs" style="display:none;">
+            <button class="artist-horiz-tab active" id="artist-tab-tracks" data-artist-tab="tracks" type="button">
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+              <span>Songs</span>
+            </button>
+            <button class="artist-horiz-tab" id="artist-tab-albums" data-artist-tab="albums" type="button">
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg>
+              <span>Albums</span>
+            </button>
+          </nav>
+          <div class="artist-tab-pane active" id="artist-pane-tracks">
+            <div class="artist-tracks-header">
+              <h2 class="artist-tracks-title">Popular songs</h2>
+              <span class="view-subtitle" id="artist-tracks-count"></span>
+              <button type="button" class="btn-text artist-tracks-toggle hidden" id="btn-artist-tracks-toggle">Show all</button>
+            </div>
+            <div class="tracks-list" id="artist-tracks-list"></div>
           </div>
-          <div class="tracks-list" id="artist-tracks-list"></div>
+          <div class="artist-tab-pane hidden" id="artist-pane-albums">
+            <div class="artist-tracks-header">
+              <h2 class="artist-tracks-title">Albums</h2>
+              <span class="view-subtitle" id="artist-albums-count"></span>
+            </div>
+            <div class="artist-albums-grid" id="artist-albums-grid"></div>
+          </div>
         </div>
       </section>
 
@@ -1013,6 +1086,26 @@
               <div class="setting-item-top" style="align-items: center;">
                 <span class="setting-name">Show My files tab</span>
                 <button class="effect-switch-btn active" id="btn-show-local"><span class="thumb"></span></button>
+              </div>
+            </div>
+
+            <div class="setting-item">
+              <div class="setting-item-top" style="align-items: center;">
+                <div style="display: flex; flex-direction: column; gap: 2px;">
+                  <span class="setting-name">Show Albums tab</span>
+                  <span style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">Save albums from the album page and find them in their own tab</span>
+                </div>
+                <button type="button" class="effect-switch-btn" id="btn-show-albums"><span class="thumb"></span></button>
+              </div>
+            </div>
+
+            <div class="setting-item">
+              <div class="setting-item-top" style="align-items: center;">
+                <div style="display: flex; flex-direction: column; gap: 2px;">
+                  <span class="setting-name">Show explicit tag [E] on songs</span>
+                  <span style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">An [E] next to songs with explicit lyrics</span>
+                </div>
+                <button type="button" class="effect-switch-btn active" id="toggle-explicit-tag"><span class="thumb"></span></button>
               </div>
             </div>
 
@@ -1595,6 +1688,33 @@
                   <div class="setting-item">
                     <div class="setting-item-top" style="align-items: center;">
                       <div style="display: flex; flex-direction: column; gap: 2px;">
+                        <span class="setting-name">Your artists</span>
+                        <span style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">The artists you follow on the home page</span>
+                      </div>
+                      <button class="effect-switch-btn active" data-adv="fav_artists"><span class="thumb"></span></button>
+                    </div>
+                  </div>
+
+                  <div class="setting-item" id="setting-home-layout">
+                    <div class="setting-item-top">
+                      <span class="setting-name">Home layout</span>
+                    </div>
+                    <div class="theme-mode-toggle" id="home-layout-toggle">
+                      <button type="button" class="theme-mode-btn active" id="home-layout-riff" data-layout="muriel" style="display: inline-flex; align-items: center; justify-content: center; gap: 6px;">
+                        <img src="assets/icon.png" width="16" height="16" style="border-radius: 4px; object-fit: contain;" alt="">
+                        <span>Muriel</span>
+                      </button>
+                      <button type="button" class="theme-mode-btn" id="home-layout-spotify" data-layout="spotify" style="display: inline-flex; align-items: center; justify-content: center; gap: 6px;">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2zm4.586 14.424c-.18.295-.563.387-.857.207-2.35-1.434-5.308-1.758-8.793-.963-.335.077-.67-.133-.746-.469-.077-.334.132-.67.467-.747 3.812-.871 7.085-.506 9.721 1.107.294.18.387.564.208.865zm1.224-2.72c-.226.367-.706.482-1.072.257-2.687-1.652-6.785-2.131-9.965-1.166-.413.127-.848-.106-.973-.517-.125-.413.108-.848.52-.973 3.632-1.102 8.147-.568 11.233 1.328.366.226.481.707.257 1.071zm.105-2.835C14.692 8.95 8.085 8.731 4.708 9.756c-.494.15-1.018-.129-1.168-.623-.15-.495.13-1.018.624-1.168 3.943-1.197 11.23-.944 15.045 1.32.444.264.59.84.327 1.284-.264.444-.84.59-1.284.327z"/></svg>
+                        <span>Spotify</span>
+                      </button>
+                    </div>
+                    <div style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline); margin-top: 6px;">Muriel: the big carousel. Spotify: quick picks, Daily Mixes and what's trending, in rows.</div>
+                  </div>
+
+                  <div class="setting-item">
+                    <div class="setting-item-top" style="align-items: center;">
+                      <div style="display: flex; flex-direction: column; gap: 2px;">
                         <span class="setting-name">Reduce motion</span>
                         <span style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">Replace spring animations with simple fades</span>
                       </div>
@@ -2154,6 +2274,16 @@
       <div class="dialog-actions">
         <button class="btn-outline-pill" id="btn-cancel-rename-track">Cancel</button>
         <button class="btn-pill-primary" id="btn-confirm-rename-track">Save changes</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-backdrop hidden" id="artist-bio-modal">
+    <div class="dialog-card artist-bio-dialog">
+      <h3 id="artist-bio-modal-title">Artist</h3>
+      <div class="dialog-body artist-bio-modal-body" id="artist-bio-modal-body"></div>
+      <div class="dialog-actions">
+        <button class="btn-outline-pill" id="btn-close-artist-bio" type="button">Close</button>
       </div>
     </div>
   </div>
@@ -3053,6 +3183,7 @@
   <script src="track-sort.js"></script>
   <script src="search-text.js"></script>
   <script src="library-tools.js"></script>
+  <script src="library-pages.js"></script>
   <script src="build-info.js"></script>
   <script src="share-link.js"></script>
   <script src="app.js"></script>

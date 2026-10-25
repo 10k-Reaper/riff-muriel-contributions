@@ -58,9 +58,18 @@ function shortCount(s) {
   return m ? Math.round(parseFloat(m[1]) * ({ K: 1e3, M: 1e6, B: 1e9 }[(m[2] || '').toUpperCase()] || 1)) : 0;
 }
 
-function track(id, title, runs, thumbnail, duration) {
+// the [E] YouTube Music shows next to explicit songs (a row's badges, a card's subtitle badges)
+function explicitBadge(r) {
+  return [...((r && r.badges) || []), ...((r && r.subtitleBadges) || [])].some((b) => {
+    const badge = b && b.musicInlineBadgeRenderer;
+    const label = badge && badge.accessibilityData && badge.accessibilityData.accessibilityData && badge.accessibilityData.accessibilityData.label;
+    return !!badge && ((badge.icon && badge.icon.iconType === 'MUSIC_EXPLICIT_BADGE') || /explicit/i.test(label || ''));
+  });
+}
+
+function track(id, title, runs, thumbnail, duration, isExplicit) {
   const artist = artistRuns(runs)[0];
-  return {
+  const out = {
     id,
     title: title || 'untitled',
     artist: segments(runs)[0] || (artist && artist.name) || 'Unknown Artist',
@@ -70,6 +79,8 @@ function track(id, title, runs, thumbnail, duration) {
     url: `https://www.youtube.com/watch?v=${id}`,
     platform: 'youtube',
   };
+  if (isExplicit) out.isExplicit = true;
+  return out;
 }
 
 // song rows of an artist page or playlist: title | artists | album, the length in a fixed column
@@ -79,7 +90,7 @@ function parseSongRows(json) {
     if (!VIDEO_ID.test(id || '')) return null;
     const col = (i) => (r.flexColumns && r.flexColumns[i] && r.flexColumns[i].musicResponsiveListItemFlexColumnRenderer && r.flexColumns[i].musicResponsiveListItemFlexColumnRenderer.text) || {};
     const fixed = r.fixedColumns && r.fixedColumns[0] && r.fixedColumns[0].musicResponsiveListItemFixedColumnRenderer;
-    return track(id, runsText(col(0)), col(1).runs, lastThumb(r.thumbnail), parseDuration(fixed && runsText(fixed.text)));
+    return track(id, runsText(col(0)), col(1).runs, lastThumb(r.thumbnail), parseDuration(fixed && runsText(fixed.text)), explicitBadge(r));
   }).filter(Boolean);
 }
 
@@ -94,12 +105,16 @@ function parseArtistPage(json, id) {
   const square = micro && micro.thumbnail && micro.thumbnail.thumbnails && micro.thumbnail.thumbnails[0] && micro.thumbnail.thumbnails[0].url;
   // the header picture is a wide banner; the same image cropped square makes the avatar
   const avatar = lastThumb(h.foregroundThumbnail) || square || lastThumb(h.thumbnail).replace(/=w\d+-h\d+[^&]*$/, '=w544-h544-p-l90-rj');
+  // the banner for the top of the artist page, big enough for a wide window
+  const banner = lastThumb(h.thumbnail).replace(/=w\d+-h\d+[^&]*$/, '=w1920-h800-p-l90-rj');
+  const subscribers = sub && runsText(sub.subscriberCountText);
+  const longSubscribers = sub && (runsText(sub.longSubscriberCountText) || (sub.longSubscriberCountText && sub.longSubscriberCountText.simpleText) || '');
 
   const songs = parseSongRows(json);
   const cards = findAll(json.contents, 'musicTwoRowItemRenderer');
   const videos = cards.map((r) => {
     const watch = r.navigationEndpoint && r.navigationEndpoint.watchEndpoint;
-    return watch && VIDEO_ID.test(watch.videoId || '') ? track(watch.videoId, runsText(r.title), r.subtitle && r.subtitle.runs, '', 0) : null;
+    return watch && VIDEO_ID.test(watch.videoId || '') ? track(watch.videoId, runsText(r.title), r.subtitle && r.subtitle.runs, '', 0, explicitBadge(r)) : null;
   }).filter(Boolean);
   const releases = cards.filter((r) => {
     const browse = r.navigationEndpoint && r.navigationEndpoint.browseEndpoint;
@@ -124,8 +139,12 @@ function parseArtistPage(json, id) {
     // the first paragraph, like the Wikipedia summary a page by name shows
     bio: (runsText(h.description) || (about ? runsText(about.description) : '')).split(/\n\s*\n/)[0].trim(),
     avatar,
+    banner,
+    // "2.4M subscribers", for the line under the artist's name
+    fans: shortCount(subscribers),
+    fansText: longSubscribers || (subscribers ? `${subscribers} subscribers` : ''),
     // an uploader's channel (a lyrics channel, a label) has a plain header and isn't an artist
-    isVerified: !!json.header.musicImmersiveHeaderRenderer && shortCount(sub && runsText(sub.subscriberCountText)) > 30000,
+    isVerified: !!json.header.musicImmersiveHeaderRenderer && shortCount(subscribers) > 30000,
     songs,
     videos,
     releases,
@@ -166,4 +185,4 @@ function sharedTitles(a, b) {
   return new Set((b || []).map(titleKey).filter((k) => have.has(k))).size;
 }
 
-module.exports = { CHANNEL_ID, VIDEO_ID, channelId, nameKey, artistRuns, parseSongRows, parseArtistPage, parseArtistResults, parseWatchArtists, pickArtist, sharedTitles };
+module.exports = { CHANNEL_ID, VIDEO_ID, channelId, nameKey, artistRuns, explicitBadge, parseSongRows, parseArtistPage, parseArtistResults, parseWatchArtists, pickArtist, sharedTitles };

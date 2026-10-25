@@ -340,10 +340,6 @@
     });
   }
 
-  // artist bio is clamped to 3 lines on phones; tapping it expands / collapses
-  const bio = document.getElementById('artist-profile-bio');
-  if (bio) bio.addEventListener('click', () => bio.classList.toggle('expanded'));
-
   // settings that only make sense on desktop
   ['btn-hw-accel', 'btn-tray-on-close', 'btn-media-keys'].forEach((id) => {
     const row = document.getElementById(id) && document.getElementById(id).closest('.setting-item');

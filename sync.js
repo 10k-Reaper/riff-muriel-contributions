@@ -44,7 +44,7 @@
 
   let group = read(K.group); // { id, secret }
   let members = read(K.members, {}); // { deviceId: { name, kind, t, del? } }
-  let meta = read(K.meta) || {}; // { lists: { playlists, favorites, history }, settings, listensT }
+  let meta = read(K.meta) || {}; // { lists: { playlists, favorites, albums, artists, history }, settings, listensT }
   let listens = read(K.listens, {}); // other devices' Encore data { deviceId: { t, name, db } }
   let np = read(K.np, {}); // what each device last played { deviceId: { t, name, track, pos, playing } }
   let seen = read(K.seen, {});
@@ -61,9 +61,13 @@
     if (t.url) return `${p}:${t.url}`;
     return `${p}:${(t.title || '').trim().toLowerCase()}|${(t.artist || '').trim().toLowerCase()}`;
   };
+  // a followed artist is its YouTube Music channel when known (namesakes stay apart), otherwise its name
+  const artistKey = (a) => (!a ? '' : a.id ? `id:${a.id}` : a.name ? `name:${String(a.name).trim().toLowerCase()}` : '');
   const LISTS = {
     playlists: { key: 'devsize_playlists', cat: 'library', id: (p) => (p && p.id ? String(p.id) : '') },
     favorites: { key: 'devsize_favorites', cat: 'library', id: trackKey },
+    albums: { key: 'muriel_saved_albums', cat: 'library', id: (a) => (a && a.id ? String(a.id) : '') },
+    artists: { key: 'muriel_followed_artists', cat: 'library', id: artistKey },
     history: { key: 'devsize_history', cat: 'history', id: (t) => (trackKey(t) ? `${trackKey(t)}@${t.playedAt || 0}` : ''), sort: (a, b) => (b.playedAt || 0) - (a.playedAt || 0), cap: 100 },
   };
   // the look of the app; sizes, volume, folders and anything else that belongs to one device stay local
@@ -557,7 +561,7 @@
     parts.push(`<div class="m3-group"><div class="setting-item sync-block">${group && !linking ? '<span class="setting-name">Link another device</span>' : ''}${pairing}</div></div>`);
     const sw = (c, name, hint) => `<div class="setting-item"><div class="setting-item-top" style="align-items:center;"><div style="display:flex;flex-direction:column;gap:2px;"><span class="setting-name">${name}</span><span class="sync-note">${hint}</span></div><button class="effect-switch-btn${cats[c] ? ' active' : ''}" type="button" data-act="cat" data-cat-key="${c}" aria-label="${name}"><span class="thumb"></span></button></div></div>`;
     parts.push(`<div class="m3-group">
-      ${sw('library', 'Library', 'Playlists and favorites')}
+      ${sw('library', 'Library', 'Playlists, favorites, saved albums and the artists you follow')}
       ${sw('history', 'History and stats', 'Recently played and Encore')}
       ${sw('look', 'Theme', 'Same colors, font and lyrics style on every device')}
       ${sw('continue', 'Continue listening', 'Pick up where another device left off')}
