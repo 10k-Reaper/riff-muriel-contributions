@@ -22,6 +22,8 @@
     // asked, shown or done once per device
     'muriel_update_found', 'muriel_update_last', 'muriel_update_snooze', 'muriel_welcome_done', 'muriel_bg_asked',
     'muriel_scale_rebased_v2', 'muriel_debug_log',
+    // a copy of the open language's translations for a quick start (i18n.js); which language is per profile
+    'muriel_i18n_snap',
   ]);
   // how a song sounds, worked out once per device; logins the in-app server keeps for every profile (bridge.js)
   const DEVICE_PREFIXES = ['muriel_audio_analysis_', 'muriel_secret_'];

@@ -71,9 +71,9 @@
     banner.setAttribute('role', 'status');
     banner.innerHTML = `
       <svg class="update-banner-star" viewBox="0 0 1024 1024" aria-hidden="true"><path d="M512 32Q570 454 992 512Q570 570 512 992Q454 570 32 512Q454 454 512 32Z"/></svg>
-      <div class="update-banner-text"><b>Update available</b><span></span></div>
-      <button type="button" class="update-banner-later">Later</button>
-      <button type="button" class="update-banner-go">Download</button>`;
+      <div class="update-banner-text"><b data-i18n>Update available</b><span data-i18n></span></div>
+      <button type="button" class="update-banner-later" data-i18n>Later</button>
+      <button type="button" class="update-banner-go" data-i18n>Download</button>`;
     banner.querySelector('span').textContent = label(update) + ' is ready';
     banner.querySelector('.update-banner-go').addEventListener('click', () => { open(update.url); hideBanner(); });
     banner.querySelector('.update-banner-later').addEventListener('click', () => { store.set('muriel_update_snooze', { sha: update.sha, until: Date.now() + SNOOZE }); hideBanner(); });

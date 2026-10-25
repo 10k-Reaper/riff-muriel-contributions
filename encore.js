@@ -188,6 +188,11 @@
   }
   const toTrack = (s) => ({ id: s.raw.id, title: s.raw.t, artist: s.raw.a, thumbnail: s.raw.th, platform: s.raw.p, url: s.raw.u, duration: s.raw.d });
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  // UI language (i18n.js): Th() gives escaped HTML with the {n} slots filled; titles and names only go into slots
+  const I18n = window.MurielI18n || (() => { const f = (s, ...a) => String(s).replace(/\{(\d)\}/g, (_, i) => (a[i] != null ? a[i] : '')); return { T: (s) => s, Tf: f, Tm: f, Th: (s, ...a) => f(esc(s), ...a) }; })();
+  const Th = (s, ...a) => I18n.Th(s, ...a);
+  // the word that goes with a number ('plays', 'days'), translated together with the number so it reads as a count
+  const unit = (n, one, many) => esc(I18n.Tf(n === 1 ? `{0} ${one}` : `{0} ${many}`, '\u2063').replace('\u2063', '').trim());
   const thumb = (s) => esc((window.MurielCore && window.MurielCore.thumb ? window.MurielCore.thumb(toTrack(s)) : '') || s.raw.th || '');
 
   // ---------- home: "On repeat" ----------
@@ -200,10 +205,10 @@
       if (!box) return;
       const st = stats(homePeriod);
       const top = st.songs.slice(0, 3);
-      const chips = ['week', 'month', 'all'].map((p) => `<button type="button" class="onrepeat-chip${p === homePeriod ? ' active' : ''}" data-p="${p}">${p === 'all' ? 'All time' : p === 'week' ? 'Week' : 'Month'}</button>`).join('');
+      const chips = ['week', 'month', 'all'].map((p) => `<button type="button" class="onrepeat-chip${p === homePeriod ? ' active' : ''}" data-p="${p}">${Th(p === 'all' ? 'All time' : p === 'week' ? 'Week' : 'Month')}</button>`).join('');
       box.innerHTML = `
         <div class="onrepeat-head">
-          <h3 class="section-title">On repeat</h3>
+          <h3 class="section-title">${Th('On repeat')}</h3>
           <div class="onrepeat-chips">${chips}</div>
           <button type="button" class="onrepeat-encore"><svg viewBox="0 0 1024 1024"><path d="${STAR}"/></svg>Encore</button>
         </div>
@@ -212,8 +217,8 @@
             <span class="onrepeat-rank">${i + 1}</span>
             <img src="${thumb(s)}" alt="" loading="lazy" decoding="async">
             <span class="onrepeat-meta"><b>${esc(s.title)}</b><span>${esc(s.artist)}</span></span>
-            <span class="onrepeat-count">${s.plays}<small>${s.plays === 1 ? 'play' : 'plays'}</small></span>
-          </button>`).join('')}</div>` : `<div class="onrepeat-empty">Your most played songs show up here once you've listened for a bit.</div>`}`;
+            <span class="onrepeat-count">${s.plays}<small>${unit(s.plays, 'play', 'plays')}</small></span>
+          </button>`).join('')}</div>` : `<div class="onrepeat-empty">${Th("Your most played songs show up here once you've listened for a bit.")}</div>`}`;
       box.querySelectorAll('.onrepeat-chip').forEach((b) => b.addEventListener('click', () => {
         homePeriod = b.dataset.p;
         try { localStorage.setItem('muriel_onrepeat_period', homePeriod); } catch (e) {}
@@ -243,27 +248,27 @@
   }
 
   function build(st) {
-    const label = PERIODS[st.period];
+    const label = I18n.T(PERIODS[st.period]);
     if (!st.songs.length) {
-      return [`<div class="enc-slide enc-center"><svg class="enc-star" viewBox="0 0 1024 1024"><path d="${STAR}"/></svg><h1 class="enc-big">Not much yet</h1><p class="enc-sub">Play some songs and come back: Encore fills up as you listen.</p>${pickers(st.period)}</div>`];
+      return [`<div class="enc-slide enc-center"><svg class="enc-star" viewBox="0 0 1024 1024"><path d="${STAR}"/></svg><h1 class="enc-big">${Th('Not much yet')}</h1><p class="enc-sub">${Th('Play some songs and come back: Encore fills up as you listen.')}</p>${pickers(st.period)}</div>`];
     }
     const s1 = st.songs[0];
     const a1 = st.artists[0];
-    const [pName, pText] = persona(st.hours);
+    const [pName, pText] = persona(st.hours).map((x) => (typeof x === 'string' ? I18n.T(x) : x));
     const maxH = Math.max(1, ...st.hours);
     const list = (items, fn) => `<ol class="enc-list">${items.map(fn).join('')}</ol>`;
     return [
-      `<div class="enc-slide enc-center"><svg class="enc-star enc-spin" viewBox="0 0 1024 1024"><path d="${STAR}"/></svg><p class="enc-kicker">Muriel Encore</p><h1 class="enc-big">${esc(label)},<br>played back.</h1>${pickers(st.period)}<button type="button" class="enc-go" data-next>Start</button></div>`,
-      `<div class="enc-slide enc-center"><p class="enc-kicker">You listened for</p><h1 class="enc-num" data-count="${st.minutes}">0</h1><p class="enc-big enc-sm">minutes</p><p class="enc-sub">${st.plays.toLocaleString()} plays of ${st.songs.length.toLocaleString()} different songs</p></div>`,
-      `<div class="enc-slide enc-center"><p class="enc-kicker">Your #1 song</p><img class="enc-cover" src="${thumb(s1)}" alt=""><h1 class="enc-big enc-title">${esc(s1.title)}</h1><p class="enc-sub">${esc(s1.artist)}</p><p class="enc-pill">${s1.plays} ${s1.plays === 1 ? 'play' : 'plays'}</p></div>`,
-      `<div class="enc-slide"><p class="enc-kicker">Your top songs</p>${list(st.songs.slice(0, 5), (s, i) => `<li style="--i:${i}"><span class="enc-rank">${i + 1}</span><img src="${thumb(s)}" alt=""><span><b>${esc(s.title)}</b><small>${esc(s.artist)}</small></span><em>${s.plays}</em></li>`)}</div>`,
-      a1 ? `<div class="enc-slide enc-center"><p class="enc-kicker">Your top artist</p><img class="enc-cover enc-round" src="${esc(a1.thumb)}" alt=""><h1 class="enc-big enc-title">${esc(a1.name)}</h1><p class="enc-sub">${a1.plays} plays · ${Math.max(1, Math.round(a1.secs / 60))} min</p>${st.artists.length > 1 ? `<p class="enc-also">Also: ${st.artists.slice(1, 4).map((a) => esc(a.name)).join(', ')}</p>` : ''}</div>` : '',
-      `<div class="enc-slide enc-center"><p class="enc-kicker">You're a</p><h1 class="enc-big">${esc(pName)}</h1><p class="enc-sub">${esc(pText)}</p><div class="enc-hours">${st.hours.map((n, i) => `<i style="--h:${(n / maxH).toFixed(3)};--i:${i}" title="${i}:00"></i>`).join('')}</div><div class="enc-hours-axis"><span>0</span><span>6</span><span>12</span><span>18</span><span>24</span></div></div>`,
-      `<div class="enc-slide enc-center"><p class="enc-kicker">You listened on</p><h1 class="enc-num" data-count="${st.days}">0</h1><p class="enc-big enc-sm">${st.days === 1 ? 'day' : 'days'}</p><p class="enc-sub">Longest streak: ${st.streak} ${st.streak === 1 ? 'day' : 'days'} in a row</p></div>`,
+      `<div class="enc-slide enc-center"><svg class="enc-star enc-spin" viewBox="0 0 1024 1024"><path d="${STAR}"/></svg><p class="enc-kicker">Muriel Encore</p><h1 class="enc-big">${Th('{0}, played back.', esc(label)).replace(`${esc(label)},`, `${esc(label)},<br>`)}</h1>${pickers(st.period)}<button type="button" class="enc-go" data-next>${Th('Start')}</button></div>`,
+      `<div class="enc-slide enc-center"><p class="enc-kicker">${Th('You listened for')}</p><h1 class="enc-num" data-count="${st.minutes}">0</h1><p class="enc-big enc-sm">${unit(st.minutes, 'minute', 'minutes')}</p><p class="enc-sub">${Th('{0} plays of {1} different songs', st.plays.toLocaleString(), st.songs.length.toLocaleString())}</p></div>`,
+      `<div class="enc-slide enc-center"><p class="enc-kicker">${Th('Your #1 song')}</p><img class="enc-cover" src="${thumb(s1)}" alt=""><h1 class="enc-big enc-title">${esc(s1.title)}</h1><p class="enc-sub">${esc(s1.artist)}</p><p class="enc-pill">${Th(s1.plays === 1 ? '{0} play' : '{0} plays', s1.plays)}</p></div>`,
+      `<div class="enc-slide"><p class="enc-kicker">${Th('Your top songs')}</p>${list(st.songs.slice(0, 5), (s, i) => `<li style="--i:${i}"><span class="enc-rank">${i + 1}</span><img src="${thumb(s)}" alt=""><span><b>${esc(s.title)}</b><small>${esc(s.artist)}</small></span><em>${s.plays}</em></li>`)}</div>`,
+      a1 ? `<div class="enc-slide enc-center"><p class="enc-kicker">${Th('Your top artist')}</p><img class="enc-cover enc-round" src="${esc(a1.thumb)}" alt=""><h1 class="enc-big enc-title">${esc(a1.name)}</h1><p class="enc-sub">${Th('{0} plays · {1} min', a1.plays, Math.max(1, Math.round(a1.secs / 60)))}</p>${st.artists.length > 1 ? `<p class="enc-also">${Th('Also: {0}', st.artists.slice(1, 4).map((a) => esc(a.name)).join(', '))}</p>` : ''}</div>` : '',
+      `<div class="enc-slide enc-center"><p class="enc-kicker">${Th("You're a")}</p><h1 class="enc-big">${esc(pName)}</h1><p class="enc-sub">${esc(pText)}</p><div class="enc-hours">${st.hours.map((n, i) => `<i style="--h:${(n / maxH).toFixed(3)};--i:${i}" title="${i}:00"></i>`).join('')}</div><div class="enc-hours-axis"><span>0</span><span>6</span><span>12</span><span>18</span><span>24</span></div></div>`,
+      `<div class="enc-slide enc-center"><p class="enc-kicker">${Th('You listened on')}</p><h1 class="enc-num" data-count="${st.days}">0</h1><p class="enc-big enc-sm">${unit(st.days, 'day', 'days')}</p><p class="enc-sub">${Th(st.streak === 1 ? 'Longest streak: {0} day in a row' : 'Longest streak: {0} days in a row', st.streak)}</p></div>`,
       `<div class="enc-slide enc-summary"><div class="enc-card"><div class="enc-card-head"><svg viewBox="0 0 1024 1024"><path d="${STAR}"/></svg><b>Muriel Encore</b><span>${esc(label)}</span></div>
-        <div class="enc-card-cols"><div><small>Top songs</small>${st.songs.slice(0, 5).map((s, i) => `<p>${i + 1}. ${esc(s.title)}</p>`).join('')}</div><div><small>Top artists</small>${st.artists.slice(0, 5).map((a, i) => `<p>${i + 1}. ${esc(a.name)}</p>`).join('')}</div></div>
-        <div class="enc-card-foot"><div><small>Minutes</small><b>${st.minutes.toLocaleString()}</b></div><div><small>You're a</small><b>${esc(pName)}</b></div></div></div>
-        <div class="enc-actions"><button type="button" class="enc-go" data-play>Play my top songs</button><button type="button" class="enc-ghost" data-share>Share</button></div></div>`,
+        <div class="enc-card-cols"><div><small>${Th('Top songs')}</small>${st.songs.slice(0, 5).map((s, i) => `<p>${i + 1}. ${esc(s.title)}</p>`).join('')}</div><div><small>${Th('Top artists')}</small>${st.artists.slice(0, 5).map((a, i) => `<p>${i + 1}. ${esc(a.name)}</p>`).join('')}</div></div>
+        <div class="enc-card-foot"><div><small>${Th('Minutes')}</small><b>${st.minutes.toLocaleString()}</b></div><div><small>${Th("You're a")}</small><b>${esc(pName)}</b></div></div></div>
+        <div class="enc-actions"><button type="button" class="enc-go" data-play>${Th('Play my top songs')}</button><button type="button" class="enc-ghost" data-share>${Th('Share')}</button></div></div>`,
     ].filter(Boolean);
   }
   // big titles shrink until their longest word fits, so "PinkPantheress" doesn't break mid-word on a phone
@@ -275,7 +280,7 @@
       el.style.overflowWrap = '';
     });
   }
-  const pickers = (p) => `<div class="enc-periods">${Object.entries(PERIODS).map(([k, v]) => `<button type="button" data-period="${k}" class="${k === p ? 'active' : ''}">${v}</button>`).join('')}</div>`;
+  const pickers = (p) => `<div class="enc-periods">${Object.entries(PERIODS).map(([k, v]) => `<button type="button" data-period="${k}" class="${k === p ? 'active' : ''}">${Th(v)}</button>`).join('')}</div>`;
 
   function countUp(el) {
     const to = +el.dataset.count || 0, t0 = performance.now();
@@ -301,24 +306,24 @@
   }
 
   function shareText(st) {
-    const lines = [`My Muriel Encore (${PERIODS[st.period]})`, `${st.minutes.toLocaleString()} minutes of music`];
+    const lines = [I18n.Tf('My Muriel Encore ({0})', I18n.T(PERIODS[st.period])), I18n.Tf('{0} minutes of music', st.minutes.toLocaleString())];
     st.songs.slice(0, 5).forEach((s, i) => lines.push(`${i + 1}. ${s.title} - ${s.artist}`));
-    lines.push('', 'Muriel: free music app, no ads, no login. github.com/cloverscripts/riff-muriel');
+    lines.push('', `${I18n.T('Muriel: free music app, no ads, no login.')} github.com/cloverscripts/riff-muriel`);
     return lines.join('\n');
   }
   async function share(st) {
     const text = shareText(st);
     const api = window.electronAPI;
-    if (api && api.shareText) { await api.shareText('My Muriel Encore', text); return; }
-    if (navigator.share) { try { await navigator.share({ title: 'My Muriel Encore', text }); return; } catch (e) { if (e && e.name === 'AbortError') return; } }
-    try { await navigator.clipboard.writeText(text); if (window.MurielCore) window.MurielCore.toast('Copied your Encore'); } catch (e) {}
+    if (api && api.shareText) { await api.shareText(I18n.T('My Muriel Encore'), text); return; }
+    if (navigator.share) { try { await navigator.share({ title: I18n.T('My Muriel Encore'), text }); return; } catch (e) { if (e && e.name === 'AbortError') return; } }
+    try { await navigator.clipboard.writeText(text); if (window.MurielCore) window.MurielCore.toast(I18n.Tm('Copied your Encore')); } catch (e) {}
   }
 
   function render(period) {
     current = stats(period);
     slides = build(current);
     overlay.innerHTML = `<div class="enc-bar">${slides.map(() => '<i></i>').join('')}</div>
-      <button type="button" class="enc-close" aria-label="Close"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+      <button type="button" class="enc-close" aria-label="${Th('Close')}"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
       ${slides.join('')}`;
     overlay.style.setProperty('--slide-ms', `${SLIDE_MS}ms`);
     fitTitles(overlay);
@@ -374,6 +379,11 @@
   // sync.js: this device's own listening (sent to linked devices), and a redraw when theirs arrives
   const own = () => { commit(); return db; };
   window.MurielEncore = { open, stats, close, compact, own, refresh: () => renderHome() };
+  // another language, or its words just came in: the story too, on the slide it is on
+  window.addEventListener('muriel:i18n', () => {
+    renderHome();
+    if (overlay && current) { const at = slide; render(current.period); show(at); }
+  });
   try { compact(); } catch (e) {}
   const histBtn = document.getElementById('btn-open-encore');
   if (histBtn) histBtn.addEventListener('click', () => open('month'));

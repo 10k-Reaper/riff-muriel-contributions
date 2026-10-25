@@ -3162,6 +3162,7 @@ const SERVER_TOKEN = crypto.randomBytes(24).toString('hex');
 const TOKEN_PROTECTED_ROUTES = new Set([
   '/api/state',
   '/api/translate',
+  '/api/i18n-batch',
   '/api/vibe',
   '/api/search',
   '/api/artist',
@@ -4415,6 +4416,129 @@ async function handleTranslate(req, res, lines, to = 'en') {
 }
 
 
+// ---- UI language (Settings → Interface → Language, i18n.js) ----
+// The app sends the English strings it shows (its own words only: never titles, names or anything from the
+// library) and gets them back translated by the same service as the lyrics (callTranslate). Every answer is kept
+// per language in <data>/i18n/<lang>.json (phones: the app's storage, through the fs shim) and in memory here, so
+// a string is translated once per device. English never leaves the device.
+const I18N_DIR = path.join(DATA_DIR, 'i18n');
+const I18N_LANG_RE = /^[a-z]{2,3}(-[A-Za-z0-9]{2,8})?$/;
+const I18N_MAX_TEXTS = 400; // per request
+const I18N_MAX_LEN = 500; // per string
+const I18N_MAX_ENTRIES = 20000; // per language
+const i18nDicts = new Map(); // lang -> { dict, size }
+const i18nInFlight = new Map(); // lang + '\n' + text -> Promise, so two requests never translate the same string twice
+
+function i18nDict(lang) {
+  let d = i18nDicts.get(lang);
+  if (d) return d;
+  const dict = Object.create(null);
+  try {
+    const saved = JSON.parse(fs.readFileSync(path.join(I18N_DIR, `${lang}.json`), 'utf8'));
+    if (saved && typeof saved === 'object' && !Array.isArray(saved)) {
+      for (const [k, v] of Object.entries(saved)) if (typeof v === 'string' && v) dict[k] = v;
+    }
+  } catch (e) {}
+  d = { dict, size: Object.keys(dict).length };
+  i18nDicts.set(lang, d);
+  return d;
+}
+
+function i18nSave(lang) {
+  try {
+    fs.mkdirSync(I18N_DIR, { recursive: true });
+    fs.writeFileSync(path.join(I18N_DIR, `${lang}.json`), JSON.stringify(i18nDicts.get(lang).dict));
+  } catch (e) {
+    logger.warn(`[i18n] could not save ${lang}: ${e.message}`);
+  }
+}
+
+// Many strings per request, joined by newlines like the lyrics. When the lines don't come back one for one, each
+// half is tried on its own (down to single strings), so one odd string doesn't cost a request per string.
+// Resolves { out: a translation or null per string, missed: the strings never tried because the service stopped answering }.
+async function i18nTranslate(texts, lang) {
+  const out = new Array(texts.length).fill(null);
+  const tried = new Array(texts.length).fill(false);
+  let reachable = true;
+  const clean = (s, src) => {
+    const v = typeof s === 'string' ? s.replace(/\s+/g, ' ').trim() : '';
+    return v && v.length <= src.length * 4 + 60 ? v : null;
+  };
+  async function run(idx) {
+    if (!reachable || !idx.length) return;
+    const lines = idx.map((i) => texts[i]);
+    const got = await callTranslate(lines.join('\n'), lang);
+    if (!got) { reachable = false; return; }
+    if (got.length === lines.length) { idx.forEach((i, k) => { out[i] = clean(got[k], texts[i]); tried[i] = true; }); return; }
+    if (idx.length === 1) { out[idx[0]] = clean(got.join(' '), texts[idx[0]]); tried[idx[0]] = true; return; }
+    const mid = idx.length >> 1;
+    await run(idx.slice(0, mid));
+    await run(idx.slice(mid));
+  }
+  // the strings in groups of up to 1500 characters (as indexes), three groups at a time
+  const groups = [];
+  let cur = [], len = 0;
+  texts.forEach((s, i) => {
+    if (cur.length && len + s.length + 1 > 1500) { groups.push(cur); cur = []; len = 0; }
+    cur.push(i);
+    len += s.length + 1;
+  });
+  if (cur.length) groups.push(cur);
+  let next = 0;
+  const worker = async () => { while (reachable && next < groups.length) await run(groups[next++]); };
+  await Promise.all([worker(), worker(), worker()]);
+  return { out, missed: new Set(texts.filter((_, i) => !tried[i])) };
+}
+
+// { target, texts: [...] } -> { success, translations: [string|null], complete }; null: not translated, show the
+// English. complete is false when the service didn't answer for some of them (worth asking again later); a string it
+// answered with nothing usable stays null without that.
+async function handleI18nBatch(target, rawTexts) {
+  const lang = String(target || '');
+  if (!I18N_LANG_RE.test(lang)) return { status: 400, body: { success: false, error: 'bad language' } };
+  const texts = (Array.isArray(rawTexts) ? rawTexts : []).slice(0, I18N_MAX_TEXTS)
+    .map((s) => (typeof s === 'string' ? s.replace(/\s+/g, ' ').trim() : ''))
+    .map((s) => (s && s.length <= I18N_MAX_LEN ? s : ''));
+  if (lang === 'en') return { status: 200, body: { success: true, translations: texts.map((s) => s || null), complete: true } };
+  const d = i18nDict(lang);
+  const waits = new Set();
+  const need = [];
+  for (const s of new Set(texts)) {
+    if (!s || s in d.dict) continue;
+    const key = `${lang}\n${s}`;
+    if (i18nInFlight.has(key)) waits.add(i18nInFlight.get(key));
+    else need.push(s);
+  }
+  if (need.length) {
+    const job = i18nTranslate(need, lang).then(({ out, missed }) => {
+      let added = 0;
+      out.forEach((tr, i) => {
+        if (!tr || need[i] in d.dict || d.size >= I18N_MAX_ENTRIES) return;
+        d.dict[need[i]] = tr;
+        d.size++;
+        added++;
+      });
+      if (added) i18nSave(lang);
+      return missed;
+    }).catch((e) => { logger.warn(`[i18n] ${e.message}`); return new Set(need); }).finally(() => {
+      for (const s of need) i18nInFlight.delete(`${lang}\n${s}`);
+    });
+    for (const s of need) i18nInFlight.set(`${lang}\n${s}`, job);
+    waits.add(job);
+  }
+  const missed = new Set();
+  for (const m of await Promise.all(waits)) for (const s of m || []) missed.add(s);
+  const translations = texts.map((s) => (s && s in d.dict ? d.dict[s] : null));
+  return { status: 200, body: { success: true, translations, complete: !texts.some((s) => s && !(s in d.dict) && missed.has(s)) } };
+}
+
+// everything this device translated into `target` before: the app loads it in one go at start
+function i18nAll(target) {
+  const lang = String(target || '');
+  if (!I18N_LANG_RE.test(lang)) return { status: 400, body: { success: false, error: 'bad language' } };
+  return { status: 200, body: { success: true, translations: lang === 'en' ? {} : i18nDict(lang).dict } };
+}
+
 // ---- Discover: genre + similar-artist recommendations from listening history ----
 // iTunes gives each artist's genre, Deezer gives related artists, their top tracks and per-genre charts.
 // Deezer tracks are played by YouTube search (searchQuery), same as the artist pages.
@@ -5504,6 +5628,22 @@ const server = http.createServer(guardHandler(async (req, res) => {
       const texts = Array.isArray(raw) ? raw.map((t) => (typeof t === 'string' ? t : t == null ? '' : String(t))) : [];
       const targetLang = typeof (payload.targetLang || payload.to) === 'string' ? (payload.targetLang || payload.to) : 'en';
       handleTranslate(req, res, texts, targetLang).catch((e) => {
+        if (!res.headersSent) res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: false, error: e.message }));
+      });
+    });
+    return;
+  }
+
+  if (parsedUrl.pathname === '/api/i18n-batch') {
+    const reply = (r) => { res.writeHead(r.status, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(r.body)); };
+    if (req.method === 'GET') return reply(i18nAll(parsedUrl.query.target));
+    if (req.method !== 'POST') { res.writeHead(405); return res.end(); }
+    let body = '';
+    req.on('data', chunk => { if (res.writableEnded) return; body += chunk; if (body.length > MAX_BODY_BYTES) { body = ''; req.removeAllListeners('data'); req.removeAllListeners('end'); res.writeHead(413, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ success: false, error: 'payload too large' })); req.resume(); } });
+    req.on('end', () => {
+      const payload = safeJsonParse(body, {}) || {};
+      handleI18nBatch(payload.target || payload.targetLang || payload.to, payload.texts).then(reply, (e) => {
         if (!res.headersSent) res.writeHead(500, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ success: false, error: e.message }));
       });

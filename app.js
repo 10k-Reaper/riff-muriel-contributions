@@ -35,6 +35,7 @@
       try { return orig.call(this, key, value); } catch (e) {
         if (!e || (e.name !== 'QuotaExceededError' && e.code !== 22 && e.code !== 1014)) throw e;
         try { if (key !== 'muriel_debug_log') this.removeItem('muriel_debug_log'); } catch (_) {}
+        try { if (key !== 'muriel_i18n_snap') this.removeItem('muriel_i18n_snap'); } catch (_) {}
         try { if (window.MurielEncore && window.MurielEncore.compact) window.MurielEncore.compact(90); } catch (_) {}
         try { return orig.call(this, key, value); } catch (e2) {
           if (Date.now() - reportedAt > 60000) { reportedAt = Date.now(); window.dispatchEvent(new CustomEvent('muriel:storage-full', { detail: key })); }
@@ -168,10 +169,30 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
   injectM3Shapes();
 
+  // UI language (i18n.js): T('English') now, Tf('{0} songs', n) with values that are never translated,
+  // Tm(...) for a toast or I18N.text(el, ...) that keep up when the translation comes in or the language changes.
+  // Only literal strings go in: anything from the library or typed by someone goes into the {0} slots.
+  const I18N = window.MurielI18n || { T: (s) => s, Tf: (s, ...a) => String(s).replace(/\{(\d)\}/g, (_, i) => (a[i] != null ? String(a[i]) : '')), lang: 'en', text: (el, s, ...a) => { if (el) el.textContent = String(s).replace(/\{(\d)\}/g, (_, i) => (a[i] != null ? String(a[i]) : '')); }, ready: () => Promise.resolve(), connect() {}, setLang: async () => true, refresh() {} };
+  if (!I18N.Tm) I18N.Tm = (s, ...a) => ({ i18n: String(s), args: a, toString() { return I18N.Tf(this.i18n, ...this.args); } });
+  const T = (s) => I18N.T(s);
+  const Tf = (s, ...args) => I18N.Tf(s, ...args);
+  const Tm = (s, ...args) => I18N.Tm(s, ...args);
+  // what upstream Riff (and plugins written for it) call
+  window.t = T;
+  window.applyI18n = (lang) => I18N.setLang(lang);
+  // shown often but not on the page until then (a song's menu, everyday messages): asked for along with the page
+  if (I18N.known) I18N.known(['Play next', 'Add to queue', 'Add to playlist…', 'Add to favorites', 'Remove from favorites', 'Go to artist',
+    'Download…', 'Remove from playlist', 'Playing next', 'Added to queue', 'Already in the queue', 'Added to "{0}"', 'Already in "{0}"',
+    'Added {0} tracks to "{1}"', 'Playlist deleted', 'Link copied{0}', 'Removed from library', 'Could not play this song. Try again or skip.',
+    'Offline: connect to the internet to search new tracks', 'No matching tracks. Try a different search', 'Search for "{0}"', 'Actions',
+    'Playlists', 'Favorites', 'In playlists', 'Queue', 'History', 'Library', 'Online', 'Discover', 'View', 'Audio', 'Your stats',
+    'Repeat: playlist', 'Repeat: this song', 'Sleep timer: {0} min', 'Sleep timer: end of track']);
+
   const toastQueue = [];
   const MAX_QUEUED_TOASTS = 10;
   let isToastActive = false;
 
+  // message: a string as it is (it is not translated: it may hold a song title), or Tm('...', ...) to translate
   function showToast(message, type = 'info', duration = null) {
     if (!message) return;
     if (toastQueue.length >= MAX_QUEUED_TOASTS) {
@@ -179,7 +200,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     toastQueue.push({ message, type, duration });
     if (!isToastActive) {
-      processToastQueue();
+      // a message in another language waits a moment for its words, instead of showing up in English
+      if (message && message.i18n && I18N.lang !== 'en') {
+        isToastActive = true;
+        I18N.ready(message.i18n).then(processToastQueue);
+      } else {
+        processToastQueue();
+      }
     }
   }
 
@@ -215,6 +242,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       ${iconSvg ? `<span class="toast-icon">${iconSvg}</span>` : ''}
       <span class="toast-text">${escapeHtml(cleanMessage)}</span>
     `;
+    if (message && message.i18n) I18N.text(toast.querySelector('.toast-text'), message);
 
     container.appendChild(toast);
 
@@ -537,6 +565,9 @@ document.addEventListener('DOMContentLoaded', async () => {
       console.warn('Failed to get server port:', e);
     }
   }
+
+  // other languages: what this device translated before, then whatever is still missing (English: nothing)
+  I18N.connect(`http://127.0.0.1:${state.serverPort}`);
 
   checkToolsStatus(true);
 
@@ -2073,7 +2104,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       updateMediaSession();
 
       if (el.renameTrackModal) closeModal(el.renameTrackModal);
-      showToast('Track info updated', 'info');
+      showToast(Tm('Track info updated'), 'info');
     });
   }
 
@@ -2087,7 +2118,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   function resetLevelWatcher() { levelAvgDb = -120; if (audioEngine && audioEngine.setNormalizeGainDb) audioEngine.setNormalizeGainDb(0); }
   // the phone app has no Web Audio graph (see mobile-ui.js), so nothing to measure there
   const isPhoneApp = document.documentElement.classList.contains('is-mobile');
-  window.addEventListener('muriel:storage-full', () => showToast('Storage is full: some changes could not be saved', 'error'));
+  window.addEventListener('muriel:storage-full', () => showToast(Tm('Storage is full: some changes could not be saved'), 'error'));
   // <audio>/<img> can't send the token header the fetch wrapper adds, so local-server media URLs carry it
   const tokenUrl = (u) => {
     const t = window.electronAPI && window.electronAPI.serverToken;
@@ -2660,7 +2691,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       const isEnabled = v[item.key];
 
       if (card) card.classList.toggle('enabled', !!isEnabled);
-      if (badge) badge.textContent = isEnabled ? 'on' : 'off';
+      if (badge) badge.textContent = T(isEnabled ? 'on' : 'off');
       if (btn) {
         btn.classList.toggle('active', !!isEnabled);
         
@@ -3098,7 +3129,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (token !== skipOnFailToken) { setTrackLoading(false); return false; }
     if (state.queue.length < 2 || failStreak >= Math.min(5, state.queue.length - 1)) { failStreak = 0; setTrackLoading(false); return false; }
     failStreak++;
-    showToast(`Couldn't play "${(track && track.title) || 'this song'}", playing the next one`, 'info');
+    showToast(track && track.title ? Tm('Couldn\'t play "{0}", playing the next one', track.title) : Tm("Couldn't play this song, playing the next one"), 'info');
     setTimeout(() => { if (token === state.loadToken) playNext(); }, 1200);
     return true;
   }
@@ -3156,8 +3187,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     scrubProgress = 0;
 
     if (el.trackLoadingOverlay) {
-      if (el.trackLoadingTitle) el.trackLoadingTitle.textContent = track.title || 'loading track...';
-      if (el.trackLoadingSub) el.trackLoadingSub.textContent = track.artist ? `${track.artist} • buffering stream` : 'buffering audio stream';
+      if (el.trackLoadingTitle) el.trackLoadingTitle.textContent = track.title || T('loading track...');
+      if (el.trackLoadingSub) I18N.text(el.trackLoadingSub, track.artist ? '{0} • buffering stream' : 'buffering audio stream', track.artist);
       el.trackLoadingOverlay.classList.remove('hidden');
     }
 
@@ -3251,7 +3282,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
       if (!data || !data.success || !data.streamUrl) {
         if (!navigator.onLine) {
-          showToast('Offline: this track is not available in local cache');
+          showToast(Tm('Offline: this track is not available in local cache'));
           throw new Error('Offline: track not cached locally');
         }
         throw new Error((data && data.error) || 'Failed to extract audio stream');
@@ -3287,7 +3318,7 @@ document.addEventListener('DOMContentLoaded', async () => {
           document.body.classList.remove('is-playing');
           updatePlayPauseButton(false, false);
           if (el.trackLoadingOverlay) el.trackLoadingOverlay.classList.add('hidden');
-          if (!skipUnplayable(currentToken, track)) showToast('Could not play this song. Try again or skip.', 'error');
+          if (!skipUnplayable(currentToken, track)) showToast(Tm('Could not play this song. Try again or skip.'), 'error');
         });
       } else {
         el.nativeAudio.src = data.streamUrl;
@@ -3301,7 +3332,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         console.warn('Track playback notice:', err);
         updatePlayPauseButton(false, false);
         if (el.trackLoadingOverlay) el.trackLoadingOverlay.classList.add('hidden');
-        if (!skipUnplayable(currentToken, track)) showToast(err.message || 'Could not load audio stream', 'error');
+        if (!skipUnplayable(currentToken, track)) showToast(err.message || Tm('Could not load audio stream'), 'error');
       }
     }
   }
@@ -4468,7 +4499,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         batteryLevelEl.setAttribute('width', '8');
         batteryEl.classList.remove('hidden');
         batteryEl.classList.toggle('battery-low', clampedPct <= 20);
-        batteryEl.title = `Battery level: ${clampedPct}%`;
+        batteryEl.title = Tf('Battery level: {0}%', clampedPct);
       } else {
         batteryEl.classList.add('hidden');
       }
@@ -5051,7 +5082,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   function openCustomLyricsEditor() {
     if (!state.currentTrack) {
-      showToast('Play a track first to add lyrics', 'info');
+      showToast(Tm('Play a track first to add lyrics'), 'info');
       return;
     }
     if (el.customLyricsTrackTitle) el.customLyricsTrackTitle.textContent = (state.currentTrack.title || 'untitled');
@@ -5097,11 +5128,11 @@ document.addEventListener('DOMContentLoaded', async () => {
       const data = await res.json();
       if (!data.success) throw new Error(data.error || 'Save failed');
 
-      showToast(text ? 'Lyrics saved successfully' : 'Lyrics removed', 'info');
+      showToast(text ? Tm('Lyrics saved successfully') : Tm('Lyrics removed'), 'info');
       closeCustomLyricsEditor();
       if (isCurrentSong({ title, artist })) loadSyncedLyrics(title, artist, state.loadToken);
     } catch (e) {
-      showToast('Failed to save lyrics: ' + e.message, 'error');
+      showToast(Tm('Failed to save lyrics: {0}', e.message), 'error');
     }
   }
 
@@ -5124,12 +5155,12 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   function openSyncMode() {
     if (!state.currentTrack) {
-      showToast('Play a track first to sync lyrics', 'info');
+      showToast(Tm('Play a track first to sync lyrics'), 'info');
       return;
     }
 
     if (state.syncedLyrics.length === 0) {
-      showToast('Add lyrics first using the edit button, then sync them', 'info');
+      showToast(Tm('Add lyrics first using the edit button, then sync them'), 'info');
       return;
     }
 
@@ -5151,7 +5182,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       playSmooth();
     }
 
-    showToast('Press play, then click or tap each line when you hear it', 'info');
+    showToast(Tm('Press play, then click or tap each line when you hear it'), 'info');
   }
 
   function updateSyncProgress() {
@@ -5197,7 +5228,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   function handleSyncLineClick(idx) {
     if (!syncState.active || !el.nativeAudio) return;
-    if (!isCurrentSong(syncState.song)) { showToast('The song changed. Save or restart the sync.', 'info'); return; }
+    if (!isCurrentSong(syncState.song)) { showToast(Tm('The song changed. Save or restart the sync.'), 'info'); return; }
 
     const currentTime = el.nativeAudio.currentTime || 0;
     syncState.lines[idx].time = currentTime;
@@ -5219,7 +5250,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     syncState.currentIndex = 0;
     if (el.nativeAudio && isCurrentSong(syncState.song)) el.nativeAudio.currentTime = 0;
     renderSyncLines();
-    showToast('Sync restarted', 'info');
+    showToast(Tm('Sync restarted'), 'info');
   }
 
   async function saveSyncAndExit() {
@@ -5249,11 +5280,11 @@ document.addEventListener('DOMContentLoaded', async () => {
       const data = await res.json();
       if (!data.success) throw new Error(data.error || 'Save failed');
 
-      showToast('Synced lyrics saved', 'info');
+      showToast(Tm('Synced lyrics saved'), 'info');
       closeSyncMode();
       if (isCurrentSong({ title, artist })) loadSyncedLyrics(title, artist, state.loadToken);
     } catch (e) {
-      showToast('Failed to save synced lyrics: ' + e.message, 'error');
+      showToast(Tm('Failed to save synced lyrics: {0}', e.message), 'error');
     }
   }
 
@@ -5582,8 +5613,8 @@ document.addEventListener('DOMContentLoaded', async () => {
       document.body.classList.remove('is-playing');
       updatePlayPauseButton(false, false);
       if (skipUnplayable(state.loadToken, state.currentTrack)) return;
-      if (state.currentTrack.platform === 'local') showToast('File missing from library');
-      else showToast('Could not play this song. Try again or skip.', 'error');
+      if (state.currentTrack.platform === 'local') showToast(Tm('File missing from library'));
+      else showToast(Tm('Could not play this song. Try again or skip.'), 'error');
     });
 
     el.nativeAudio.addEventListener('waiting', () => {
@@ -6010,7 +6041,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   function openDeletePresetConfirm(preset) {
     state.presetToDeleteId = preset.id;
     const msg = document.getElementById('delete-preset-msg');
-    if (msg) msg.textContent = `Delete preset "${preset.name}"?`;
+    if (msg) I18N.text(msg, 'Delete preset "{0}"?', preset.name);
     const modal = document.getElementById('delete-preset-modal');
     if (modal) openModal(modal);
   }
@@ -6046,7 +6077,7 @@ document.addEventListener('DOMContentLoaded', async () => {
           </div>
           <div class="search-artist-info">
             <span class="search-artist-name">${escapeHtml(artist.name)}</span>
-            <span class="search-artist-label">Artist</span>
+            <span class="search-artist-label" data-i18n>Artist</span>
           </div>
         </div>
       `;
@@ -6155,7 +6186,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     if (currentAlbumPlayRunId !== runId) return;
     if (!picked) {
-      showToast('This album does not exist', 'warning');
+      showToast(Tm('This album does not exist'), 'warning');
       return;
     }
     playTrack(picked, [picked], 0, 'album');
@@ -6166,7 +6197,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const runId = ++currentAlbumPlayRunId;
 
     const toastTimer = setTimeout(() => {
-      showToast('Finding tracks…', 'info');
+      showToast(Tm('Finding tracks…'), 'info');
     }, 800);
 
     if (isEpisodeAlbum(tracks)) {
@@ -6182,7 +6213,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (currentAlbumPlayRunId !== runId) return;
 
     if (!firstResolved) {
-      showToast('This album does not exist', 'warning');
+      showToast(Tm('This album does not exist'), 'warning');
       return;
     }
 
@@ -6224,7 +6255,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (state.currentView === 'queue') renderQueueView();
 
       if (skippedCount > 0) {
-        showToast(`${skippedCount} tracks not found`, 'warning');
+        showToast(Tm('{0} tracks not found', skippedCount), 'warning');
       }
     } finally {
       if (hasBusy) endBusy('import');
@@ -6374,7 +6405,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (!artistBtn) return;
       artistBtn.textContent = name;
       // a mix lists the artists it was made from: nothing to open
-      artistBtn.title = isMix ? '' : `View ${name}`;
+      artistBtn.title = isMix ? '' : Tf('View {0}', name);
       artistBtn.classList.toggle('is-static', isMix);
       artistBtn.onclick = isMix ? null : () => {
         if (name && typeof openArtistProfile === 'function') openArtistProfile(name);
@@ -6454,8 +6485,8 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (albumArtist && !isMix) setAlbumArtist(albumArtist);
 
       if (countEl) {
-        const cnt = `${tracks.length} track${tracks.length === 1 ? '' : 's'}`;
-        countEl.textContent = [kind, albumYear, cnt].filter(Boolean).join(' · ');
+        const cnt = tracks.length === 1 ? T('1 track') : Tf('{0} tracks', tracks.length);
+        countEl.textContent = [T(kind), albumYear, cnt].filter(Boolean).join(' · ');
       }
 
       album._tracks = tracks;
@@ -6515,7 +6546,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     } catch (err) {
       if (currentAlbumRunId !== runId) return;
       if (listEl) {
-        listEl.innerHTML = `<div class="empty-hint" style="color: var(--md-sys-color-error, #ba1a1a);">Failed to load album: ${escapeHtml(err.message)}</div>`;
+        listEl.innerHTML = `<div class="empty-hint" style="color: var(--md-sys-color-error, #ba1a1a);"><span data-i18n>Failed to load album:</span> ${escapeHtml(err.message)}</div>`;
       }
     }
   }
@@ -6582,7 +6613,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       container.innerHTML = `
         <div class="search-albums-section">
           <div class="section-sub-header">
-            <h3>Albums</h3>
+            <h3 data-i18n>Albums</h3>
           </div>
           <div class="search-albums-row">
             ${albums.map(album => {
@@ -6665,7 +6696,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     try {
       if (!navigator.onLine) {
-        if (el.searchTracksList) el.searchTracksList.innerHTML = `<div class="empty-hint">Offline: connect to the internet to search new tracks</div>`;
+        if (el.searchTracksList) el.searchTracksList.innerHTML = `<div class="empty-hint" data-i18n>Offline: connect to the internet to search new tracks</div>`;
         return;
       }
       const searchUrl = `http://127.0.0.1:${state.serverPort}/api/search?q=${encodeURIComponent(state.searchQuery)}&platform=${state.platform}&limit=20`;
@@ -6674,7 +6705,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (state.searchToken !== searchToken) return;
 
       if (!data.success || !data.tracks) {
-        if (state.platform === 'ytmusic') showToast('YouTube Music is unavailable');
+        if (state.platform === 'ytmusic') showToast(Tm('YouTube Music is unavailable'));
         throw new Error(data.error || 'Failed to load search results');
       }
 
@@ -6797,7 +6828,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       const showArtist = isAlbum ? (Boolean(trackArtist) && Boolean(albumArtist) && trackArtist !== albumArtist) : true;
       // [E] before the artist (Settings > Tracks > Show explicit tag hides it)
       const explicitTag = window.MurielLibrary && window.MurielLibrary.isTrackExplicit(track) ? '<span class="explicit-badge" title="Explicit">E</span>' : '';
-      const artistSpan = showArtist ? `<span class="track-row-artist" title="view artist profile">${escapeHtml(track.artist || 'unknown artist')}</span>` : '';
+      const artistSpan = showArtist ? `<span class="track-row-artist" title="view artist profile" data-i18n-attr="title">${escapeHtml(track.artist || 'unknown artist')}</span>` : '';
 
       row.innerHTML = `
       <span class="track-row-index">${(isAlbum && track.no) ? track.no : (idx + 1)}</span>
@@ -6808,13 +6839,13 @@ document.addEventListener('DOMContentLoaded', async () => {
       </div>
       <span class="track-row-duration">${formatDuration(track.duration)}</span>
       <div class="track-row-actions">
-      <button class="btn-icon-pill btn-row-fav" title="favorite">
+      <button class="btn-icon-pill btn-row-fav" title="favorite" data-i18n-attr="title">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="${isFav ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"></path></svg>
       </button>
-      <button class="btn-icon-pill btn-row-art" title="Customize cover & banner">
+      <button class="btn-icon-pill btn-row-art" title="Customize cover & banner" data-i18n-attr="title">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
       </button>
-      <button class="btn-icon-pill btn-row-add-playlist" title="add to playlist">
+      <button class="btn-icon-pill btn-row-add-playlist" title="add to playlist" data-i18n-attr="title">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
       </button>
       ${track.platform === 'local' ? `
@@ -6979,7 +7010,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     : `${state.localTracks.length} tracks in library`;
                 }
               }
-              showToast('Removed from library');
+              showToast(Tm('Removed from library'));
             } catch (err) {
               console.warn('Remove local track error:', err);
             }
@@ -7011,18 +7042,18 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (shuffleBag.queue) shuffleBag.queue = state.queue;
         shuffleBag.next.push(track);
         updateQueueBadge();
-        showToast('Playing next', 'success');
+        showToast(Tm('Playing next'), 'success');
       } },
       { label: 'Add to queue', run: () => {
         // only songs still to come count: one that already played is queued again
         const upcoming = state.queue.findIndex((t, i) => i > state.queueIndex && isSameTrack(t, track));
         if (upcoming >= 0 || (state.queue[state.queueIndex] && isSameTrack(state.queue[state.queueIndex], track))) {
-          showToast('Already in the queue', 'info');
+          showToast(Tm('Already in the queue'), 'info');
           return;
         }
         state.queue.push(track);
         updateQueueBadge();
-        showToast('Added to queue', 'success');
+        showToast(Tm('Added to queue'), 'success');
       } },
       { label: 'Add to playlist…', run: () => openAddToPlaylistModal(track) },
       { label: isFav ? 'Remove from favorites' : 'Add to favorites', run: () => {
@@ -7050,7 +7081,8 @@ document.addEventListener('DOMContentLoaded', async () => {
       b.type = 'button';
       b.className = 'track-context-item' + (item.danger ? ' danger' : '');
       b.setAttribute('role', 'menuitem');
-      b.textContent = item.label;
+      b.textContent = T(item.label);
+      b.dataset.i18n = '';
       b.addEventListener('click', (e) => {
         e.stopPropagation();
         closeTrackContextMenu();
@@ -7092,7 +7124,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         local: 'Your library is empty. Add some music to get started',
         queue: 'Queue is empty. Play a track to start.'
       };
-      container.innerHTML = `<div class="empty-hint">${emptyMessages[context] || 'No tracks to show'}</div>`;
+      container.innerHTML = `<div class="empty-hint" data-i18n>${emptyMessages[context] || 'No tracks to show'}</div>`;
       return;
     }
 
@@ -7285,7 +7317,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // opened by name, the page can't tell which namesake it shows: offer them once there are two
     if (!others.length || (!shown.length && others.length < 2)) return;
     const title = document.getElementById('artist-matches-title');
-    if (title) title.textContent = `${shown.length ? 'Other artists' : 'Artists'} named ${name}`;
+    if (title) I18N.text(title, shown.length ? 'Other artists named {0}' : 'Artists named {0}', name);
     row.innerHTML = others.map(m => `
       <button class="fy-artist" type="button" title="${escapeHtml(m.subtitle || m.name)}">
         <img src="${escapeHtml(m.thumbnail || '')}" alt="" loading="lazy" decoding="async">
@@ -7464,7 +7496,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const tracksToggle = document.getElementById('btn-artist-tracks-toggle');
     if (tracksToggle) tracksToggle.classList.add('hidden');
     if (el.artistVerifiedBadge) el.artistVerifiedBadge.classList.add('hidden');
-    if (el.artistTracksList) el.artistTracksList.innerHTML = '<div class="empty-hint">Fetching official releases...</div>';
+    if (el.artistTracksList) el.artistTracksList.innerHTML = '<div class="empty-hint" data-i18n>Fetching official releases...</div>';
 
     // with only a video to go by, the server works out which artist it is: no cached bio of a namesake meanwhile
     const bioCacheKey = id || (video ? '' : cleanName.toLowerCase());
@@ -7524,7 +7556,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       showArtistMatches(matches, null, cleanName, run);
       setArtistHero('', '', run);
       if (!bioFromCache) setArtistBio('');
-      if (el.artistTracksList) el.artistTracksList.innerHTML = '<div class="empty-hint">No tracks found for this artist.</div>';
+      if (el.artistTracksList) el.artistTracksList.innerHTML = '<div class="empty-hint" data-i18n>No tracks found for this artist.</div>';
     }
   }
 
@@ -7783,8 +7815,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         el.localTracksList.style.paddingBottom = '0px';
         el.localTracksList.innerHTML = `
           <div class="empty-hint" style="display:flex;flex-direction:column;align-items:center;gap:12px;">
-            <span>No local tracks in library yet.</span>
-            <button class="btn-pill-primary" id="btn-add-local-files-empty">
+            <span data-i18n>No local tracks in library yet.</span>
+            <button class="btn-pill-primary" id="btn-add-local-files-empty" data-i18n>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
               Add files
             </button>
@@ -7855,7 +7887,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       await Promise.all(isPhoneApp ? [worker()] : [worker(), worker()]);
 
       await renderLocalView(true);
-      showToast(`Added ${items.length} tracks`);
+      showToast(Tm('Added {0} tracks', items.length));
     } catch (e) {
       console.warn('Import audio files error:', e);
     }
@@ -7950,7 +7982,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const box = document.getElementById('section-home-playlists');
     if (!box) return;
     const lists = state.playlists || [];
-    box.innerHTML = `<div class="onrepeat-head"><h3 class="section-title">Your playlists</h3></div><div class="home-pl-row"></div>`;
+    box.innerHTML = `<div class="onrepeat-head"><h3 class="section-title" data-i18n>Your playlists</h3></div><div class="home-pl-row"></div>`;
     const row = box.querySelector('.home-pl-row');
     const card = (cls, onClick) => {
       const b = document.createElement('button');
@@ -7961,7 +7993,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       return b;
     };
     const add = card('home-pl-new', () => { if (el.btnNewPlaylist) el.btnNewPlaylist.click(); });
-    add.innerHTML = `<span class="home-pl-cover"><svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg></span><b>New playlist</b><span>${lists.length ? '&nbsp;' : 'Make your first one'}</span>`;
+    add.innerHTML = `<span class="home-pl-cover"><svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg></span><b data-i18n>New playlist</b><span>${lists.length ? '&nbsp;' : 'Make your first one'}</span>`;
     lists.forEach((pl) => {
       const b = card('', () => openPlaylistDetail(pl.id));
       const cover = document.createElement('span');
@@ -7969,7 +8001,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       renderPlaylistCover(cover, pl, 150);
       const n = (pl.tracks || []).length;
       b.append(cover);
-      b.insertAdjacentHTML('beforeend', `<b>${escapeHtml(pl.name || 'Untitled')}</b><span>${n} song${n === 1 ? '' : 's'}</span>`);
+      b.insertAdjacentHTML('beforeend', `<b>${escapeHtml(pl.name || 'Untitled')}</b><span data-i18n>${n} song${n === 1 ? '' : 's'}</span>`);
     });
   }
 
@@ -7982,6 +8014,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       emptyMsg.className = 'playlists-empty-note';
       emptyMsg.style.cssText = 'padding: 24px 12px; text-align: center; color: var(--md-sys-color-on-surface-variant); font-size: calc(13px * var(--font-scale, 1));';
       emptyMsg.textContent = 'No playlists yet';
+      emptyMsg.dataset.i18n = '';
       el.playlistsList.appendChild(emptyMsg);
       return;
     }
@@ -8002,7 +8035,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       const trackCount = (pl.tracks || []).length;
       infoEl.innerHTML = `
         <span class="playlist-item-name">${escapeHtml(pl.name || 'untitled')}</span>
-        <span class="playlist-item-count">${trackCount} track${trackCount === 1 ? '' : 's'}</span>
+        <span class="playlist-item-count" data-i18n>${trackCount} track${trackCount === 1 ? '' : 's'}</span>
       `;
 
       item.appendChild(thumbEl);
@@ -8435,21 +8468,21 @@ document.addEventListener('DOMContentLoaded', async () => {
     const S = window.MurielShare;
     if (!pl || !S) return;
     let link, count;
-    try { const r = await S.encode({ name: pl.name, tracks: pl.tracks || [] }); link = S.webLink(r.payload); count = r.count; } catch (e) { showToast("Couldn't make a link for this playlist", 'error'); return; }
-    if (!count) { showToast("Songs from your own files can't be shared, and this playlist has nothing else", 'info'); return; }
+    try { const r = await S.encode({ name: pl.name, tracks: pl.tracks || [] }); link = S.webLink(r.payload); count = r.count; } catch (e) { showToast(Tm("Couldn't make a link for this playlist"), 'error'); return; }
+    if (!count) { showToast(Tm("Songs from your own files can't be shared, and this playlist has nothing else"), 'info'); return; }
     const skipped = (pl.tracks || []).length - count;
-    const note = skipped > 0 ? ` (${skipped} song${skipped === 1 ? '' : 's'} from your own files left out)` : '';
+    const note = skipped > 0 ? ` (${skipped === 1 ? T('1 song from your own files left out') : Tf('{0} songs from your own files left out', skipped)})` : '';
     if (window.electronAPI && window.electronAPI.shareText) { // phones: the share sheet
       const r = await window.electronAPI.shareText(pl.name, `${pl.name} on Muriel 🎧 ${link}`);
-      if (r === 'copied') showToast('Link copied' + note, 'success');
-      else if (r === 'shared' && note) showToast('Shared' + note, 'info');
-      else if (r === 'failed') showToast("Couldn't share the link", 'error');
+      if (r === 'copied') showToast(Tm('Link copied{0}', note), 'success');
+      else if (r === 'shared' && note) showToast(Tm('Shared{0}', note), 'info');
+      else if (r === 'failed') showToast(Tm("Couldn't share the link"), 'error');
       return;
     }
     try {
       await navigator.clipboard.writeText(link);
-      showToast('Link copied. Anyone can open it in the browser or in Muriel' + note, 'success');
-    } catch (e) { window.prompt('Copy this link', link); }
+      showToast(Tm('Link copied. Anyone can open it in the browser or in Muriel{0}', note), 'success');
+    } catch (e) { window.prompt(T('Copy this link'), link); }
   }
   const btnSharePlaylist = document.getElementById('btn-share-playlist');
   if (btnSharePlaylist) btnSharePlaylist.addEventListener('click', () => sharePlaylist(state.playlists.find(p => p.id === state.currentPlaylistId)));
@@ -8464,19 +8497,19 @@ document.addEventListener('DOMContentLoaded', async () => {
     importingShare = payload;
     try {
       const { name, tracks } = await S.decode(payload);
-      if (!tracks.length) { showToast('That playlist link has no songs Muriel can play', 'info'); return true; }
+      if (!tracks.length) { showToast(Tm('That playlist link has no songs Muriel can play'), 'info'); return true; }
       // short links carry only YouTube ids: look up titles and artists first
-      if (tracks.some(t => t.needsInfo)) { showToast(`Adding "${name}"…`, 'info'); await S.fillInfo(tracks); }
+      if (tracks.some(t => t.needsInfo)) { showToast(Tm('Adding "{0}"…', name), 'info'); await S.fillInfo(tracks); }
       const key = (list) => list.map(t => `${t.platform}:${t.id}`).join('|');
       const same = state.playlists.find(p => p.name === name && key(p.tracks || []) === key(tracks));
-      if (same) { openPlaylistDetail(same.id); showToast(`You already have "${name}"`, 'info'); return true; }
+      if (same) { openPlaylistDetail(same.id); showToast(Tm('You already have "{0}"', name), 'info'); return true; }
       const taken = new Set(state.playlists.map(p => p.name));
       let finalName = name;
       for (let i = 2; taken.has(finalName); i++) finalName = `${name} (${i})`;
       createPlaylist(finalName, tracks);
-      showToast(`Added "${finalName}" (${tracks.length} song${tracks.length === 1 ? '' : 's'})`, 'success');
+      showToast(tracks.length === 1 ? Tm('Added "{0}" (1 song)', finalName) : Tm('Added "{0}" ({1} songs)', finalName, tracks.length), 'success');
     } catch (e) {
-      showToast("That playlist link didn't work. It may have been cut off, so ask for it again", 'error');
+      showToast(Tm("That playlist link didn't work. It may have been cut off, so ask for it again"), 'error');
     } finally {
       setTimeout(() => { if (importingShare === payload) importingShare = ''; }, 3000);
     }
@@ -8505,10 +8538,10 @@ document.addEventListener('DOMContentLoaded', async () => {
       localStorage.setItem('devsize_favorites', JSON.stringify(state.favorites));
       updateFavoritesBadge();
       updateFavoriteIcon();
-      btn.title = added + ' added to favorites';
+      btn.title = Tf('{0} added to favorites', added);
       const old = btn.style.color;
       btn.style.color = '#ff6b8a';
-      setTimeout(() => { btn.style.color = old; btn.title = 'Add all to favorites'; }, 2500);
+      setTimeout(() => { btn.style.color = old; btn.title = T('Add all to favorites'); }, 2500);
     });
   })();
 
@@ -8569,7 +8602,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       localStorage.setItem('devsize_favorites', JSON.stringify(state.favorites));
       updateFavoritesBadge();
       updateFavoriteIcon();
-      showToast(added ? `Added ${added} track${added === 1 ? '' : 's'} to favorites` : 'Already in favorites', added ? 'success' : 'info');
+      showToast(!added ? Tm('Already in favorites') : added === 1 ? Tm('Added 1 track to favorites') : Tm('Added {0} tracks to favorites', added), added ? 'success' : 'info');
     });
     on('multi-select-add', () => {
       const picked = Array.from(multiSel.tracks.values());
@@ -8577,7 +8610,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
     on('multi-select-remove', () => {
       const n = multiSel.tracks.size;
-      if (!n || !window.confirm(`Remove ${n} track${n === 1 ? '' : 's'}?`)) return;
+      if (!n || !window.confirm(n === 1 ? T('Remove 1 track?') : Tf('Remove {0} tracks?', n))) return;
       if (multiSel.context === 'favorites') {
         state.favorites = state.favorites.filter(f => !multiSel.tracks.has(getTrackCanonicalId(f)));
         localStorage.setItem('devsize_favorites', JSON.stringify(state.favorites));
@@ -8677,7 +8710,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     el.playlistPickList.innerHTML = '';
     if (state.playlists.length === 0) {
-      el.playlistPickList.innerHTML = '<div class="empty-hint" style="padding: 24px 0; text-align: center; color: var(--md-sys-color-outline);">No playlists yet. Create one first.</div>';
+      el.playlistPickList.innerHTML = '<div class="empty-hint" data-i18n style="padding: 24px 0; text-align: center; color: var(--md-sys-color-outline);">No playlists yet. Create one first.</div>';
     } else {
       state.playlists.forEach((pl, idx) => {
         const item = document.createElement('button');
@@ -8714,6 +8747,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const countEl = document.createElement('span');
         countEl.className = 'playlist-pick-count';
         countEl.textContent = `${trackCount} track${trackCount === 1 ? '' : 's'}`;
+        countEl.dataset.i18n = '';
 
         infoEl.appendChild(nameEl);
         infoEl.appendChild(countEl);
@@ -8744,15 +8778,15 @@ document.addEventListener('DOMContentLoaded', async () => {
               localStorage.setItem('devsize_playlists', JSON.stringify(state.playlists));
               renderPlaylistsList();
             }
-            showToast(fresh.length ? `Added ${fresh.length} track${fresh.length === 1 ? '' : 's'} to "${pl.name}"` : `Already in "${pl.name}"`, fresh.length ? 'success' : 'info');
+            showToast(!fresh.length ? Tm('Already in "{0}"', pl.name) : fresh.length === 1 ? Tm('Added 1 track to "{0}"', pl.name) : Tm('Added {0} tracks to "{1}"', fresh.length, pl.name), fresh.length ? 'success' : 'info');
           } else if (track) {
             if (!pl.tracks.some(t => t.id === track.id)) {
               pl.tracks.push(stampAddedAt(track));
               localStorage.setItem('devsize_playlists', JSON.stringify(state.playlists));
               renderPlaylistsList();
-              showToast(`Added to "${pl.name}"`, 'success');
+              showToast(Tm('Added to "{0}"', pl.name), 'success');
             } else {
-              showToast(`Already in "${pl.name}"`, 'info');
+              showToast(Tm('Already in "{0}"', pl.name), 'info');
             }
           }
           if (el.addToPlaylistModal) closeModal(el.addToPlaylistModal);
@@ -9475,8 +9509,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (el.btnRepeat) {
       el.btnRepeat.classList.toggle('active', state.repeatMode !== 'off');
       el.btnRepeat.classList.toggle('repeat-one', state.isRepeat);
-      el.btnRepeat.title = REPEAT_TITLES[state.repeatMode];
-      el.btnRepeat.setAttribute('aria-label', REPEAT_TITLES[state.repeatMode]);
+      el.btnRepeat.title = T(REPEAT_TITLES[state.repeatMode]);
+      el.btnRepeat.setAttribute('aria-label', T(REPEAT_TITLES[state.repeatMode]));
     }
     window.dispatchEvent(new Event('muriel:modes'));
   }
@@ -9566,7 +9600,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     el.btnDeletePlaylist.addEventListener('click', () => {
       const pl = state.playlists.find(p => p.id === state.currentPlaylistId);
       if (!pl) return;
-      if (deletePlaylistMsg) deletePlaylistMsg.textContent = `Delete playlist "${pl.name}"? This action cannot be undone.`;
+      if (deletePlaylistMsg) I18N.text(deletePlaylistMsg, 'Delete playlist "{0}"? This action cannot be undone.', pl.name);
       if (deletePlaylistModal) openModal(deletePlaylistModal);
     });
   }
@@ -9581,7 +9615,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     btnConfirmDeletePlaylist.addEventListener('click', () => {
       deleteCurrentPlaylist();
       closeModal(deletePlaylistModal);
-      showToast('Playlist deleted');
+      showToast(Tm('Playlist deleted'));
     });
   }
 
@@ -9617,7 +9651,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         // made from the add dialog: put the song(s) in and stay where the user was
         const seen = new Set();
         const pl = createPlaylist(name, pending.filter(t => t && t.id && !seen.has(t.id) && seen.add(t.id)), '', { open: false });
-        if (pl) showToast(`Added ${pl.tracks.length === 1 ? 'to' : pl.tracks.length + ' tracks to'} "${pl.name}"`, 'success');
+        if (pl) showToast(pl.tracks.length === 1 ? Tm('Added to "{0}"', pl.name) : Tm('Added {0} tracks to "{1}"', pl.tracks.length, pl.name), 'success');
       } else {
         createPlaylist(name);
       }
@@ -10434,7 +10468,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         vid.setAttribute('disableRemotePlayback', '');
         vid.addEventListener('loadedmetadata', () => {
           if (vid.videoWidth * vid.videoHeight > 1920 * 1080 * 1.2) {
-            showToast('This background video is larger than 1080p and may stutter. A 1080p file plays smoother.', 'info');
+            showToast(Tm('This background video is larger than 1080p and may stutter. A 1080p file plays smoother.'), 'info');
           }
         }, { once: true });
         vid.play().catch(() => {});
@@ -10856,7 +10890,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       const next = !btnHwAccel.classList.contains('active');
       btnHwAccel.classList.toggle('active', next);
       window.electronAPI.setHwAccel(next);
-      showToast('Restart Muriel to apply', 'info');
+      showToast(Tm('Restart Muriel to apply'), 'info');
     });
   }
 
@@ -10880,7 +10914,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (newVal && parseInt(localStorage.getItem('muriel_ui_alpha') || '100', 10) >= 100) {
           localStorage.setItem('muriel_ui_alpha', '60');
           applyUiOpacity();
-          showToast('Interface opacity set to 60% so the glass shows', 'info');
+          showToast(Tm('Interface opacity set to 60% so the glass shows'), 'info');
         }
       } else if (key === 'blur_fx') {
         document.body.classList.toggle('no-blur', !newVal);
@@ -11515,7 +11549,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     renderPluginCards();
     applyCustomStyles();
     renderThemeCards();
-    showToast('Custom CSS, themes and plugins reset (Ctrl+Shift+R)', 'info');
+    showToast(Tm('Custom CSS, themes and plugins reset (Ctrl+Shift+R)'), 'info');
   }
 
   window.addEventListener('keydown', (e) => {
@@ -11566,13 +11600,14 @@ document.addEventListener('DOMContentLoaded', async () => {
       const empty = document.createElement('div');
       empty.className = 'ct-empty';
       empty.textContent = 'No themes yet. Click Add and choose a .css file.';
+      empty.dataset.i18n = '';
       list.appendChild(empty);
       return;
     }
     customThemes.forEach((t) => {
       const card = document.createElement('div');
       card.className = 'ct-card';
-      card.innerHTML = '<div class="ct-preview"></div><div class="ct-info"><div class="ct-name"></div><div class="ct-meta"></div></div><button class="btn-icon-pill ct-remove" title="Remove"><svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg></button><button class="effect-switch-btn"><span class="thumb"></span></button>';
+      card.innerHTML = '<div class="ct-preview"></div><div class="ct-info"><div class="ct-name"></div><div class="ct-meta"></div></div><button class="btn-icon-pill ct-remove" title="Remove" data-i18n-attr="title"><svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg></button><button class="effect-switch-btn"><span class="thumb"></span></button>';
       card.querySelector('.ct-name').textContent = t.name;
       card.querySelector('.ct-meta').textContent = [t.author && `by ${t.author}`, t.description].filter(Boolean).join(' · ');
       const preview = card.querySelector('.ct-preview');
@@ -11590,7 +11625,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         customThemes = customThemes.filter((x) => x.id !== t.id);
         applyCustomStyles();
         renderThemeCards();
-        showToast('Theme removed', 'info');
+        showToast(Tm('Theme removed'), 'info');
       });
       list.appendChild(card);
       mountThemePreview(preview, t.css);
@@ -11614,7 +11649,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (!added.length) return;
       customThemes.push(...added);
       renderThemeCards();
-      showToast(`Added ${added.length} theme${added.length > 1 ? 's' : ''}. Turn one on to try it`, 'info');
+      showToast(added.length > 1 ? Tm('Added {0} themes. Turn one on to try it', added.length) : Tm('Added 1 theme. Turn it on to try it'), 'info');
     });
   }
 
@@ -11625,7 +11660,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
   function reportPluginError(file, e) {
     console.error('[plugin ' + file + ']', e);
-    showToast(`Plugin ${file} failed: ${e && e.message ? e.message : e}`, 'error');
+    showToast(Tm('Plugin {0} failed: {1}', file, e && e.message ? e.message : e), 'error');
   }
   function createPluginApi(p) {
     const prefix = `muriel_plugin_${p.file}_`;
@@ -11671,7 +11706,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.querySelectorAll(`style[data-plugin="${p.file}"]`).forEach((n) => n.remove());
     const hadStop = !!(entry && entry.stop);
     loadedPlugins.delete(p.file);
-    if (!silent && !hadStop) showToast(`Restart Muriel to fully unload "${p.name}"`, 'info');
+    if (!silent && !hadStop) showToast(Tm('Restart Muriel to fully unload "{0}"', p.name), 'info');
   }
   let pluginsCache = [];
   function renderPluginCards() {
@@ -11682,13 +11717,14 @@ document.addEventListener('DOMContentLoaded', async () => {
       const empty = document.createElement('div');
       empty.className = 'ct-empty';
       empty.textContent = 'No plugins. Put .js files into the plugins folder or click Add.';
+      empty.dataset.i18n = '';
       list.appendChild(empty);
       return;
     }
     pluginsCache.forEach((p) => {
       const card = document.createElement('div');
       card.className = 'ct-card plugin-card';
-      card.innerHTML = '<div class="ct-info"><div class="ct-name"></div><div class="ct-meta"></div></div><button class="btn-icon-pill ct-remove" title="Delete file"><svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg></button><button class="effect-switch-btn"><span class="thumb"></span></button>';
+      card.innerHTML = '<div class="ct-info"><div class="ct-name"></div><div class="ct-meta"></div></div><button class="btn-icon-pill ct-remove" title="Delete file" data-i18n-attr="title"><svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg></button><button class="effect-switch-btn"><span class="thumb"></span></button>';
       card.querySelector('.ct-name').textContent = `${p.name}${p.version ? ' v' + p.version : ''}`;
       card.querySelector('.ct-meta').textContent = [p.author && `by ${p.author}`, p.description, p.file].filter(Boolean).join(' · ');
       const toggle = card.querySelector('.effect-switch-btn');
@@ -11704,7 +11740,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         window.electronAPI.removePlugin(p.file);
         pluginsCache = pluginsCache.filter((x) => x.file !== p.file);
         renderPluginCards();
-        showToast('Plugin file deleted', 'info');
+        showToast(Tm('Plugin file deleted'), 'info');
       });
       list.appendChild(card);
     });
@@ -11732,7 +11768,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (!added) return;
       pluginsCache = await pluginsApi.listPlugins();
       renderPluginCards();
-      showToast(`Added ${added} plugin${added > 1 ? 's' : ''}. Turn one on to run it`, 'info');
+      showToast(added > 1 ? Tm('Added {0} plugins. Turn one on to run it', added) : Tm('Added 1 plugin. Turn it on to run it'), 'info');
     });
   }
 
@@ -11774,7 +11810,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const overlay = document.getElementById('css-editor');
     overlay.classList.remove('hidden');
     let monaco;
-    try { monaco = await loadMonaco(); } catch (e) { overlay.classList.add('hidden'); showToast('Could not load the CSS editor', 'error'); return; }
+    try { monaco = await loadMonaco(); } catch (e) { overlay.classList.add('hidden'); showToast(Tm('Could not load the CSS editor'), 'error'); return; }
     defineRiffMonacoTheme(monaco);
     if (cssEditorInstance) { cssEditorInstance.focus(); return; }
     cssEditorInstance = monaco.editor.create(document.getElementById('css-editor-host'), {
@@ -11821,7 +11857,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   const btnCssRestore = document.getElementById('btn-css-restore');
   if (btnCssRestore) btnCssRestore.addEventListener('click', () => {
     const backup = localStorage.getItem('muriel_custom_css_backup');
-    if (!backup) { showToast('Nothing to restore', 'info'); return; }
+    if (!backup) { showToast(Tm('Nothing to restore'), 'info'); return; }
     if (cssEditorInstance) cssEditorInstance.setValue(backup);
     else { localStorage.setItem('muriel_custom_css', backup); applyCustomStyles(); }
   });
@@ -11838,7 +11874,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const wrap = document.createElement('div'); wrap.className = 'slider-ticks';
     for (let v = min; v <= max; v += step) {
       const t = document.createElement('i'); t.style.setProperty('--p', (v - min) / (max - min));
-      if (labels[v] != null) { t.className = 'major'; const s = document.createElement('span'); s.textContent = labels[v]; t.appendChild(s); }
+      if (labels[v] != null) { t.className = 'major'; const s = document.createElement('span'); s.textContent = labels[v]; s.dataset.i18n = ''; t.appendChild(s); }
       wrap.appendChild(t);
     }
     const host = input.closest('.sl') || input;
@@ -11935,7 +11971,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       const btnConfirm = document.getElementById('btn-confirm-spotify-import');
       if (btnConfirm) btnConfirm.click();
     }
-    showToast('Welcome to Muriel!', 'info');
+    showToast(Tm('Welcome to Muriel!'), 'info');
   }
   if (window.electronAPI && window.electronAPI.onWelcomeResult) window.electronAPI.onWelcomeResult((d) => applyWelcomeResult(d));
 
@@ -12084,6 +12120,89 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   }
 
+  // ---- Settings → Interface → Language (i18n.js translates; this is only the picker) ----
+  // The list stays in English names with flags and is never translated, so the way back is always readable.
+  const uiLangDropdown = document.getElementById('ui-lang-dropdown');
+  const uiLangTrigger = document.getElementById('ui-lang-trigger');
+  const uiLangLabel = document.getElementById('ui-lang-label');
+  const uiLangMenu = document.getElementById('ui-lang-menu');
+  const uiLangList = document.getElementById('ui-lang-list');
+  const uiLangSearch = document.getElementById('ui-lang-search');
+  const uiLangText = (item) => `${item.flag} ${item.name} (${item.code})`;
+
+  if (uiLangDropdown && uiLangTrigger && uiLangMenu && uiLangList) {
+    const showUiLang = (code) => {
+      const found = TRANSLATION_LANGUAGES.find((l) => l.code === code) || TRANSLATION_LANGUAGES.find((l) => l.code === 'en');
+      if (uiLangLabel && found) uiLangLabel.textContent = uiLangText(found);
+      uiLangList.querySelectorAll('.m3-dropdown-option').forEach((o) => o.classList.toggle('selected', o.dataset.value === code));
+    };
+    let uiLangPick = 0;
+    const frag = document.createDocumentFragment();
+    TRANSLATION_LANGUAGES.forEach((item) => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'm3-dropdown-option';
+      btn.dataset.value = item.code;
+      btn.textContent = uiLangText(item);
+      btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        uiLangDropdown.classList.remove('open');
+        if (item.code === I18N.lang) return;
+        const pick = ++uiLangPick;
+        showUiLang(item.code);
+        // the arrow turns while the words are on their way
+        uiLangTrigger.classList.add('is-busy');
+        const ok = await I18N.setLang(item.code);
+        if (pick !== uiLangPick) return;
+        uiLangTrigger.classList.remove('is-busy');
+        if (!ok) showToast(Tm("Couldn't reach the translation service. What is missing stays in English for now."), 'warning');
+      });
+      frag.appendChild(btn);
+    });
+    uiLangList.appendChild(frag);
+    showUiLang(I18N.lang);
+    // also when something else switched (window.applyI18n from a plugin)
+    window.addEventListener('muriel:i18n', () => showUiLang(I18N.lang));
+
+    if (uiLangSearch) {
+      uiLangSearch.addEventListener('click', (e) => e.stopPropagation());
+      uiLangSearch.addEventListener('input', (e) => {
+        const q = e.target.value.toLowerCase().trim();
+        uiLangList.querySelectorAll('.m3-dropdown-option').forEach((opt) => {
+          const text = (opt.textContent || '').toLowerCase();
+          const code = (opt.dataset.value || '').toLowerCase();
+          opt.style.display = (!q || text.includes(q) || code.includes(q)) ? '' : 'none';
+        });
+      });
+      uiLangSearch.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+          e.stopPropagation();
+          uiLangDropdown.classList.remove('open');
+        } else if (e.key === 'Enter') {
+          e.preventDefault();
+          const firstVisible = uiLangList.querySelector('.m3-dropdown-option:not([style*="display: none"])');
+          if (firstVisible) firstVisible.click();
+        }
+      });
+    }
+
+    uiLangTrigger.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const isOpen = uiLangDropdown.classList.toggle('open');
+      if (isOpen && uiLangSearch) {
+        uiLangSearch.value = '';
+        uiLangList.querySelectorAll('.m3-dropdown-option').forEach((opt) => { opt.style.display = ''; });
+        const sel = uiLangList.querySelector('.m3-dropdown-option.selected');
+        if (sel) uiLangList.scrollTop = Math.max(0, sel.getBoundingClientRect().top - uiLangList.getBoundingClientRect().top - uiLangList.clientHeight / 2);
+        setTimeout(() => uiLangSearch.focus(), 50);
+      }
+    });
+
+    document.addEventListener('click', () => {
+      uiLangDropdown.classList.remove('open');
+    });
+  }
+
   if (el.btnTrAuto) {
     el.btnTrAuto.addEventListener('click', () => {
       state.trAuto = !state.trAuto;
@@ -12210,7 +12329,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       applyAudioSettings();
       applyHqSettings();
       renderPresets();
-      showToast('Audio settings reset', 'info');
+      showToast(Tm('Audio settings reset'), 'info');
     });
   }
 
@@ -14120,15 +14239,15 @@ document.addEventListener('DOMContentLoaded', async () => {
       linkImportUrl.value = '';
       linkImportUrl.disabled = false;
       if (platform === 'youtube') {
-        linkImportUrl.placeholder = 'Paste a YouTube playlist or video link';
+        linkImportUrl.placeholder = T('Paste a YouTube playlist or video link');
       } else if (platform === 'ytmusic') {
-        linkImportUrl.placeholder = 'Paste a YouTube Music link';
+        linkImportUrl.placeholder = T('Paste a YouTube Music link');
       } else if (platform === 'soundcloud') {
-        linkImportUrl.placeholder = 'Paste a SoundCloud playlist or track link';
+        linkImportUrl.placeholder = T('Paste a SoundCloud playlist or track link');
       } else if (platform === 'yandex') {
-        linkImportUrl.placeholder = 'Paste a Yandex Music playlist link';
+        linkImportUrl.placeholder = T('Paste a Yandex Music playlist link');
       } else {
-        linkImportUrl.placeholder = 'Paste a YouTube, YouTube Music, SoundCloud or Yandex Music link';
+        linkImportUrl.placeholder = T('Paste a YouTube, YouTube Music, SoundCloud or Yandex Music link');
       }
     }
     fillImportTarget('link', 'New playlist');
@@ -14433,7 +14552,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (!el.downloadModal) return;
     const tracks = (playlist && Array.isArray(playlist.tracks) ? playlist.tracks : []).filter(t => t.platform !== 'local');
     if (!tracks.length) {
-      showToast('No songs to download here (songs from your own files are already on this device)', 'info');
+      showToast(Tm('No songs to download here (songs from your own files are already on this device)'), 'info');
       return;
     }
     trackToDownload = null;
@@ -14442,7 +14561,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const modalTitle = document.getElementById('download-modal-title');
     if (modalTitle) modalTitle.textContent = title;
     if (el.downloadPreviewTitle) el.downloadPreviewTitle.textContent = playlist.name || 'Playlist';
-    if (el.downloadPreviewArtist) el.downloadPreviewArtist.textContent = `${tracks.length} track${tracks.length === 1 ? '' : 's'}`;
+    if (el.downloadPreviewArtist) I18N.text(el.downloadPreviewArtist, tracks.length === 1 ? '1 track' : '{0} tracks', tracks.length);
     if (el.downloadPreviewThumb) el.downloadPreviewThumb.style.display = 'none';
     if (el.downloadPreviewFallback) el.downloadPreviewFallback.style.display = 'none';
     updateDownloadBtnLabel();
@@ -14490,7 +14609,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         el.btnConfirmDownload.disabled = false;
       }
       updateDownloadBtnLabel();
-      showToast('Download cancelled', 'info');
+      showToast(Tm('Download cancelled'), 'info');
       if (el.downloadModal) closeModal(el.downloadModal);
       return true;
     }
@@ -14518,7 +14637,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (state.currentTrack) {
         openDownloadModal(state.currentTrack);
       } else {
-        showToast('No track currently playing', 'info');
+        showToast(Tm('No track currently playing'), 'info');
       }
     });
   }
@@ -14657,12 +14776,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
         if (batchAbort.signal.aborted) {
           // cancelCurrentDownload already closed the dialog; another one may be open by now
-          if (done) showToast(`Stopped. ${done} of ${tracks.length} songs were downloaded${lastDir ? ' to ' + lastDir : ''}`, 'info');
+          if (done) showToast(lastDir ? Tm('Stopped. {0} of {1} songs were downloaded to {2}', done, tracks.length, lastDir) : Tm('Stopped. {0} of {1} songs were downloaded', done, tracks.length), 'info');
           return;
         }
         downloadBatch = null;
         if (el.downloadModal) closeModal(el.downloadModal);
-        showToast(failed > 0 ? `Downloaded ${done}/${tracks.length} (${failed} failed)` : `Downloaded ${tracks.length} tracks${lastDir ? ' to ' + lastDir : ''}`, failed > 0 ? 'error' : 'success');
+        showToast(failed > 0 ? Tm('Downloaded {0}/{1} ({2} failed)', done, tracks.length, failed) : lastDir ? Tm('Downloaded {0} tracks to {1}', tracks.length, lastDir) : Tm('Downloaded {0} tracks', tracks.length), failed > 0 ? 'error' : 'success');
         return;
       }
       if (!trackToDownload) return;
@@ -14678,7 +14797,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       const endSec = rawEnd ? parseTimeInputToSeconds(rawEnd) : null;
 
       if (endSec !== null && endSec <= startSec) {
-        showToast('Trim end must be after start', 'error');
+        showToast(Tm('Trim end must be after start'), 'error');
         return;
       }
 
@@ -14698,7 +14817,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         `;
       }
 
-      showToast(`Downloading: ${t.title || 'Track'} (.${selectedFormat})`, 'info');
+      showToast(Tm('Downloading: {0}', `${t.title || T('Track')} (.${selectedFormat})`), 'info');
       downloadAbort = new AbortController();
 
       try {
@@ -14709,7 +14828,7 @@ document.addEventListener('DOMContentLoaded', async () => {
           const r = await fetch(`http://127.0.0.1:${state.serverPort}/api/download?url=${encodeURIComponent(t.url || '')}&id=${encodeURIComponent(t.id || '')}&title=${encodeURIComponent(t.title || '')}&artist=${encodeURIComponent(t.artist || '')}&format=${selectedFormat}&quality=${selectedQuality}`, { signal: downloadAbort.signal });
           const d = await r.json();
           if (!d.success) throw new Error(d.error || 'Download failed');
-          showToast(`Download complete: saved as ${d.filename}`, 'info');
+          showToast(Tm('Download complete: saved as {0}', d.filename), 'info');
           if (el.downloadModal) closeModal(el.downloadModal);
           return;
         }
@@ -14801,12 +14920,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
         if (!dataEncode.success) throw new Error(dataEncode.error || 'Failed to encode');
 
-        showToast(`Download complete: saved to ${dataEncode.directory ? dataEncode.directory + '/' : ''}${dataEncode.filename}`, 'info');
+        showToast(Tm('Download complete: saved to {0}', `${dataEncode.directory ? dataEncode.directory + '/' : ''}${dataEncode.filename}`), 'info');
         if (el.downloadModal) closeModal(el.downloadModal);
       } catch (err) {
         if (err.name === 'AbortError') return;
         console.error('Download error:', err);
-        showToast(`Download failed: ${err.message}`, 'error');
+        showToast(Tm('Download failed: {0}', err.message), 'error');
       } finally {
         downloadAbort = null;
         const curSpinner = el.downloadSpinner || document.getElementById('download-spinner');
@@ -15348,7 +15467,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (!myWaveCurrentTracks || myWaveCurrentTracks.length === 0) {
         const profile = await computeTasteProfile();
         if (profile.trackCount < 5) {
-          showToast('Save at least 5 tracks to tune My Wave');
+          showToast(Tm('Save at least 5 tracks to tune My Wave'));
           return;
         }
         await loadHomePage();
@@ -15357,7 +15476,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         state.myWaveActive = true;
         const startIdx = (currentWaveFocusedIndex >= 0 && currentWaveFocusedIndex < myWaveCurrentTracks.length) ? currentWaveFocusedIndex : 0;
         playTrack(myWaveCurrentTracks[startIdx], [...myWaveCurrentTracks], startIdx);
-        showToast('Playing My Wave');
+        showToast(Tm('Playing My Wave'));
       }
     });
   }
@@ -15390,10 +15509,10 @@ document.addEventListener('DOMContentLoaded', async () => {
       try {
         const ok = await loadHomePage(true);
         if (!ok) {
-          showToast('Could not refresh', 'error');
+          showToast(Tm('Could not refresh'), 'error');
         }
       } catch (err) {
-        showToast('Could not refresh', 'error');
+        showToast(Tm('Could not refresh'), 'error');
       } finally {
         btn.classList.remove('loading');
         if (wrapper) wrapper.classList.remove('loading');
@@ -15556,7 +15675,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     const headerLabel = document.querySelector('#section-my-wave .home-pane-label');
     if (headerLabel) {
       const waveLabel = (state.isHotPicks && state.hotPicksTitle) ? state.hotPicksTitle : 'My Wave';
-      headerLabel.textContent = (mode === 'recent') ? 'Jump back in' : waveLabel;
+      if (mode === 'recent' || waveLabel === 'My Wave') I18N.text(headerLabel, mode === 'recent' ? 'Jump back in' : 'My Wave');
+      else headerLabel.textContent = waveLabel;
       headerLabel.style.cursor = availableModes().length > 1 ? 'pointer' : 'default';
       headerLabel.style.pointerEvents = 'auto';
       if (!headerLabel._hasToggleListener) {
@@ -15593,7 +15713,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (!source || source.length === 0) {
       if (focusedMeta) focusedMeta.innerHTML = '';
       if (mode === 'recent') {
-        vibeGrid.innerHTML = `<div class="vibe-empty-hint">Play some tracks to see them here</div>`;
+        vibeGrid.innerHTML = `<div class="vibe-empty-hint" data-i18n>Play some tracks to see them here</div>`;
       } else {
         vibeGrid.innerHTML = getWaveSpinnerHtml();
       }
@@ -15648,8 +15768,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     avail.forEach(m => {
       const btn = document.createElement('button');
       const label = m === 'recent' ? 'Jump back in' : 'My Wave';
-      btn.setAttribute('aria-label', label);
-      btn.title = label;
+      btn.setAttribute('aria-label', T(label));
+      btn.title = T(label);
       if (m === homeMode) btn.classList.add('active');
       btn.addEventListener('click', () => {
         if (m !== homeMode) {
@@ -16367,8 +16487,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (vibeGrid) {
               vibeGrid.innerHTML = `
                 <div class="my-wave-retry-container" style="display: flex; align-items: center; justify-content: center; gap: 8px; margin: auto; padding: 24px; color: var(--md-sys-color-on-surface-variant); font-size: 14px;">
-                  <span>Couldn't load recommendations</span>
-                  <button class="btn-icon-pill" id="btn-retry-vibe" title="Retry" aria-label="Retry" style="width: 32px; height: 32px;">
+                  <span data-i18n>Couldn't load recommendations</span>
+                  <button class="btn-icon-pill" id="btn-retry-vibe" title="Retry" aria-label="Retry" data-i18n-attr="title aria-label" style="width: 32px; height: 32px;">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
                   </button>
                 </div>
@@ -16418,8 +16538,8 @@ document.addEventListener('DOMContentLoaded', async () => {
           if (vibeGrid) {
             vibeGrid.innerHTML = `
               <div class="my-wave-retry-container" style="display: flex; align-items: center; justify-content: center; gap: 8px; margin: auto; padding: 24px; color: var(--md-sys-color-on-surface-variant); font-size: 14px;">
-                <span>Couldn't load recommendations</span>
-                <button class="btn-icon-pill" id="btn-retry-vibe" title="Retry" aria-label="Retry" style="width: 32px; height: 32px;">
+                <span data-i18n>Couldn't load recommendations</span>
+                <button class="btn-icon-pill" id="btn-retry-vibe" title="Retry" aria-label="Retry" data-i18n-attr="title aria-label" style="width: 32px; height: 32px;">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
                 </button>
               </div>
@@ -16728,7 +16848,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     } catch (e) {
       console.warn('getDataDir failed', e);
     }
-    elPath.textContent = 'Unavailable';
+    elPath.textContent = T('Unavailable');
   }
 
   const btnChangeMusicFolder = document.getElementById('btn-change-music-folder');
@@ -16741,18 +16861,18 @@ document.addEventListener('DOMContentLoaded', async () => {
       const dir = await window.electronAPI.pickDataDir();
       if (!dir) return;
       if (info && info.dir && dir === info.dir) {
-        showToast('This is already the music folder');
+        showToast(Tm('This is already the music folder'));
         return;
       }
       const move = window.confirm(
-        'Move your existing music to the new folder?\n\n' +
-        'OK: move all downloaded and imported files, then restart Muriel.\n' +
-        'Cancel: switch to the new folder without moving (files stay in the old one).'
+        T('Move your existing music to the new folder?') + '\n\n' +
+        T('OK: move all downloaded and imported files, then restart Muriel.') + '\n' +
+        T('Cancel: switch to the new folder without moving (files stay in the old one).')
       );
       btnChangeMusicFolder.disabled = true;
       const originalLabel = btnChangeMusicFolder.textContent;
       btnChangeMusicFolder.textContent = move ? 'Moving...' : 'Switching...';
-      showToast(move ? 'Moving your music, this may take a while...' : 'Switching music folder...');
+      showToast(move ? Tm('Moving your music, this may take a while...') : Tm('Switching music folder...'));
       let res = null;
       try {
         res = await window.electronAPI.setDataDir(dir, move);
@@ -16760,13 +16880,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         res = { ok: false, error: e.message };
       }
       if (!res || !res.ok) {
-        showToast((res && res.error) || 'Could not change the music folder', 'error');
+        showToast((res && res.error) || Tm('Could not change the music folder'), 'error');
         btnChangeMusicFolder.disabled = false;
         btnChangeMusicFolder.textContent = originalLabel;
         return;
       }
       btnChangeMusicFolder.textContent = 'Restarting...';
-      showToast('Restarting Muriel...');
+      showToast(Tm('Restarting Muriel...'));
       setTimeout(() => { if (window.electronAPI.restartApp) window.electronAPI.restartApp(); }, 400);
     });
   }
@@ -16787,7 +16907,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       } catch (e) {
         console.warn('getDownloadDir failed', e);
       }
-      elPath.textContent = 'Unavailable';
+      elPath.textContent = T('Unavailable');
     }
     if (btnReset) btnReset.classList.add('hidden');
   }
@@ -16802,7 +16922,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       const dir = await window.electronAPI.pickDownloadDir();
       if (!dir) return;
       if (info && info.dir && dir === info.dir) {
-        showToast('This is already the download folder');
+        showToast(Tm('This is already the download folder'));
         return;
       }
       btnChangeDownloadFolder.disabled = true;
@@ -16814,12 +16934,12 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
       btnChangeDownloadFolder.disabled = false;
       if (!res || !res.ok) {
-        showToast((res && res.error) || 'Could not change the download folder', 'error');
+        showToast((res && res.error) || Tm('Could not change the download folder'), 'error');
         return;
       }
       updateDownloadFolderUI();
       updateDownloadCaptionPath();
-      showToast('Downloads will be saved to ' + res.dir);
+      showToast(Tm('Downloads will be saved to {0}', res.dir));
     });
   }
 
@@ -16837,11 +16957,11 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
       btnResetDownloadFolder.disabled = false;
       if (!res || !res.ok) {
-        showToast((res && res.error) || 'Could not reset the download folder', 'error');
+        showToast((res && res.error) || Tm('Could not reset the download folder'), 'error');
         return;
       }
       updateDownloadFolderUI();
-      showToast('Download folder reset to default');
+      showToast(Tm('Download folder reset to default'));
     });
   }
 
@@ -16851,11 +16971,11 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (!trackToDownload || !trackToDownload.id) return;
       try {
         await fetch(`http://127.0.0.1:${state.serverPort}/api/offline-delete?id=${encodeURIComponent(trackToDownload.id)}`, { method: 'POST' });
-        showToast('Track removed from offline cache');
+        showToast(Tm('Track removed from offline cache'));
         updateOfflineStorageUI();
         if (el.downloadModal) closeModal(el.downloadModal);
       } catch (e) {
-        showToast('Failed to delete offline track');
+        showToast(Tm('Failed to delete offline track'));
       }
     });
   }
@@ -16879,10 +16999,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     btnConfirmClearOffline.addEventListener('click', async () => {
       try {
         await fetch(`http://127.0.0.1:${state.serverPort}/api/clear-offline-library`, { method: 'POST' });
-        showToast('Offline library cleared');
+        showToast(Tm('Offline library cleared'));
         updateOfflineStorageUI();
       } catch (e) {
-        showToast('Failed to clear offline library');
+        showToast(Tm('Failed to clear offline library'));
       }
       closeModal(clearOfflineModal);
     });
@@ -17160,7 +17280,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     btnCopyDiagnostics.addEventListener('click', async () => {
       if (window.electronAPI && typeof window.electronAPI.getDiagnostics === 'function') {
         navigator.clipboard.writeText(await window.electronAPI.getDiagnostics());
-        showToast('Diagnostics copied. Paste it into your report', 'info');
+        showToast(Tm('Diagnostics copied. Paste it into your report'), 'info');
       }
     });
   }
@@ -17225,7 +17345,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (!trackArtCurrentTrack) return;
     const t = trackArtCurrentTrack;
     const titleEl = document.getElementById('track-art-modal-title');
-    if (titleEl) titleEl.textContent = `Art: ${t.title || 'Untitled'}`;
+    if (titleEl) I18N.text(titleEl, 'Art: {0}', t.title || T('Untitled'));
 
     const art = getTrackArt(t);
 
@@ -17342,7 +17462,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const url = await window.electronAPI.pickMedia();
         if (url) {
           if (!isImageFile(url)) {
-            showToast('Cover must be an image (PNG, JPG, WebP, GIF)');
+            showToast(Tm('Cover must be an image (PNG, JPG, WebP, GIF)'));
             return;
           }
           setTrackArt(trackArtCurrentTrack, { cover: url });
@@ -17369,7 +17489,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const url = await window.electronAPI.pickMedia();
         if (url) {
           if (!isMediaFile(url)) {
-            showToast('Banner must be image or video (PNG, JPG, WebP, GIF, MP4, WebM)');
+            showToast(Tm('Banner must be image or video (PNG, JPG, WebP, GIF, MP4, WebM)'));
             return;
           }
           setTrackArt(trackArtCurrentTrack, { banner: url });
@@ -17414,7 +17534,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         localStorage.setItem('muriel_perf_mode', '1');
         applyPerfMode(true);
         if (btnPerfMode) btnPerfMode.classList.add('active');
-        showToast('Performance mode enabled: no GPU acceleration detected. You can turn it off in Settings');
+        showToast(Tm('Performance mode enabled: no GPU acceleration detected. You can turn it off in Settings'));
       }
     }).catch(() => {});
   }
@@ -17487,14 +17607,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (value === 'end') {
       state.sleepTimer = { mode: 'end' };
       updateSleepTimerUI();
-      showToast('Sleep timer: end of track');
+      showToast(Tm('Sleep timer: end of track'));
       return;
     }
     const minutes = Number(value);
     if (!Number.isFinite(minutes) || minutes <= 0) return;
     state.sleepTimer = { mode: 'minutes', minutes, endsAt: Date.now() + minutes * 60000 };
     updateSleepTimerUI();
-    showToast(`Sleep timer: ${minutes} min`);
+    showToast(Tm('Sleep timer: {0} min', minutes));
     sleepTimerInterval = setInterval(() => {
       if (!state.sleepTimer || state.sleepTimer.mode !== 'minutes') return;
       if (state.sleepTimer.endsAt > Date.now()) {
@@ -17593,14 +17713,15 @@ document.addEventListener('DOMContentLoaded', async () => {
   function buildCommandPaletteRows(query) {
     const q = normalizeSearch(query);
     const rows = [];
-    const actions = paletteActions().filter(a => !q || normalizeSearch(a.label).includes(q));
-    for (const action of actions) rows.push({ group: 'Actions', label: action.label, hint: action.hint, run: action.run });
+    // actions are found by their name in the UI language or in English
+    const actions = paletteActions().filter(a => !q || normalizeSearch(a.label).includes(q) || normalizeSearch(T(a.label)).includes(q));
+    for (const action of actions) rows.push({ group: 'Actions', label: T(action.label), hint: T(action.hint), run: action.run });
     if (state.playlists.length) {
       const playlists = state.playlists
         .filter(p => p && typeof p.name === 'string' && (!q || normalizeSearch(p.name).includes(q)))
         .slice(0, q ? 5 : 3);
       for (const pl of playlists) {
-        rows.push({ group: 'Playlists', label: pl.name, hint: `${(pl.tracks || []).length} tracks`, run: () => openPlaylistDetail(pl.id) });
+        rows.push({ group: 'Playlists', label: pl.name, hint: Tf('{0} tracks', (pl.tracks || []).length), run: () => openPlaylistDetail(pl.id) });
       }
     }
     const seen = new Set();
@@ -17632,8 +17753,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (trimmed) {
       rows.push({
         group: 'Online',
-        label: `Search for "${trimmed}"`,
-        hint: 'Discover',
+        label: Tf('Search for "{0}"', trimmed),
+        hint: T('Discover'),
         run: () => {
           if (el.searchInput) el.searchInput.value = trimmed;
           performSearch(trimmed);
@@ -17667,7 +17788,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     state.paletteRows = rows;
     state.paletteIndex = 0;
     if (!rows.length) {
-      el.commandPaletteResults.innerHTML = '<div class="command-palette-empty">No results</div>';
+      el.commandPaletteResults.innerHTML = '<div class="command-palette-empty" data-i18n>No results</div>';
       return;
     }
     let html = '';
@@ -17676,7 +17797,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       const delay = Math.min(i, 10);
       if (row.group !== group) {
         group = row.group;
-        html += `<div class="command-palette-group" style="--row-i:${delay}">${escapeHtml(group)}</div>`;
+        html += `<div class="command-palette-group" style="--row-i:${delay}">${escapeHtml(T(group))}</div>`;
       }
       html += `<button type="button" class="command-palette-row${i === 0 ? ' active' : ''}" data-palette-index="${i}" style="--row-i:${delay}">
         <span class="command-palette-label">${escapeHtml(row.label)}</span>
@@ -17768,7 +17889,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     localStorage.setItem('devsize_playlists', JSON.stringify(state.playlists));
     openPlaylistDetail(pl.id);
     renderPlaylistsList();
-    showToast(`Removed ${removed} duplicate${removed === 1 ? '' : 's'}`);
+    showToast(removed === 1 ? Tm('Removed 1 duplicate') : Tm('Removed {0} duplicates', removed));
   }
 
   if (el.btnDedupePlaylist) el.btnDedupePlaylist.addEventListener('click', removePlaylistDuplicates);

@@ -6,6 +6,8 @@
 (() => {
   const Core = window.MurielSyncCore;
   if (!Core || !window.localStorage) return;
+  // UI language (i18n.js); without it everything stays English
+  const I18n = window.MurielI18n || (() => { const f = (s, ...a) => String(s).replace(/\{(\d)\}/g, (_, i) => (a[i] != null ? a[i] : '')); return { T: (s) => s, Tf: f, Tm: f, Th: f, text: (el, s, ...a) => { if (el) el.textContent = f(s, ...a); } }; })();
 
   const LINK_PAGE = 'https://cloverscripts.github.io/riff-muriel/link.html';
   const DAY = 864e5;
@@ -283,7 +285,7 @@
         if (applyRemote({ np: msg.np })) broadcast({ np }, st.id);
       } else if (msg.t === 'handoff') {
         const C = window.MurielCore;
-        if (C && C.state.isPlaying) { C.togglePlay(); if (C.toast) C.toast('Now playing on another device', 'info'); }
+        if (C && C.state.isPlaying) { C.togglePlay(); if (C.toast) C.toast(I18n.Tm('Now playing on another device'), 'info'); }
       }
     });
     const gone = () => { if (st.id && conns.get(st.id) === st) conns.delete(st.id); write(K.seen, seen); render(); };
@@ -332,7 +334,7 @@
         members = { ...members, [msg.id]: { name: String(msg.name || 'Device').slice(0, 40), kind: msg.kind === 'phone' ? 'phone' : 'computer', t: Date.now() } };
         write(K.members, members);
         conn.send({ t: 'welcome', group, members, from: { id: device.id, name: device.name } });
-        toast(`Linked with ${members[msg.id].name}`);
+        toast(I18n.Tm('Linked with {0}', members[msg.id].name));
         setTimeout(() => { stopLinking(); broadcast({ members }); }, 1500);
         [2000, 5000, 9000].forEach((ms) => setTimeout(dialAll, ms)); // the new device needs a moment to come online
       });
@@ -371,7 +373,7 @@
         if (!meta.settings) { meta.settings = Core.stampMap(null, settingValues(), Date.now(), 0); saveMeta(); }
         write(K.group, group);
         write(K.members, members);
-        toast(`Linked with ${(msg.from && msg.from.name) || 'your device'}`);
+        toast(msg.from && msg.from.name ? I18n.Tm('Linked with {0}', msg.from.name) : I18n.Tm('Linked with your device'));
         wantCode = false;
         done('');
         stopPeer();
@@ -404,7 +406,7 @@
     [K.group, K.members, K.meta, K.listens, K.np, K.seen].forEach((k) => { try { rawRemove.call(localStorage, k); } catch (e) {} });
     try { window.MurielEncore && window.MurielEncore.refresh && window.MurielEncore.refresh(); } catch (e) {}
     updateContinue();
-    if (msg) toast(msg);
+    if (msg) toast(I18n.Tm(msg));
     render();
   }
 
@@ -448,15 +450,15 @@
       banner.innerHTML = `
         <svg class="update-banner-star" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>
         <div class="update-banner-text"><b></b><span></span></div>
-        <button type="button" class="update-banner-later">Not now</button>
-        <button type="button" class="update-banner-go">Play here</button>`;
+        <button type="button" class="update-banner-later" data-i18n>Not now</button>
+        <button type="button" class="update-banner-go" data-i18n>Play here</button>`;
       document.body.appendChild(banner);
       requestAnimationFrame(() => requestAnimationFrame(() => banner && banner.classList.add('show')));
     }
     const { id, e } = c;
     const live = e.playing && Date.now() - e.t < 60e3;
-    banner.querySelector('b').textContent = live ? `Playing on ${e.name}` : `Continue from ${e.name}`;
-    banner.querySelector('span').textContent = `${e.track.title || 'Unknown'}${e.track.artist ? ` · ${e.track.artist}` : ''} · ${fmt(e.pos || 0)}`;
+    I18n.text(banner.querySelector('b'), live ? 'Playing on {0}' : 'Continue from {0}', e.name);
+    banner.querySelector('span').textContent = `${e.track.title || I18n.T('Unknown')}${e.track.artist ? ` · ${e.track.artist}` : ''} · ${fmt(e.pos || 0)}`;
     banner.querySelector('.update-banner-later').onclick = () => { write(K.dismissed, { ...read(K.dismissed, {}), [id]: e.t }); updateContinue(); };
     banner.querySelector('.update-banner-go').onclick = () => {
       const C = window.MurielCore;
@@ -473,6 +475,7 @@
   // ---------- Settings → Sync ----------
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const toast = (m) => { try { window.MurielCore && window.MurielCore.toast(m, 'info'); } catch (e) {} };
+  // UI language (i18n.js): data-i18n marks Muriel's own words in the HTML below; names only ever go into {0} slots
   // phones hand outside links to the browser; the desktop app opens https links in the default browser
   const openUrl = (u) => { if (platform === 'ios' || platform === 'android') location.href = u; else window.open(u, '_blank'); };
   const qrSvg = (text) => {
@@ -503,7 +506,7 @@
     const btn = document.createElement('button');
     btn.className = 'settings-nav-btn';
     btn.dataset.cat = 'sync';
-    btn.innerHTML = `${ICON}<span>Sync</span>`;
+    btn.innerHTML = `${ICON}<span data-i18n>Sync</span>`;
     nav.insertBefore(btn, nav.querySelector('[data-cat="about"]'));
     section = document.createElement('div');
     section.className = 'settings-section sync-section';
@@ -515,23 +518,23 @@
   }
 
   // pieces shared by Settings → Sync and the invite on the home screen
-  const linkButtons = () => `<div class="sync-row"><button class="btn-pill-primary" data-act="link">Show a code</button><button class="btn-outline-pill" data-act="want-code">I have a code</button></div>`;
+  const linkButtons = () => `<div class="sync-row"><button class="btn-pill-primary" data-act="link" data-i18n>Show a code</button><button class="btn-outline-pill" data-act="want-code" data-i18n>I have a code</button></div>`;
   function linkPanel() {
     const left = Math.max(0, Math.round((linking.until - Date.now()) / 1000));
     return `<div class="sync-pair">
       <div class="sync-qr">${qrSvg(`${LINK_PAGE}#${linking.code}`)}</div>
-      <div class="sync-pair-text"><span>On your other device open <b>Settings → Sync → I have a code</b>, or scan this with your phone's camera.</span>
+      <div class="sync-pair-text"><span>${I18n.Th("On your other device open {0}, or scan this with your phone's camera.", `<b>${esc(`${I18n.T('Settings')} → ${I18n.T('Sync')} → ${I18n.T('I have a code')}`)}</b>`)}</span>
       <div class="sync-code">${showCode(linking.code)}</div>
-      ${linking.error ? `<span class="sync-note sync-error">${esc(linking.error)}</span>` : `<span class="sync-note" data-countdown>Works for ${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}</span>`}
-      <div class="sync-row"><button class="btn-outline-pill" data-act="stop-link">Done</button></div></div></div>`;
+      ${linking.error ? `<span class="sync-note sync-error" data-i18n>${esc(linking.error)}</span>` : `<span class="sync-note" data-countdown data-i18n>Works for ${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}</span>`}
+      <div class="sync-row"><button class="btn-outline-pill" data-act="stop-link" data-i18n>Done</button></div></div></div>`;
   }
   function joinForm() {
-    const note = joining && joining.error ? `<span class="sync-note sync-error">${esc(joining.error)}</span>`
-      : joining && joining.busy ? '<span class="sync-note">Linking…</span>'
-        : '<span class="sync-note">Enter the code your other device shows.</span>';
+    const note = joining && joining.error ? `<span class="sync-note sync-error" data-i18n>${esc(joining.error)}</span>`
+      : joining && joining.busy ? '<span class="sync-note" data-i18n>Linking…</span>'
+        : '<span class="sync-note" data-i18n>Enter the code your other device shows.</span>';
     return `<form class="sync-join">
-      <input class="m3-input sync-code-input" placeholder="Code" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="9">
-      <button class="btn-pill-primary" type="submit"${joining && joining.busy ? ' disabled' : ''}>Link</button></form>${note}`;
+      <input class="m3-input sync-code-input" placeholder="Code" data-i18n-attr="placeholder" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="9">
+      <button class="btn-pill-primary" type="submit"${joining && joining.busy ? ' disabled' : ''} data-i18n>Link</button></form>${note}`;
   }
   let wantCode = false; // "I have a code" was tapped
 
@@ -539,34 +542,34 @@
     renderInvite();
     if (!section) return;
     const cats = catsOn();
-    const parts = [`<span class="settings-section-title">Sync <span class="sync-badge">New</span></span>`];
+    const parts = [`<span class="settings-section-title" data-i18n>Sync <span class="sync-badge" data-i18n>New</span></span>`];
     // every profile on this device has its own group (its keys, device id included, are its own: profiles-core.js)
     const prof = window.MurielProfiles;
     const profNote = prof && prof.list().length > 1
-      ? `<span>This links the profile “${esc(prof.current().name)}”; every profile on this device links its own devices. Open the same profile on the other device before you link.</span>` : '';
+      ? `<span>${I18n.Th('This links the profile “{0}”; every profile on this device links its own devices. Open the same profile on the other device before you link.', esc(prof.current().name))}</span>` : '';
     parts.push(`<div class="m3-group"><div class="setting-item"><div class="sync-intro">
-      <b>Your music on all your devices</b>
-      <span>Link your phone and computer: playlists, favorites, history, Encore stats and what you're listening to stay the same everywhere. Free, no account. Your data stays on your devices; linked devices talk to each other directly while they're open.</span>
+      <b data-i18n>Your music on all your devices</b>
+      <span data-i18n>Link your phone and computer: playlists, favorites, history, Encore stats and what you're listening to stay the same everywhere. Free, no account. Your data stays on your devices; linked devices talk to each other directly while they're open.</span>
       ${profNote}
     </div></div></div>`);
     if (group) {
-      const rows = [`<div class="setting-item sync-device"><span class="sync-dev-icon">${deviceIcon(kind)}</span><div class="sync-dev-text"><b>${esc(device.name)}</b><span>This device</span></div></div>`];
+      const rows = [`<div class="setting-item sync-device"><span class="sync-dev-icon">${deviceIcon(kind)}</span><div class="sync-dev-text"><b>${esc(device.name)}</b><span data-i18n>This device</span></div></div>`];
       for (const [id, m] of liveMembers()) {
         const on = conns.get(id) && conns.get(id).ok;
-        rows.push(`<div class="setting-item sync-device"><span class="sync-dev-icon">${deviceIcon(m.kind)}</span><div class="sync-dev-text"><b>${esc(m.name)}</b><span class="${on ? 'sync-online' : ''}">${on ? 'Connected' : ago(seen[id])}</span></div><button class="btn-outline-pill" data-act="unlink" data-id="${esc(id)}">Unlink</button></div>`);
+        rows.push(`<div class="setting-item sync-device"><span class="sync-dev-icon">${deviceIcon(m.kind)}</span><div class="sync-dev-text"><b>${esc(m.name)}</b><span class="${on ? 'sync-online' : ''}" data-i18n>${on ? 'Connected' : ago(seen[id])}</span></div><button class="btn-outline-pill" data-act="unlink" data-id="${esc(id)}" data-i18n>Unlink</button></div>`);
       }
       parts.push(`<div class="m3-group">${rows.join('')}</div>`);
     }
     const pairing = linking ? linkPanel() : wantCode || (joining && (joining.busy || joining.error)) ? joinForm() : linkButtons();
-    parts.push(`<div class="m3-group"><div class="setting-item sync-block">${group && !linking ? '<span class="setting-name">Link another device</span>' : ''}${pairing}</div></div>`);
-    const sw = (c, name, hint) => `<div class="setting-item"><div class="setting-item-top" style="align-items:center;"><div style="display:flex;flex-direction:column;gap:2px;"><span class="setting-name">${name}</span><span class="sync-note">${hint}</span></div><button class="effect-switch-btn${cats[c] ? ' active' : ''}" type="button" data-act="cat" data-cat-key="${c}" aria-label="${name}"><span class="thumb"></span></button></div></div>`;
+    parts.push(`<div class="m3-group"><div class="setting-item sync-block">${group && !linking ? '<span class="setting-name" data-i18n>Link another device</span>' : ''}${pairing}</div></div>`);
+    const sw = (c, name, hint) => `<div class="setting-item"><div class="setting-item-top" style="align-items:center;"><div style="display:flex;flex-direction:column;gap:2px;"><span class="setting-name" data-i18n>${name}</span><span class="sync-note" data-i18n>${hint}</span></div><button class="effect-switch-btn${cats[c] ? ' active' : ''}" type="button" data-act="cat" data-cat-key="${c}" aria-label="${name}" data-i18n-attr="aria-label"><span class="thumb"></span></button></div></div>`;
     parts.push(`<div class="m3-group">
       ${sw('library', 'Library', 'Playlists, favorites, saved albums and the artists you follow')}
       ${sw('history', 'History and stats', 'Recently played and Encore')}
       ${sw('look', 'Theme', 'Same colors, font and lyrics style on every device')}
       ${sw('continue', 'Continue listening', 'Pick up where another device left off')}
     </div>`);
-    if (group) parts.push(`<div class="m3-group"><div class="setting-item sync-block"><div class="sync-row"><button class="btn-outline-pill" data-act="leave">Stop syncing this device</button></div></div></div>`);
+    if (group) parts.push(`<div class="m3-group"><div class="setting-item sync-block"><div class="sync-row"><button class="btn-outline-pill" data-act="leave" data-i18n>Stop syncing this device</button></div></div></div>`);
     paint(section, parts.join(''));
   }
 
@@ -589,14 +592,14 @@
     if (!show) { if (box.innerHTML) box.innerHTML = ''; return; }
     let body;
     if (inviteStep === 'theme') {
-      body = `<div class="sync-invite-text"><b>Keep the same theme on every device?</b><span>Colors, font and lyrics style follow you too. You can change this later in Settings → Sync.</span></div>
-        <div class="sync-row"><button class="btn-pill-primary" data-act="theme-yes">Yes, sync my theme</button><button class="btn-outline-pill" data-act="theme-no">No, just my music</button></div>`;
+      body = `<div class="sync-invite-text"><b data-i18n>Keep the same theme on every device?</b><span data-i18n>Colors, font and lyrics style follow you too. You can change this later in Settings → Sync.</span></div>
+        <div class="sync-row"><button class="btn-pill-primary" data-act="theme-yes" data-i18n>Yes, sync my theme</button><button class="btn-outline-pill" data-act="theme-no" data-i18n>No, just my music</button></div>`;
     } else if (inviteStep === 'pair') {
       const pairing = linking ? linkPanel() : wantCode || (joining && (joining.busy || joining.error)) ? joinForm() : linkButtons();
-      body = `<div class="sync-invite-text"><b>Link your other device</b><span>Show a code here and enter it on the other device (or scan the QR code with your phone), or enter the code your other device shows.</span></div>${pairing}`;
+      body = `<div class="sync-invite-text"><b data-i18n>Link your other device</b><span data-i18n>Show a code here and enter it on the other device (or scan the QR code with your phone), or enter the code your other device shows.</span></div>${pairing}`;
     } else {
-      body = `<div class="sync-invite-text"><b>Sync your devices?</b><span>Keep playlists, favorites and history the same on your phone and computer. Free, no account.</span></div>
-        <div class="sync-row"><button class="btn-pill-primary" data-act="invite-setup">Set up sync</button><button class="btn-outline-pill" data-act="invite-dismiss">Not now</button></div>`;
+      body = `<div class="sync-invite-text"><b data-i18n>Sync your devices?</b><span data-i18n>Keep playlists, favorites and history the same on your phone and computer. Free, no account.</span></div>
+        <div class="sync-row"><button class="btn-pill-primary" data-act="invite-setup" data-i18n>Set up sync</button><button class="btn-outline-pill" data-act="invite-dismiss" data-i18n>Not now</button></div>`;
     }
     paint(box, `<div class="sync-invite"><span class="sync-invite-icon">${ICON}</span><div class="sync-invite-body">${body}</div></div>`);
   }
@@ -626,8 +629,8 @@
       if (f) f.focus();
     }
     else if (act === 'stop-link') { wantCode = false; stopLinking(); }
-    else if (act === 'unlink') { const m = members[b.dataset.id]; if (m && confirm(`Unlink ${m.name}? Its music stays on it, it just stops syncing.`)) unlink(b.dataset.id); }
-    else if (act === 'leave') { if (confirm('Stop syncing this device? Everything stays on it.')) leave(); }
+    else if (act === 'unlink') { const m = members[b.dataset.id]; if (m && confirm(I18n.Tf('Unlink {0}? Its music stays on it, it just stops syncing.', m.name))) unlink(b.dataset.id); }
+    else if (act === 'leave') { if (confirm(I18n.T('Stop syncing this device? Everything stays on it.'))) leave(); }
     else if (act === 'invite-setup') { inviteStep = 'theme'; renderInvite(); }
     else if (act === 'invite-dismiss') { write(K.invite, 'dismissed'); renderInvite(); }
     else if (act === 'theme-yes' || act === 'theme-no') { write(K.cats, { ...read(K.cats, {}), look: act === 'theme-yes' }); inviteStep = 'pair'; render(); }
@@ -648,6 +651,8 @@
     joinWithCode(m[1]);
   }
   window.addEventListener('muriel:deeplink', (e) => handleLink(e.detail));
+  // another language, or its words just came in: the sentences with names in them are built here
+  window.addEventListener('muriel:i18n', () => { if (section || document.getElementById('section-sync-invite')) render(); });
 
   // ---------- start ----------
   function wake() {

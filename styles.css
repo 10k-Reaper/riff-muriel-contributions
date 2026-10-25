@@ -8458,3 +8458,13 @@ body:not(.home-spotify) #sp-home { display: none; }
 .fav-artist-action-btn.primary { background: var(--md-sys-color-primary) !important; color: var(--md-sys-color-on-primary) !important; }
 .fav-artist-name { font-size: calc(14px * var(--font-scale, 1)); font-weight: 600; color: var(--md-sys-color-on-surface); text-align: center; max-width: 140px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 body.perf .fav-artist-plays, body.perf .fav-artist-hover { transition: none !important; }
+
+/* ---- UI language (i18n.js) ---- */
+/* the setting's English name next to the translated one, so the way back is always findable */
+.ui-lang-en-hint { display: none; color: var(--md-sys-color-outline); font-weight: 400; }
+html:not([lang="en"]) .ui-lang-en-hint { display: inline; }
+#ui-lang-trigger.is-busy .m3-dropdown-arrow { animation: ui-lang-busy 0.9s linear infinite; }
+@keyframes ui-lang-busy { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+/* right-to-left languages: the layout stays as it is, each translated text runs right to left inside its box */
+html.ui-rtl [data-i18n-bidi] { unicode-bidi: plaintext; }
+html.ui-rtl input::placeholder { direction: rtl; text-align: right; }

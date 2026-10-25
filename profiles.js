@@ -8,6 +8,8 @@
   const EMOJI = ['', '🎧', '🎸', '🎹', '🎤', '🥁', '🦊', '🐱', '🐼', '🌙', '⭐', '🔥', '🌈', '🍀'];
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const toast = (m, kind) => { try { window.MurielCore && window.MurielCore.toast(m, kind || 'info'); } catch (e) {} };
+  // UI language (i18n.js): data-i18n marks Muriel's own words in the HTML below; profile names only go into {0} slots
+  const I18n = window.MurielI18n || (() => { const f = (s, ...a) => String(s).replace(/\{(\d)\}/g, (_, i) => (a[i] != null ? a[i] : '')); return { T: (s) => s, Tf: f, Tm: f, Th: f, text: (el, s, ...a) => { if (el) el.textContent = f(s, ...a); } }; })();
   const initial = (name) => (Array.from(String(name || '').trim())[0] || '?').toUpperCase();
   // dark letters on light colors, white on dark ones
   const inkOn = (hex) => {
@@ -15,7 +17,8 @@
     return (0.299 * (n >> 16) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255)) / 255 > 0.6 ? '#1D1B20' : '#FFFFFF';
   };
   const avatar = (p, size = '') => `<span class="profile-avatar${size ? ` ${size}` : ''}${p.emoji ? ' emoji' : ''}" style="background:${p.color};color:${inkOn(p.color)}" aria-hidden="true">${esc(p.emoji || initial(p.name))}</span>`;
-  const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+  // '1 playlist' / '{0} playlists', each translated as a whole
+  const plural = (n, one, many) => (n === 1 ? I18n.T(`1 ${one}`) : I18n.Tf(`{0} ${many}`, n));
 
   const ICON = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>';
   const PLUS = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>';
@@ -29,7 +32,7 @@
     if (!target || id === P.id) return;
     let ok = false;
     try { ok = P.open(id); } catch (e) {}
-    if (!ok) { toast('Could not switch: the storage is full', 'error'); return; }
+    if (!ok) { toast(I18n.Tm('Could not switch: the storage is full'), 'error'); return; }
     const C = window.MurielCore;
     try { if (C && C.state && C.state.isPlaying) C.togglePlay(); if (C && C.audio) C.audio.pause(); } catch (e) {}
     // frees this profile's id on the link service right away, so switching back connects without waiting
@@ -53,8 +56,8 @@
     const many = P.list().length > 1;
     btn.innerHTML = `${avatar(me)}${many ? `<span class="profile-switch-name">${esc(me.name)}</span>` : ''}`;
     btn.classList.toggle('named', many);
-    btn.title = many ? `${me.name} · switch profile` : 'Profiles';
-    btn.setAttribute('aria-label', `Profile: ${me.name}. Switch profile`);
+    btn.title = many ? I18n.Tf('{0} · switch profile', me.name) : I18n.T('Profiles');
+    btn.setAttribute('aria-label', I18n.Tf('Profile: {0}. Switch profile', me.name));
   }
   function mountSwitcher() {
     const bar = document.getElementById('titlebar');
@@ -77,9 +80,9 @@
     menu.className = 'profile-menu';
     menu.setAttribute('role', 'menu');
     const rows = P.list().map((p) => `<button type="button" class="profile-menu-item${p.id === P.id ? ' current' : ''}" role="menuitem" data-id="${esc(p.id)}">${avatar(p)}<span class="profile-menu-name">${esc(p.name)}</span>${p.id === P.id ? CHECK : ''}</button>`);
-    menu.innerHTML = `<div class="profile-menu-head">Profiles</div>${rows.join('')}<div class="profile-menu-sep"></div>
-      <button type="button" class="profile-menu-item" role="menuitem" data-act="add"><span class="profile-menu-icon">${PLUS}</span><span class="profile-menu-name">Add profile</span></button>
-      <button type="button" class="profile-menu-item" role="menuitem" data-act="manage"><span class="profile-menu-icon">${ICON}</span><span class="profile-menu-name">Manage profiles</span></button>`;
+    menu.innerHTML = `<div class="profile-menu-head">${I18n.Th('Profiles')}</div>${rows.join('')}<div class="profile-menu-sep"></div>
+      <button type="button" class="profile-menu-item" role="menuitem" data-act="add"><span class="profile-menu-icon">${PLUS}</span><span class="profile-menu-name">${I18n.Th('Add profile')}</span></button>
+      <button type="button" class="profile-menu-item" role="menuitem" data-act="manage"><span class="profile-menu-icon">${ICON}</span><span class="profile-menu-name">${I18n.Th('Manage profiles')}</span></button>`;
     document.body.appendChild(menu);
     const r = btn.getBoundingClientRect();
     menu.style.top = `${Math.round(r.bottom + 6)}px`;
@@ -127,20 +130,20 @@
     if (fav) parts.push(plural(fav, 'favorite', 'favorites'));
     let linked = 0;
     try { const m = JSON.parse(P.peek(p.id, 'muriel_sync_members') || '{}'); linked = Math.max(0, Object.values(m).filter((x) => x && !x.del).length - 1); } catch (e) {}
-    if (linked) parts.push(`syncs with ${plural(linked, 'device', 'devices')}`);
-    return parts.length ? parts.join(' · ') : 'Nothing saved yet';
+    if (linked) parts.push(linked === 1 ? I18n.T('syncs with 1 device') : I18n.Tf('syncs with {0} devices', linked));
+    return parts.length ? parts.join(' · ') : I18n.T('Nothing saved yet');
   }
 
   function form(p) {
     const d = draft || (draft = { name: p ? p.name : '', color: p ? p.color : nextColor(), emoji: p ? p.emoji : '' });
-    const shown = { name: d.name || (p ? p.name : 'New profile'), color: d.color, emoji: d.emoji };
+    const shown = { name: d.name || (p ? p.name : I18n.T('New profile')), color: d.color, emoji: d.emoji };
     return `<form class="profile-form" data-id="${p ? esc(p.id) : ''}">
       <div class="profile-form-top">${avatar(shown, 'lg')}
-        <input class="profile-name-input" name="name" value="${esc(d.name)}" maxlength="24" placeholder="Name" autocomplete="off" spellcheck="false" aria-label="Profile name">
+        <input class="profile-name-input" name="name" value="${esc(d.name)}" maxlength="24" placeholder="Name" autocomplete="off" spellcheck="false" aria-label="Profile name" data-i18n-attr="placeholder aria-label">
       </div>
-      <div class="profile-picks" aria-label="Color">${P.COLORS.map((c) => `<button type="button" class="profile-swatch${c === d.color ? ' on' : ''}" data-color="${c}" style="background:${c}" aria-label="Color ${c}" aria-pressed="${c === d.color}"></button>`).join('')}</div>
-      <div class="profile-picks" aria-label="Picture">${EMOJI.map((e) => `<button type="button" class="profile-emoji${e === d.emoji ? ' on' : ''}" data-emoji="${e}" aria-label="${e ? `Picture ${e}` : 'First letter'}" aria-pressed="${e === d.emoji}">${e || `<span class="profile-emoji-letter">${esc(initial(shown.name))}</span>`}</button>`).join('')}</div>
-      <div class="sync-row"><button class="btn-pill-primary" type="submit">${p ? 'Save' : 'Add profile'}</button><button class="btn-outline-pill" type="button" data-act="cancel">Cancel</button></div>
+      <div class="profile-picks" aria-label="Color" data-i18n-attr="aria-label">${P.COLORS.map((c) => `<button type="button" class="profile-swatch${c === d.color ? ' on' : ''}" data-color="${c}" style="background:${c}" aria-label="${esc(I18n.Tf('Color {0}', c))}" aria-pressed="${c === d.color}"></button>`).join('')}</div>
+      <div class="profile-picks" aria-label="Picture" data-i18n-attr="aria-label">${EMOJI.map((e) => `<button type="button" class="profile-emoji${e === d.emoji ? ' on' : ''}" data-emoji="${e}" aria-label="${esc(e ? I18n.Tf('Picture {0}', e) : I18n.T('First letter'))}" aria-pressed="${e === d.emoji}">${e || `<span class="profile-emoji-letter">${esc(initial(shown.name))}</span>`}</button>`).join('')}</div>
+      <div class="sync-row"><button class="btn-pill-primary" type="submit" data-i18n>${p ? 'Save' : 'Add profile'}</button><button class="btn-outline-pill" type="button" data-act="cancel" data-i18n>Cancel</button></div>
     </form>`;
   }
   const nextColor = () => { const used = new Set(P.list().map((p) => p.color)); return P.COLORS.find((c) => !used.has(c)) || P.COLORS[0]; };
@@ -148,7 +151,7 @@
   function refreshPreview(f) {
     const id = f.dataset.id;
     const p = id ? P.list().find((q) => q.id === id) : null;
-    const shown = { name: draft.name || (p ? p.name : 'New profile'), color: draft.color, emoji: draft.emoji };
+    const shown = { name: draft.name || (p ? p.name : I18n.T('New profile')), color: draft.color, emoji: draft.emoji };
     const old = f.querySelector('.profile-form-top .profile-avatar');
     if (old) old.outerHTML = avatar(shown, 'lg');
     const letter = f.querySelector('.profile-emoji-letter');
@@ -163,26 +166,26 @@
     if (!section) return;
     const me = P.current();
     const all = P.list();
-    const parts = ['<span class="settings-section-title">Profiles</span>'];
+    const parts = ['<span class="settings-section-title" data-i18n>Profiles</span>'];
     parts.push(`<div class="m3-group"><div class="setting-item"><div class="sync-intro">
-      <b>A Muriel for everyone who uses this device</b>
-      <span>Each profile has its own playlists, favorites, history, Encore stats, theme, sound and lyrics settings, and links to its own devices in Sync. Switching profiles restarts Muriel.</span>
+      <b data-i18n>A Muriel for everyone who uses this device</b>
+      <span data-i18n>Each profile has its own playlists, favorites, history, Encore stats, theme, sound and lyrics settings, and links to its own devices in Sync. Switching profiles restarts Muriel.</span>
     </div></div></div>`);
     const rows = all.map((p) => {
       if (editing === p.id) return `<div class="setting-item profile-row editing">${form(p)}</div>`;
       const open = p.id === me.id;
       const actions = [
-        open ? '' : `<button class="btn-pill-primary" type="button" data-act="switch" data-id="${esc(p.id)}">Switch</button>`,
-        `<button class="btn-icon-pill" type="button" data-act="edit" data-id="${esc(p.id)}" title="Rename" aria-label="Rename ${esc(p.name)}">${PEN}</button>`,
-        open ? '' : `<button class="btn-icon-pill profile-delete" type="button" data-act="delete" data-id="${esc(p.id)}" title="Delete" aria-label="Delete ${esc(p.name)}">${TRASH}</button>`,
+        open ? '' : `<button class="btn-pill-primary" type="button" data-act="switch" data-id="${esc(p.id)}" data-i18n>Switch</button>`,
+        `<button class="btn-icon-pill" type="button" data-act="edit" data-id="${esc(p.id)}" title="${I18n.Th('Rename')}" aria-label="${esc(I18n.Tf('Rename {0}', p.name))}">${PEN}</button>`,
+        open ? '' : `<button class="btn-icon-pill profile-delete" type="button" data-act="delete" data-id="${esc(p.id)}" title="${I18n.Th('Delete')}" aria-label="${esc(I18n.Tf('Delete {0}', p.name))}">${TRASH}</button>`,
       ].join('');
       return `<div class="setting-item profile-row${open ? ' current' : ''}${fresh === p.id ? ' fresh' : ''}">${avatar(p, 'lg')}
-        <div class="profile-row-text"><b>${esc(p.name)}</b><span>${open ? '<em>Open now</em> · ' : ''}${esc(summary(p))}</span></div>
+        <div class="profile-row-text"><b>${esc(p.name)}</b><span>${open ? `<em>${I18n.Th('Open now')}</em> · ` : ''}${esc(summary(p))}</span></div>
         <div class="profile-row-actions">${actions}</div></div>`;
     });
     parts.push(`<div class="m3-group">${rows.join('')}</div>`);
-    parts.push(`<div class="m3-group"><div class="setting-item sync-block">${adding ? form(null) : `<div class="sync-row"><button class="btn-outline-pill" type="button" data-act="add">${PLUS}<span>Add profile</span></button></div>`}</div></div>`);
-    parts.push(`<div class="m3-group"><div class="setting-item"><span class="sync-note">Shared by every profile on this device: songs kept for offline listening, downloads and your music folder, plus window, tray, media key and performance settings.</span></div></div>`);
+    parts.push(`<div class="m3-group"><div class="setting-item sync-block">${adding ? form(null) : `<div class="sync-row"><button class="btn-outline-pill" type="button" data-act="add">${PLUS}<span data-i18n>Add profile</span></button></div>`}</div></div>`);
+    parts.push(`<div class="m3-group"><div class="setting-item"><span class="sync-note" data-i18n>Shared by every profile on this device: songs kept for offline listening, downloads and your music folder, plus window, tray, media key and performance settings.</span></div></div>`);
     section.innerHTML = parts.join('');
   }
 
@@ -204,8 +207,8 @@
     else if (act === 'edit' && p) { editing = p.id; adding = false; draft = null; render(); focusName(); }
     else if (act === 'cancel') { adding = false; editing = null; draft = null; render(); }
     else if (act === 'delete' && p) {
-      if (!confirm(`Delete the profile "${p.name}"? Its playlists, favorites, history and settings are removed from this device. Devices it syncs with keep their copy.`)) return;
-      if (P.remove(p.id)) toast(`Deleted ${p.name}`);
+      if (!confirm(I18n.Tf('Delete the profile "{0}"? Its playlists, favorites, history and settings are removed from this device. Devices it syncs with keep their copy.', p.name))) return;
+      if (P.remove(p.id)) toast(I18n.Tm('Deleted {0}', p.name));
       render();
     }
   }
@@ -222,9 +225,9 @@
         const p = P.create({ name, color: draft.color, emoji: draft.emoji });
         adding = false;
         fresh = p.id;
-        toast(`Added ${p.name}`);
+        toast(I18n.Tm('Added {0}', p.name));
       }
-    } catch (err) { toast('Could not save: the storage is full', 'error'); return; }
+    } catch (err) { toast(I18n.Tm('Could not save: the storage is full'), 'error'); return; }
     draft = null;
     render();
   }
@@ -241,7 +244,7 @@
     const btn = document.createElement('button');
     btn.className = 'settings-nav-btn';
     btn.dataset.cat = 'profiles';
-    btn.innerHTML = `${ICON}<span>Profiles</span>`;
+    btn.innerHTML = `${ICON}<span data-i18n>Profiles</span>`;
     nav.insertBefore(btn, nav.querySelector('[data-cat="sync"]') || nav.querySelector('[data-cat="about"]'));
     section = document.createElement('div');
     section.className = 'settings-section profile-section';
@@ -255,4 +258,6 @@
 
   mountSwitcher();
   mount();
+  // another language, or its words just came in: names and counts are put together here
+  window.addEventListener('muriel:i18n', () => { if (!editing && !adding) render(); });
 })();

@@ -125,6 +125,7 @@
     const like = document.createElement('button');
     like.id = 'np-like';
     like.type = 'button';
+    like.setAttribute('data-i18n-attr', 'aria-label');
     like.setAttribute('aria-label', 'Like');
     like.innerHTML = favIcon.outerHTML.replace('id="fav-icon"', '');
     const mirror = () => { const on = favIcon.getAttribute('fill') === 'currentColor'; like.classList.toggle('on', on); like.querySelector('svg').setAttribute('fill', on ? 'currentColor' : 'none'); };
@@ -199,8 +200,8 @@
     limitRow.innerHTML = `
       <div class="setting-item-top" style="align-items: center;">
         <div style="display: flex; flex-direction: column; gap: 2px;">
-          <span class="setting-name">Song storage limit</span>
-          <span style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">Songs you play are kept for offline use. Over this limit, the ones played longest ago are removed.</span>
+          <span class="setting-name" data-i18n>Song storage limit</span>
+          <span style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);" data-i18n>Songs you play are kept for offline use. Over this limit, the ones played longest ago are removed.</span>
         </div>
       </div>
       <div class="theme-mode-toggle" style="margin-top: 10px;">
@@ -217,21 +218,21 @@
     logRow.innerHTML = `
       <div class="setting-item-top" style="align-items: center;">
         <div style="display: flex; flex-direction: column; gap: 2px;">
-          <span class="setting-name">Share error log</span>
-          <span style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">If something breaks, send this so it can be fixed.</span>
+          <span class="setting-name" data-i18n>Share error log</span>
+          <span style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);" data-i18n>If something breaks, send this so it can be fixed.</span>
         </div>
-        <button class="btn-pill-primary" type="button">Share</button>
+        <button class="btn-pill-primary" type="button" data-i18n>Share</button>
       </div>`;
     logRow.querySelector('button').addEventListener('click', async () => {
       const res = await window.electronAPI.shareText('Muriel error log', window.MurielLog ? window.MurielLog.text() : 'no log');
-      if (res === 'copied' && window.MurielCore) window.MurielCore.toast('Log copied to clipboard', 'info');
+      if (res === 'copied' && window.MurielCore) window.MurielCore.toast((window.MurielI18n || { T: (x) => x, Tm: (x) => x }).Tm('Log copied to clipboard'), 'info');
     });
     storageGroup.append(limitRow, logRow);
   }
 
   // the desktop placeholder doesn't fit beside the source buttons on a phone
   const searchInput = document.getElementById('search-input');
-  if (searchInput) searchInput.placeholder = 'Search songs, artists…';
+  if (searchInput) { searchInput.setAttribute('data-i18n-attr', 'placeholder'); searchInput.placeholder = 'Search songs, artists…'; }
 
   // iPhone: lyrics on the lock screen and in the Dynamic Island (mobile/live-activity.js)
   const trRow = document.getElementById('btn-tr-enabled') && document.getElementById('btn-tr-enabled').closest('.setting-item');
@@ -242,10 +243,10 @@
     row.innerHTML = `
       <div class="setting-item-top" style="align-items: center;">
         <div style="display: flex; flex-direction: column; gap: 2px;">
-          <span class="setting-name">Lock screen &amp; Dynamic Island</span>
-          <span class="la-hint" style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">The song, its progress and the line being sung. Long-press the Dynamic Island for play, skip and shuffle (iOS 17).</span>
+          <span class="setting-name" data-i18n>Lock screen &amp; Dynamic Island</span>
+          <span class="la-hint" style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);" data-i18n>The song, its progress and the line being sung. Long-press the Dynamic Island for play, skip and shuffle (iOS 17).</span>
         </div>
-        <button class="effect-switch-btn${la.enabled() ? ' active' : ''}" type="button" aria-label="Lock screen and Dynamic Island"><span class="thumb"></span></button>
+        <button class="effect-switch-btn${la.enabled() ? ' active' : ''}" type="button" aria-label="Lock screen and Dynamic Island" data-i18n-attr="aria-label"><span class="thumb"></span></button>
       </div>`;
     const sw = row.querySelector('button');
     sw.addEventListener('click', () => {
@@ -267,10 +268,10 @@
     row.innerHTML = `
       <div class="setting-item-top" style="align-items: center;">
         <div style="display: flex; flex-direction: column; gap: 2px;">
-          <span class="setting-name">Play in the background</span>
-          <span style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">Some phones stop apps to save battery, even while music plays. Allow Muriel to keep running.</span>
+          <span class="setting-name" data-i18n>Play in the background</span>
+          <span style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);" data-i18n>Some phones stop apps to save battery, even while music plays. Allow Muriel to keep running.</span>
         </div>
-        <button class="btn-pill-primary" type="button">Allow</button>
+        <button class="btn-pill-primary" type="button" data-i18n>Allow</button>
       </div>`;
     const btn = row.querySelector('button');
     const refresh = () => bg.allowed().then((ok) => { btn.textContent = ok ? 'Allowed' : 'Allow'; btn.disabled = ok; });
@@ -353,6 +354,6 @@
   window.addEventListener('muriel:storage-error', () => {
     if (Date.now() - last < 30000 || !window.MurielCore || !window.MurielCore.toast) return;
     last = Date.now();
-    window.MurielCore.toast('Could not save to storage. Is your phone full?', 'error');
+    window.MurielCore.toast((window.MurielI18n || { T: (x) => x, Tm: (x) => x }).Tm('Could not save to storage. Is your phone full?'), 'error');
   });
 })();
