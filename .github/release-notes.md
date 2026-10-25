@@ -1,4 +1,4 @@
-## Muriel 1.1.5
+## Muriel 1.2.0
 
 **Downloads**
 - **iPhone:** [ios-latest](https://github.com/cloverscripts/riff-muriel/releases/tag/ios-latest) (`Muriel.ipa`, install with SideStore, AltStore or Sideloadly)
@@ -9,14 +9,14 @@
 
 Or get it from the website: https://cloverscripts.github.io/riff-muriel/
 
-**Fixed**
-- **Music keeps playing in the background** on Android and iPhone. Between two songs, while the next one was still loading, the phone could put Muriel to sleep, and the next song only started once you opened the app again
-- **iPhone lock screen** shows previous / next track again instead of the ±15 second skip buttons ([#1](https://github.com/cloverscripts/riff-muriel/issues/1))
-- **Album pages** scroll down to the tracks on phones instead of getting stuck on the cover ([#2](https://github.com/cloverscripts/riff-muriel/issues/2))
-- **Black text on some Android phones** (older system WebView, e.g. Huawei and Honor phones without Google services): text is readable again ([#3](https://github.com/cloverscripts/riff-muriel/issues/3))
-- **Adding FLAC files** on phones no longer crashes the app, even with several big files at once
+**New: sync your devices (free)**
+- Link your phone and computer with a code or a QR code, and your **playlists, favorites, history, Encore stats and what you're listening to** stay the same on all of them
+- **Theme too, if you want:** when you set it up, Muriel asks whether colors, font and lyrics style should be the same everywhere
+- **Continue listening:** "Continue from iPhone" picks up the song another device was playing, from the same spot, and pauses it there
+- **No account, no Muriel server:** every device keeps its own data, and linked devices talk to each other directly (encrypted) while they're open. A device that was off catches up the next time both are open
+- Set it up from the home screen ("Sync your devices?") or in **Settings → Sync**, where you can also see your linked devices, unlink one, and choose what syncs
 
-**New**
-- **Android:** a "Play in the background" switch in Settings lets Muriel off battery saving, for phones that close apps in the background even while music plays (Muriel also asks once, when the first song starts)
+**New on the home screen**
+- **Your playlists:** all your playlists right on the home screen, plus a "New playlist" button. They used to live only in a side drawer that was easy to miss
 
-Everything from 1.1.4 is included too: songs no longer stop at 0:29, playlists skip songs that can't load, lyrics on the iPhone lock screen and in the Dynamic Island, Android notification and lock-screen controls.
+Everything from 1.1.5 is included too: music keeps playing in the background, previous / next on the iPhone lock screen, album pages scroll on phones, readable text on older Android phones, and adding FLAC files no longer crashes the phone app.
