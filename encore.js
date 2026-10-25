@@ -139,35 +139,40 @@
     if (period === 'year') return new Date(now.getFullYear(), 0, 1);
     return new Date(0);
   }
+  // this device's listening plus what linked devices sent (sync.js); each device only ever counts its own plays
+  const sources = () => [db, ...((window.MurielSync && window.MurielSync.listenDbs && window.MurielSync.listenDbs()) || [])];
   function stats(period) {
     commit();
     const from = dayKey(rangeStart(period));
-    const per = {}, hours = new Array(24).fill(0), activeDays = [];
-    let plays = 0, secs = 0;
-    for (const [d, b] of Object.entries(db.days)) {
-      if (d < from) continue;
-      let any = false;
-      for (const [k, [n, s]] of Object.entries(b.k)) {
-        const e = per[k] || (per[k] = { key: k, plays: 0, secs: 0 });
-        e.plays += n; e.secs += s; plays += n; secs += s;
-        if (n || s > 20) any = true;
+    const per = {}, hours = new Array(24).fill(0), activeDays = new Set();
+    let plays = 0, secs = 0, foldedDays = 0;
+    const srcs = sources();
+    for (const src of srcs) {
+      for (const [d, b] of Object.entries(src.days || {})) {
+        if (d < from) continue;
+        let any = false;
+        for (const [k, [n, s]] of Object.entries(b.k || {})) {
+          const e = per[k] || (per[k] = { key: k, plays: 0, secs: 0 });
+          e.plays += n; e.secs += s; plays += n; secs += s;
+          if (n || s > 20) any = true;
+        }
+        (b.h || []).forEach((n, i) => { hours[i] += n; });
+        if (any) activeDays.add(d);
       }
-      (b.h || []).forEach((n, i) => { hours[i] += n; });
-      if (any) activeDays.push(d);
-    }
-    let foldedDays = 0;
-    if (period === 'all' && db.old) {
-      for (const [k, [n, sec]] of Object.entries(db.old.k)) {
-        const e = per[k] || (per[k] = { key: k, plays: 0, secs: 0 });
-        e.plays += n; e.secs += sec; plays += n; secs += sec;
+      if (period === 'all' && src.old) {
+        for (const [k, [n, sec]] of Object.entries(src.old.k || {})) {
+          const e = per[k] || (per[k] = { key: k, plays: 0, secs: 0 });
+          e.plays += n; e.secs += sec; plays += n; secs += sec;
+        }
+        secs += src.old.secs || 0;
+        (src.old.h || []).forEach((n, i) => { hours[i] += n; });
+        foldedDays = Math.max(foldedDays, src.old.days || 0);
       }
-      secs += db.old.secs || 0;
-      (db.old.h || []).forEach((n, i) => { hours[i] += n; });
-      foldedDays = db.old.days || 0;
     }
-    const songs = Object.values(per).filter((e) => e.plays > 0 && db.tracks[e.key])
+    const trackOf = (k) => { for (const src of srcs) if (src.tracks && src.tracks[k]) return src.tracks[k]; return null; };
+    const songs = Object.values(per).filter((e) => e.plays > 0 && trackOf(e.key))
       .sort((x, y) => y.plays - x.plays || y.secs - x.secs)
-      .map((e) => { const t = db.tracks[e.key]; return { ...e, ...cleanTitle(t.t, t.a), raw: t }; });
+      .map((e) => { const t = trackOf(e.key); return { ...e, ...cleanTitle(t.t, t.a), raw: t }; });
     const artists = {};
     songs.forEach((s) => {
       const name = String(s.artist || '').split(/\s*(?:,|&|\bx\b|\bfeat\.?|\bft\.?)\s*/i)[0].trim();
@@ -176,10 +181,10 @@
       const a = artists[k] || (artists[k] = { name, plays: 0, secs: 0, thumb: s.raw.th });
       a.plays += s.plays; a.secs += s.secs;
     });
-    activeDays.sort();
+    const days = [...activeDays].sort();
     let streak = 0, run = 0, prev = null;
-    activeDays.forEach((d) => { const t = Date.parse(d); run = prev !== null && t - prev <= 26 * 3600e3 ? run + 1 : 1; streak = Math.max(streak, run); prev = t; });
-    return { period, plays, minutes: Math.round(secs / 60), songs, artists: Object.values(artists).sort((x, y) => y.plays - x.plays), hours, days: activeDays.length + foldedDays, streak };
+    days.forEach((d) => { const t = Date.parse(d); run = prev !== null && t - prev <= 26 * 3600e3 ? run + 1 : 1; streak = Math.max(streak, run); prev = t; });
+    return { period, plays, minutes: Math.round(secs / 60), songs, artists: Object.values(artists).sort((x, y) => y.plays - x.plays), hours, days: days.length + foldedDays, streak };
   }
   const toTrack = (s) => ({ id: s.raw.id, title: s.raw.t, artist: s.raw.a, thumbnail: s.raw.th, platform: s.raw.p, url: s.raw.u, duration: s.raw.d });
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -366,7 +371,9 @@
     setTimeout(() => o.remove(), 300);
   }
 
-  window.MurielEncore = { open, stats, close, compact };
+  // sync.js: this device's own listening (sent to linked devices), and a redraw when theirs arrives
+  const own = () => { commit(); return db; };
+  window.MurielEncore = { open, stats, close, compact, own, refresh: () => renderHome() };
   try { compact(); } catch (e) {}
   const histBtn = document.getElementById('btn-open-encore');
   if (histBtn) histBtn.addEventListener('click', () => open('month'));

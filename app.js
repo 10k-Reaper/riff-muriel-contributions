@@ -16543,6 +16543,41 @@ document.addEventListener('DOMContentLoaded', async () => {
     formatDuration: (s) => formatDuration(s),
     toast: (msg, kind) => showToast(msg, kind),
     refreshBackground: () => updateCustomBg(),
+    // sync.js wrote these keys with what another device had; show it without a restart
+    reloadFromStorage(keys) {
+      const has = (k) => keys.includes(k);
+      if (has('devsize_playlists')) {
+        state.playlists = safeArray('devsize_playlists');
+        renderPlaylistsList();
+        if (state.currentView === 'playlist-detail' && state.currentPlaylistId) {
+          if (state.playlists.some((p) => p.id === state.currentPlaylistId)) openPlaylistDetail(state.currentPlaylistId);
+          else switchView('local');
+        }
+      }
+      if (has('devsize_favorites')) {
+        state.favorites = safeArray('devsize_favorites');
+        updateFavoritesBadge();
+        updateFavoriteIcon();
+        if (state.currentView === 'favorites') renderFavoritesView();
+      }
+      if (has('devsize_history')) {
+        state.history = safeArray('devsize_history');
+        if (state.currentView === 'history') renderHistoryView();
+      }
+      if (['muriel_theme_mode', 'muriel_theme_accent', 'muriel_theme_intensity', 'muriel_theme_brightness', 'muriel_palette_style'].some(has)) {
+        state.themeMode = localStorage.getItem('muriel_theme_mode') || 'dark';
+        state.themeAccent = localStorage.getItem('muriel_theme_accent') || '#6750A4';
+        state.themeIntensity = parseInt(localStorage.getItem('muriel_theme_intensity') || '0', 10);
+        state.themeBrightness = parseInt(localStorage.getItem('muriel_theme_brightness') || '50', 10);
+        state.paletteStyle = localStorage.getItem('muriel_palette_style') || 'classic';
+        updateThemeFromState();
+      }
+      if (has('muriel_font')) {
+        state.riffFont = localStorage.getItem('muriel_font') || 'google';
+        applyFont(state.riffFont);
+      }
+      if (keys.some((k) => k === 'devsize_playlists' || k === 'devsize_favorites')) window.dispatchEvent(new Event('muriel:library'));
+    },
   };
   window.dispatchEvent(new Event('muriel:ready'));
 });

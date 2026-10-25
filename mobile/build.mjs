@@ -41,7 +41,7 @@ await build({
   logLevel: 'warning',
 });
 
-for (const f of ['app.js', 'styles.css', 'audio-engine.js', 'm3shapes.js', 'lyrics-rtl.js', 'track-sort.js', 'search-text.js', 'library-tools.js', 'update-notifier.js', 'lyrics-match.js', 'encore.js']) cpSync(join(root, f), join(out, f));
+for (const f of ['app.js', 'styles.css', 'audio-engine.js', 'm3shapes.js', 'lyrics-rtl.js', 'track-sort.js', 'search-text.js', 'library-tools.js', 'update-notifier.js', 'lyrics-match.js', 'encore.js', 'sync-core.js', 'sync.js']) cpSync(join(root, f), join(out, f));
 // iOS or Android is read at runtime; CI fills in the commit and run number
 writeFileSync(join(out, 'build-info.js'), buildInfoScript(''));
 cpSync(join(root, 'assets'), join(out, 'assets'), { recursive: true });

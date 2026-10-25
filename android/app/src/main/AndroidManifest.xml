@@ -24,6 +24,14 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
+            <!-- muriel://link?code=… from the QR code in Settings → Sync (opens the app and links it) -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="muriel" android:host="link" />
+            </intent-filter>
+
         </activity>
 
         <!-- keeps the music going in the background and carries the playback notification (MediaControlsPlugin) -->

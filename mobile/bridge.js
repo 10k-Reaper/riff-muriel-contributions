@@ -196,6 +196,18 @@ if (Capacitor.getPlatform() === 'android') {
   });
 }
 
+// muriel://link?code=… (the QR code in Settings → Sync, scanned with the camera) opens the app; sync.js links it
+{
+  const { App } = require('@capacitor/app');
+  const deliver = (url) => {
+    if (!url || !/^muriel:/i.test(url)) return;
+    const go = () => window.dispatchEvent(new CustomEvent('muriel:deeplink', { detail: url }));
+    if (window.MurielSync) go(); else window.addEventListener('muriel:ready', () => setTimeout(go, 300), { once: true });
+  };
+  App.addListener('appUrlOpen', (e) => deliver(e && e.url));
+  App.getLaunchUrl().then((r) => deliver(r && r.url)).catch(() => {});
+}
+
 ready = start();
 window.electronAPI = electronAPI({ ready, port: PORT, fs, fileUrlFor });
 require('./live-activity')();
