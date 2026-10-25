@@ -30,6 +30,8 @@ module.exports = function mediaControls() {
       // between two songs nothing plays, but Muriel still has to stay in the foreground (see MediaControlsPlugin)
       loading: !c.state.isPlaying && !!c.state.trackLoading,
       rate: a.playbackRate || 1,
+      shuffle: !!c.state.isShuffle,
+      repeat: !!c.state.isRepeat,
     }).catch(() => {});
   }
   // several events arrive together on a song change; send once
@@ -54,6 +56,7 @@ module.exports = function mediaControls() {
     if (!c || !c.audio) return;
     window.addEventListener('muriel:track', update);
     window.addEventListener('muriel:loading', update);
+    window.addEventListener('muriel:modes', update);
     ['playing', 'pause', 'seeked', 'ratechange', 'durationchange', 'ended'].forEach((ev) => c.audio.addEventListener(ev, update));
     c.audio.addEventListener('playing', askOnce, { once: true });
     plugin.addListener('action', ({ action, position } = {}) => {
@@ -63,6 +66,8 @@ module.exports = function mediaControls() {
       else if (action === 'next') core().next();
       else if (action === 'prev') core().prev();
       else if (action === 'seek' && Number.isFinite(position)) core().seek(position);
+      else if (action === 'shuffle') core().toggleShuffle();
+      else if (action === 'repeat') core().toggleRepeat();
       // the native side already counts play / next / previous as playing; if nothing started, it hears so
       update();
     });

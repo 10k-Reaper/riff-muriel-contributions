@@ -71,6 +71,11 @@ public class MediaControlsPlugin extends Plugin {
     private long durationMs = 0;
     private String artworkUrl = "";
     private Bitmap artwork;
+    // the extra buttons beside previous / next (Android 13+: in the quick-settings and lock-screen player)
+    static final String CUSTOM_SHUFFLE = "io.github.cloverscripts.muriel.SHUFFLE";
+    static final String CUSTOM_REPEAT = "io.github.cloverscripts.muriel.REPEAT";
+    private boolean shuffle;
+    private boolean repeat;
     private PowerManager.WakeLock wakeLock;
     private WifiManager.WifiLock wifiLock;
     private final Handler handler = new Handler(Looper.getMainLooper());
@@ -94,6 +99,10 @@ public class MediaControlsPlugin extends Plugin {
             @Override public void onSkipToNext() { start("next"); }
             @Override public void onSkipToPrevious() { start("prev"); }
             @Override public void onSeekTo(long pos) { send("seek", pos / 1000.0); }
+            @Override public void onCustomAction(String action, android.os.Bundle extras) {
+                if (CUSTOM_SHUFFLE.equals(action)) send("shuffle", -1);
+                else if (CUSTOM_REPEAT.equals(action)) send("repeat", -1);
+            }
         });
     }
 
@@ -127,6 +136,8 @@ public class MediaControlsPlugin extends Plugin {
         boolean nowPlaying = Boolean.TRUE.equals(call.getBoolean("playing", false));
         boolean loading = !nowPlaying && Boolean.TRUE.equals(call.getBoolean("loading", false));
         float rate = call.getFloat("rate", 1f);
+        shuffle = Boolean.TRUE.equals(call.getBoolean("shuffle", false));
+        repeat = Boolean.TRUE.equals(call.getBoolean("repeat", false));
         String art = call.getString("artwork", "");
         if (art == null) art = "";
         if (!art.equals(artworkUrl)) {
@@ -150,6 +161,11 @@ public class MediaControlsPlugin extends Plugin {
                 .setState(nowPlaying ? PlaybackStateCompat.STATE_PLAYING
                                 : loading ? PlaybackStateCompat.STATE_BUFFERING : PlaybackStateCompat.STATE_PAUSED,
                         positionMs, nowPlaying ? rate : 0f)
+                // shuffle goes left of "previous", repeat right of "next"; lit when on
+                .addCustomAction(new PlaybackStateCompat.CustomAction.Builder(CUSTOM_SHUFFLE,
+                        shuffle ? "Shuffle on" : "Shuffle off", shuffle ? R.drawable.ic_shuffle_on : R.drawable.ic_shuffle_off).build())
+                .addCustomAction(new PlaybackStateCompat.CustomAction.Builder(CUSTOM_REPEAT,
+                        repeat ? "Repeat on" : "Repeat off", repeat ? R.drawable.ic_repeat_one_on : R.drawable.ic_repeat_off).build())
                 .build());
         session.setActive(true);
         refreshNotification();
@@ -266,13 +282,18 @@ public class MediaControlsPlugin extends Plugin {
                 .setShowWhen(false)
                 .setSilent(true)
                 .setOngoing(playing)
+                // Android 12 and older draw these buttons themselves; newer versions use the session's
+                .addAction(shuffle ? R.drawable.ic_shuffle_on : R.drawable.ic_shuffle_off, shuffle ? "Shuffle on" : "Shuffle off",
+                        PlaybackService.intent(ctx, PlaybackService.ACTION_SHUFFLE, 5))
                 .addAction(android.R.drawable.ic_media_previous, "Previous", PlaybackService.intent(ctx, PlaybackService.ACTION_PREV, 1))
                 .addAction(playing ? android.R.drawable.ic_media_pause : android.R.drawable.ic_media_play, playing ? "Pause" : "Play",
                         PlaybackService.intent(ctx, PlaybackService.ACTION_TOGGLE, 2))
                 .addAction(android.R.drawable.ic_media_next, "Next", PlaybackService.intent(ctx, PlaybackService.ACTION_NEXT, 3))
+                .addAction(repeat ? R.drawable.ic_repeat_one_on : R.drawable.ic_repeat_off, repeat ? "Repeat on" : "Repeat off",
+                        PlaybackService.intent(ctx, PlaybackService.ACTION_REPEAT, 6))
                 .setStyle(new androidx.media.app.NotificationCompat.MediaStyle()
                         .setMediaSession(session.getSessionToken())
-                        .setShowActionsInCompactView(0, 1, 2));
+                        .setShowActionsInCompactView(1, 2, 3));
         return b.build();
     }
 

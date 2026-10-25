@@ -50,7 +50,7 @@ test('one update per song change with title, cover, length and play state', asyn
   audio.dispatchEvent(new Event('playing'));
   await tick();
   assert.strictEqual(calls.length, 1);
-  assert.deepStrictEqual(calls[0], { title: 'Song', artist: 'Someone', album: '', artwork: 'https://i.ytimg.com/vi/a/mqdefault.jpg', duration: 201.5, position: 3, playing: true, loading: false, rate: 1 });
+  assert.deepStrictEqual(calls[0], { title: 'Song', artist: 'Someone', album: '', artwork: 'https://i.ytimg.com/vi/a/mqdefault.jpg', duration: 201.5, position: 3, playing: true, loading: false, rate: 1, shuffle: false, repeat: false });
 });
 
 test('the gap while the next song downloads is reported as loading, not as a pause', async () => {
@@ -110,6 +110,27 @@ test('notification buttons drive the player', () => {
   action({ action: 'prev' });
   action({ action: 'seek', position: 42 });
   assert.deepStrictEqual(did, ['toggle', 'next', 'prev', 'seek 42']);
+});
+
+test('shuffle and repeat: their state goes to the player, and its buttons toggle them', async () => {
+  const { calls, state, did, action } = setup();
+  state.currentTrack = { title: 'T' };
+  Object.assign(window.MurielCore, {
+    toggleShuffle: () => { did.push('shuffle'); state.isShuffle = !state.isShuffle; },
+    toggleRepeat: () => { did.push('repeat'); state.isRepeat = !state.isRepeat; },
+  });
+  action({ action: 'shuffle' });
+  await tick();
+  assert.deepStrictEqual([calls[0].shuffle, calls[0].repeat], [true, false]);
+  action({ action: 'repeat' });
+  await tick();
+  assert.deepStrictEqual([calls[1].shuffle, calls[1].repeat], [true, true]);
+  // toggled inside the app: the notification follows
+  state.isShuffle = false;
+  window.dispatchEvent(new Event('muriel:modes'));
+  await tick();
+  assert.strictEqual(calls[2].shuffle, false);
+  assert.deepStrictEqual(did, ['shuffle', 'repeat']);
 });
 
 test('does nothing outside Android', async () => {

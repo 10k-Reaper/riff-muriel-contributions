@@ -35,7 +35,9 @@ module.exports = function liveActivity() {
     const a = core() && core().audio;
     if (!a) return;
     lastSync = Date.now();
-    send('setPlayback', { playing: !a.paused && !a.ended, position: a.currentTime || 0, rate: a.playbackRate || 1 });
+    const t = core().state.currentTrack;
+    const duration = Number.isFinite(a.duration) && a.duration > 0 ? a.duration : Number(t && t.duration) || 0;
+    send('setPlayback', { playing: !a.paused && !a.ended, position: a.currentTime || 0, rate: a.playbackRate || 1, duration, shuffle: !!core().state.isShuffle });
   }
 
   function hook() {
@@ -43,7 +45,17 @@ module.exports = function liveActivity() {
     if (!a) return;
     window.addEventListener('muriel:track', () => sendTrack());
     window.addEventListener('muriel:lyrics', () => sendLyrics());
-    ['playing', 'pause', 'seeked', 'ratechange', 'ended'].forEach((ev) => a.addEventListener(ev, sendPlayback));
+    ['playing', 'pause', 'seeked', 'ratechange', 'ended', 'durationchange'].forEach((ev) => a.addEventListener(ev, sendPlayback));
+    window.addEventListener('muriel:modes', sendPlayback);
+    // the buttons in the Dynamic Island (iOS 17+)
+    plugin.addListener('action', ({ action } = {}) => {
+      const c = core();
+      if (!c) return;
+      if (action === 'toggle') c.togglePlay();
+      else if (action === 'next') c.next();
+      else if (action === 'prev') c.prev();
+      else if (action === 'shuffle') c.toggleShuffle();
+    });
     // the native clock drifts a little from the audio over a long song; line it up now and then
     a.addEventListener('timeupdate', () => { if (!a.paused && Date.now() - lastSync > 15000) sendPlayback(); });
   }

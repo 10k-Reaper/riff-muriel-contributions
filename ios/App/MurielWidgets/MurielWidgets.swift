@@ -1,8 +1,10 @@
 import ActivityKit
+import AppIntents
 import SwiftUI
 import WidgetKit
 
-// The lyrics Live Activity: the line being sung on the lock screen and in the Dynamic Island.
+// The Live Activity: the song, its progress and the line being sung, on the lock screen and in the
+// Dynamic Island, where long-pressing opens a small player (buttons need iOS 17).
 // The app keeps it up to date (App/LyricsLiveActivity.swift); this only draws it.
 @main
 struct MurielWidgets: WidgetBundle {
@@ -44,9 +46,23 @@ struct MurielLyricsLiveActivity: Widget {
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 DynamicIslandExpandedRegion(.bottom) {
-                    LyricLines(state: state, big: 19, small: 14)
-                        .padding(.horizontal, 4)
-                        .padding(.top, 6)
+                    VStack(spacing: 8) {
+                        if !state.line.isEmpty {
+                            Text(state.line)
+                                .font(.system(size: 15, weight: .semibold, design: .rounded))
+                                .foregroundColor(.white.opacity(0.85))
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.8)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .contentTransition(.opacity)
+                        }
+                        SongProgress(state: state)
+                        if #available(iOS 17.0, *) {
+                            PlayerButtons(state: state)
+                        }
+                    }
+                    .padding(.horizontal, 6)
+                    .padding(.top, 4)
                 }
             } compactLeading: {
                 Artwork(data: state.artwork, size: 24, radius: 7)
@@ -76,6 +92,8 @@ struct LockScreenLyrics: View {
                     PlayingMark(playing: state.playing, size: 13)
                 }
                 LyricLines(state: state, big: 20, small: 15)
+                SongProgress(state: state)
+                    .padding(.top, 4)
             }
         }
         .padding(16)
@@ -124,6 +142,77 @@ struct LyricLines: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+// the bar and the times; while playing it moves by itself (no update needed every second)
+struct SongProgress: View {
+    let state: MurielLyricsAttributes.ContentState
+
+    var body: some View {
+        if state.duration > 0 {
+            VStack(spacing: 3) {
+                if state.playing, let start = state.start {
+                    let range = start...start.addingTimeInterval(state.duration)
+                    ProgressView(timerInterval: range, countsDown: false, label: { EmptyView() }, currentValueLabel: { EmptyView() })
+                        .tint(pink)
+                    HStack {
+                        Text(timerInterval: range, countsDown: false)
+                        Spacer()
+                        Text(clock(state.duration))
+                    }
+                    .font(.system(size: 11, weight: .medium).monospacedDigit())
+                    .foregroundColor(.white.opacity(0.55))
+                } else {
+                    ProgressView(value: min(state.position, state.duration), total: state.duration)
+                        .tint(pink)
+                    HStack {
+                        Text(clock(state.position))
+                        Spacer()
+                        Text(clock(state.duration))
+                    }
+                    .font(.system(size: 11, weight: .medium).monospacedDigit())
+                    .foregroundColor(.white.opacity(0.55))
+                }
+            }
+        }
+    }
+
+    private func clock(_ s: Double) -> String {
+        let t = Int(max(0, s).rounded(.down))
+        return String(format: "%d:%02d", t / 60, t % 60)
+    }
+}
+
+// shuffle · previous · play/pause · next, run in the app by MurielPlayerIntent
+@available(iOS 17.0, *)
+struct PlayerButtons: View {
+    let state: MurielLyricsAttributes.ContentState
+
+    var body: some View {
+        HStack {
+            button("shuffle", "shuffle", 17, on: state.shuffle)
+            Spacer()
+            button("prev", "backward.fill", 21)
+            Spacer()
+            button("toggle", state.playing ? "pause.fill" : "play.fill", 28)
+            Spacer()
+            button("next", "forward.fill", 21)
+            Spacer()
+            // keeps play/pause in the middle
+            Color.clear.frame(width: 34, height: 34)
+        }
+        .padding(.horizontal, 8)
+    }
+
+    private func button(_ action: String, _ symbol: String, _ size: CGFloat, on: Bool = true) -> some View {
+        Button(intent: MurielPlayerIntent(action: action)) {
+            Image(systemName: symbol)
+                .font(.system(size: size, weight: .semibold))
+                .foregroundColor(on ? .white : .white.opacity(0.4))
+                .frame(width: 34, height: 34)
+        }
+        .buttonStyle(.plain)
     }
 }
 

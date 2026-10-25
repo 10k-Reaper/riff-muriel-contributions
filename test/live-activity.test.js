@@ -8,7 +8,12 @@ const path = require('path');
 
 function setup({ platform = 'ios', stored = {} } = {}) {
   const calls = [];
-  const plugin = new Proxy({}, { get: (_, method) => (data) => { calls.push([method, data]); return Promise.resolve({ available: true }); } });
+  let onAction = null;
+  const plugin = new Proxy({}, {
+    get: (_, method) => (method === 'addListener'
+      ? (name, cb) => { if (name === 'action') onAction = cb; return Promise.resolve({ remove() {} }); }
+      : (data) => { calls.push([method, data]); return Promise.resolve({ available: true }); }),
+  });
   const fakeCore = { Capacitor: { getPlatform: () => platform }, registerPlugin: () => plugin };
   const origLoad = Module._load;
   Module._load = function (request, ...rest) { return request === '@capacitor/core' ? fakeCore : origLoad.call(this, request, ...rest); };
@@ -22,7 +27,7 @@ function setup({ platform = 'ios', stored = {} } = {}) {
   global.localStorage = { getItem: (k) => (k in store ? store[k] : null), setItem: (k, v) => { store[k] = String(v); } };
   window.MurielCore = { state, audio, thumb: (t) => t.thumbnail };
   try { require(file)(); } finally { Module._load = origLoad; }
-  return { calls, audio, state, store };
+  return { calls, audio, state, store, action: (a) => onAction && onAction({ action: a }) };
 }
 
 test('sends the song, its synced lines and playback to the plugin', () => {
@@ -39,7 +44,30 @@ test('sends the song, its synced lines and playback to the plugin', () => {
   assert.strictEqual(lyrics[0], 'setLyrics');
   assert.strictEqual(lyrics[1].id, 'youtube:abc:Song');
   assert.deepStrictEqual(JSON.parse(lyrics[1].lines), [{ t: 1.5, x: 'one' }, { t: 6, x: 'two' }]);
-  assert.deepStrictEqual(playback, ['setPlayback', { playing: true, position: 12.5, rate: 1 }]);
+  assert.deepStrictEqual(playback, ['setPlayback', { playing: true, position: 12.5, rate: 1, duration: 0, shuffle: false }]);
+});
+
+test('the song length and shuffle go along, for the progress bar and the shuffle button', () => {
+  const { calls, audio, state } = setup();
+  state.currentTrack = { id: 'x', title: 'T', duration: 200 };
+  state.isShuffle = true;
+  Object.assign(audio, { paused: false, currentTime: 3 });
+  audio.dispatchEvent(new Event('playing'));
+  assert.deepStrictEqual(calls[0], ['setPlayback', { playing: true, position: 3, rate: 1, duration: 200, shuffle: true }]);
+  audio.duration = 201.4; // the real length, once the file is loaded
+  audio.dispatchEvent(new Event('durationchange'));
+  assert.strictEqual(calls[1][1].duration, 201.4);
+  state.isShuffle = false;
+  window.dispatchEvent(new Event('muriel:modes'));
+  assert.strictEqual(calls[2][1].shuffle, false);
+});
+
+test('the Dynamic Island buttons drive the player', () => {
+  const { action } = setup();
+  const did = [];
+  Object.assign(window.MurielCore, { togglePlay: () => did.push('toggle'), next: () => did.push('next'), prev: () => did.push('prev'), toggleShuffle: () => did.push('shuffle') });
+  ['toggle', 'next', 'prev', 'shuffle', 'bogus'].forEach(action);
+  assert.deepStrictEqual(did, ['toggle', 'next', 'prev', 'shuffle']);
 });
 
 test('artwork that is not https is left out', () => {

@@ -25,6 +25,11 @@ public class MurielLiveActivityPlugin: CAPPlugin, CAPBridgedPlugin {
         #if canImport(ActivityKit)
         if #available(iOS 16.2, *) { DispatchQueue.main.async { LyricsActivity.shared.endAll() } }
         #endif
+        // the buttons in the Dynamic Island (MurielPlayerIntent): play / pause, next, previous, shuffle
+        NotificationCenter.default.addObserver(forName: Notification.Name("MurielPlayerAction"), object: nil, queue: .main) { [weak self] note in
+            guard let action = note.userInfo?["action"] as? String else { return }
+            self?.notifyListeners("action", data: ["action": action])
+        }
     }
 
     @objc func isAvailable(_ call: CAPPluginCall) {
@@ -67,7 +72,11 @@ public class MurielLiveActivityPlugin: CAPPlugin, CAPBridgedPlugin {
             let playing = call.getBool("playing") ?? false
             let position = call.getDouble("position") ?? 0
             let rate = call.getDouble("rate") ?? 1
-            DispatchQueue.main.async { LyricsActivity.shared.setPlayback(playing: playing, position: position, rate: rate) }
+            let duration = call.getDouble("duration") ?? 0
+            let shuffle = call.getBool("shuffle") ?? false
+            DispatchQueue.main.async {
+                LyricsActivity.shared.setPlayback(playing: playing, position: position, rate: rate, duration: duration, shuffle: shuffle)
+            }
         }
         #endif
         call.resolve()
@@ -101,6 +110,8 @@ final class LyricsActivity {
     private var anchorPosition = 0.0
     private var anchorTime = Date()
     private var rate = 1.0
+    private var duration = 0.0
+    private var shuffle = false
     private var shown: State?
     private var nextLine: DispatchWorkItem?
     private var idleEnd: DispatchWorkItem?
@@ -125,11 +136,13 @@ final class LyricsActivity {
         refresh()
     }
 
-    func setPlayback(playing: Bool, position: Double, rate: Double) {
+    func setPlayback(playing: Bool, position: Double, rate: Double, duration: Double, shuffle: Bool) {
         self.playing = playing
         anchorPosition = max(0, position)
         anchorTime = Date()
         self.rate = rate > 0 ? rate : 1
+        self.duration = duration.isFinite && duration > 0 ? duration : 0
+        self.shuffle = shuffle
         // a long pause ends the activity, so it doesn't stay on the lock screen all night
         idleEnd?.cancel()
         if !playing {
@@ -174,8 +187,11 @@ final class LyricsActivity {
         }
         let line = index >= 0 ? lines[index].x : ""
         let next = index + 1 < lines.count ? lines[index + 1].x : ""
+        // while playing, the progress bar runs from when the song was at 0:00
+        let start = playing && duration > 0 ? anchorTime.addingTimeInterval(-anchorPosition / rate) : nil
         push(State(title: title, artist: artist, line: String(line.prefix(120)), next: String(next.prefix(120)),
-                   playing: playing, artwork: artwork))
+                   playing: playing, artwork: artwork, duration: duration, position: min(anchorPosition, duration > 0 ? duration : anchorPosition),
+                   start: start, shuffle: shuffle))
         if playing, index + 1 < lines.count {
             let delay = max(0.05, (lines[index + 1].t - pos) / rate)
             let work = DispatchWorkItem { [weak self] in self?.refresh() }

@@ -8927,6 +8927,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       state.isShuffle = !state.isShuffle;
       localStorage.setItem('muriel_shuffle', state.isShuffle ? '1' : '0');
       el.btnShuffle.classList.toggle('active', state.isShuffle);
+      window.dispatchEvent(new Event('muriel:modes')); // the phone's lock-screen / Dynamic Island buttons follow
     });
   }
 
@@ -8936,6 +8937,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       state.isRepeat = !state.isRepeat;
       localStorage.setItem('muriel_repeat', state.isRepeat ? '1' : '0');
       el.btnRepeat.classList.toggle('active', state.isRepeat);
+      window.dispatchEvent(new Event('muriel:modes'));
     });
   }
 

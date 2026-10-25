@@ -242,10 +242,10 @@
     row.innerHTML = `
       <div class="setting-item-top" style="align-items: center;">
         <div style="display: flex; flex-direction: column; gap: 2px;">
-          <span class="setting-name">Lyrics on lock screen</span>
-          <span class="la-hint" style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">The line being sung, on your lock screen and in the Dynamic Island.</span>
+          <span class="setting-name">Lock screen &amp; Dynamic Island</span>
+          <span class="la-hint" style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">The song, its progress and the line being sung. Long-press the Dynamic Island for play, skip and shuffle (iOS 17).</span>
         </div>
-        <button class="effect-switch-btn${la.enabled() ? ' active' : ''}" type="button" aria-label="Lyrics on lock screen"><span class="thumb"></span></button>
+        <button class="effect-switch-btn${la.enabled() ? ' active' : ''}" type="button" aria-label="Lock screen and Dynamic Island"><span class="thumb"></span></button>
       </div>`;
     const sw = row.querySelector('button');
     sw.addEventListener('click', () => {

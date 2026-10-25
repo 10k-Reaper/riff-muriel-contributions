@@ -25,6 +25,8 @@ public class PlaybackService extends Service {
     static final String ACTION_NEXT = "io.github.cloverscripts.muriel.NEXT";
     static final String ACTION_PREV = "io.github.cloverscripts.muriel.PREV";
     static final String ACTION_DISMISS = "io.github.cloverscripts.muriel.DISMISS";
+    static final String ACTION_SHUFFLE = "io.github.cloverscripts.muriel.SHUFFLE_BUTTON";
+    static final String ACTION_REPEAT = "io.github.cloverscripts.muriel.REPEAT_BUTTON";
     // set when started with startForegroundService(): Android then insists on startForeground()
     static final String EXTRA_FOREGROUND = "foreground";
     // Paused, Muriel stays in the foreground this much longer. Android doesn't let an app in the background
@@ -56,6 +58,8 @@ public class PlaybackService extends Service {
         }
         else if (ACTION_NEXT.equals(action) && plugin != null) plugin.start("next");
         else if (ACTION_PREV.equals(action) && plugin != null) plugin.start("prev");
+        else if (ACTION_SHUFFLE.equals(action) && plugin != null) plugin.send("shuffle", -1);
+        else if (ACTION_REPEAT.equals(action) && plugin != null) plugin.send("repeat", -1);
         else if (ACTION_DISMISS.equals(action)) { stopSelf(); return START_NOT_STICKY; }
         show(intent != null && intent.getBooleanExtra(EXTRA_FOREGROUND, false));
         return START_NOT_STICKY;
