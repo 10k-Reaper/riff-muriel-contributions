@@ -114,9 +114,6 @@ body.on-landing .top-get { display: none; }
 .add-note .ico { width: 16px; height: 16px; color: #6ee7a8; }
 .add-note a { color: var(--pink-soft); font-weight: 600; text-underline-offset: 3px; }
 .add-note input { flex: 1; min-width: 0; height: 32px; padding: 0 10px; border-radius: 10px; border: 1px solid var(--line); background: rgba(255, 255, 255, 0.06); color: var(--ink); font: inherit; font-size: 12.5px; }
-.get-line { margin-top: 14px; font-size: 13px; color: var(--faint); }
-.get-line a { color: var(--dim); font-weight: 600; text-underline-offset: 3px; }
-.get-line a:hover { color: var(--ink); }
 
 /* ---------- song list ---------- */
 .list { grid-area: list; min-width: 0; animation: rise .55s .05s var(--ease) both; }
@@ -204,7 +201,7 @@ body.is-playing .np-kicker { color: var(--pink-soft); }
 .np-next-list .dur { font-size: 12.5px; }
 
 /* ---------- player bar ---------- */
-.bar { position: fixed; z-index: 40; left: 12px; right: 12px; bottom: calc(12px + env(safe-area-inset-bottom)); max-width: 1316px; margin: 0 auto; height: 76px; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 600px) minmax(0, 1fr); align-items: center; gap: 20px; padding: 0 18px 0 12px; border-radius: 20px; background: rgba(24, 24, 28, 0.72); border: 1px solid rgba(255, 255, 255, 0.09); box-shadow: 0 20px 50px -10px rgba(0, 0, 0, 0.7); -webkit-backdrop-filter: blur(28px) saturate(1.7); backdrop-filter: blur(28px) saturate(1.7); animation: barIn .5s .1s var(--ease) both; }
+.bar { position: fixed; z-index: 40; left: 12px; right: 12px; bottom: calc(12px + env(safe-area-inset-bottom)); max-width: 1316px; margin: 0 auto; height: 76px; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 600px) minmax(0, 1fr); align-items: center; gap: 20px; padding: 0 18px 0 12px; border-radius: 20px; background: rgba(26, 26, 31, 0.86); border: 1px solid rgba(255, 255, 255, 0.09); box-shadow: 0 20px 50px -10px rgba(0, 0, 0, 0.7); -webkit-backdrop-filter: blur(28px) saturate(1.7); backdrop-filter: blur(28px) saturate(1.7); animation: barIn .5s .1s var(--ease) both; }
 @keyframes barIn { from { opacity: 0; transform: translateY(16px); } }
 .bar-np { display: flex; align-items: center; gap: 12px; min-width: 0; }
 .bar-art { position: relative; flex: none; width: 52px; height: 52px; border-radius: 10px; overflow: hidden; background: #26262c; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4); }
@@ -300,9 +297,8 @@ body.is-buffering .spin { opacity: 1; }
   .hero-actions .btn.primary, .hero-actions .btn.tonal { background-clip: padding-box; }
   #btn-add { grid-column: 1 / -1; height: 44px; }
   .add-note { justify-content: center; text-align: left; }
-  .get-line { margin-top: 12px; }
 
-  .np { display: flex; padding: 10px; border-radius: 20px; margin-bottom: 18px; }
+  .np { display: flex; align-items: stretch; padding: 10px; border-radius: 20px; margin-bottom: 18px; }
   .np-info { padding: 12px 4px 2px; }
   .np-title { font-size: 17px; }
   .np-artist { font-size: 14px; }

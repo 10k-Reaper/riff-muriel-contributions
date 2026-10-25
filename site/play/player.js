@@ -673,7 +673,7 @@
 
   let lastPos = 0;
   function tick() {
-    if (S.engine === 'yt' && YTP.ready && !S.seeking) {
+    if (S.engine === 'yt' && YTP.ready && !S.seeking && String(YTP.call('getVideoUrl') || '').includes(YTP.vid)) {
       const t = Number(YTP.call('getCurrentTime'));
       const d = Number(YTP.call('getDuration'));
       if (Number.isFinite(t)) S.time = t;
