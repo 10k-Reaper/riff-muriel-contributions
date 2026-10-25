@@ -1,4 +1,4 @@
-## Muriel 1.3.1
+## Muriel 1.3.2
 
 **Downloads**
 - **iPhone:** [ios-latest](https://github.com/cloverscripts/riff-muriel/releases/tag/ios-latest) (`Muriel.ipa`, install with SideStore, AltStore or Sideloadly). Needs iOS 16.2 or newer
@@ -9,7 +9,11 @@
 
 Or get it from the website: https://cloverscripts.github.io/riff-muriel/
 
-**Changed**
+**Fixed**
+- **Yandex Music import:** shared playlist links (music.yandex.ru/playlists/lk.…) are read now. When Yandex refuses, the message says why, instead of "Spotify doesn't allow reading this playlist".
+- **Import dialog:** its title and menu follow the app's language
+
+**Changed in 1.3.1**
 - **Last.fm:** connecting is now just a login, so you no longer need your own API key
 
 **New in 1.3** (everything new in Riff 43)
