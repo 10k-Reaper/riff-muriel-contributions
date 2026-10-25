@@ -12035,10 +12035,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     A.forEach((t) => { if (B.has(t)) hit++; });
     return hit / Math.max(A.size, B.size);
   }
+  // a remix, cover or sped-up upload when Spotify has the original is the wrong song (same words as server.js)
+  const VERSION_WORDS = /\b(remix|sped[ -]?up|slowed|nightcore|reverb|8d|bass[ -]?boost(ed)?|cover|flip|mashup|instrumental|karaoke|loop|bootleg)\b/i;
   function pickBestMatch(sp, results) {
     let best = null;
     let bestScore = 0;
+    const wantsVersion = VERSION_WORDS.test(sp.title || '');
     for (const r of results) {
+      if (!wantsVersion && VERSION_WORDS.test(r.title || '')) continue;
       const text = tokenSimilarity(`${sp.title} ${sp.artist}`, `${r.title} ${r.artist}`);
       const titleSim = tokenSimilarity(sp.title, r.title);
       const dDiff = sp.duration && r.duration ? Math.abs(sp.duration - r.duration) : 99;
