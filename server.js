@@ -5594,27 +5594,53 @@ function yandexTracks(result) {
   return out;
 }
 
+// A shared link (/playlists/lk.<uuid>) is read by its uuid. Yandex's API may list such a playlist's songs only
+// as ids unless asked for whole tracks, and may know it with or without the "lk." prefix, so the forms are
+// tried in turn; each answer that isn't a playlist is logged, so a shared error log says what Yandex said.
+function yandexApiPaths(apiPath) {
+  const m = apiPath.match(/^\/playlist\/(.+)$/);
+  if (!m) return [apiPath];
+  const uuid = decodeURIComponent(m[1]);
+  const bare = uuid.replace(/^lk\./i, '');
+  const paths = [`/playlist/${encodeURIComponent(uuid)}?richTracks=true`, `/playlist/${encodeURIComponent(uuid)}`];
+  if (bare !== uuid) paths.push(`/playlist/${encodeURIComponent(bare)}?richTracks=true`);
+  return paths;
+}
+
 async function handleYandexImport(req, res, inputUrl) {
   const reply = (status, data) => { res.writeHead(status, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(data)); };
   const apiPath = parseYandexPlaylistUrl(inputUrl);
   if (!apiPath) return reply(400, { success: false, error: 'unsupported link: not a Yandex Music playlist link', status: 404 });
+  let lastStatus = 0;
+  let empty = false;
   try {
-    const response = await fetchWithTimeout(`https://api.music.yandex.net${apiPath}`, {
-      headers: { 'User-Agent': 'Yandex-Music-API', 'X-Yandex-Music-Client': 'YandexMusicAndroid/24023231', 'Accept': 'application/json' }
-    }, 20000);
-    if (!response.ok) {
-      if (response.status === 404) return reply(404, { success: false, error: 'not found', status: 404 });
-      if (response.status === 401 || response.status === 403) return reply(403, { success: false, error: 'private', status: 403 });
-      return reply(502, { success: false, error: 'Yandex Music refused the request', status: response.status });
+    for (const p of yandexApiPaths(apiPath)) {
+      const response = await fetchWithTimeout(`https://api.music.yandex.net${p}`, {
+        headers: { 'User-Agent': 'Yandex-Music-API', 'X-Yandex-Music-Client': 'YandexMusicAndroid/24023231', 'Accept': 'application/json' }
+      }, 20000);
+      if (!response.ok) {
+        lastStatus = response.status;
+        try { logger.log('warn', `Yandex import: ${p.split('?')[0]} answered ${response.status}`); } catch (_) {}
+        continue;
+      }
+      const text = await response.text();
+      if (text.length > 20e6) return reply(502, { success: false, error: 'Yandex Music sent too much data' });
+      const data = safeJsonParse(text, null);
+      const r = data && data.result && typeof data.result === 'object' ? data.result : (data || {});
+      const tracks = yandexTracks(r);
+      if (!tracks.length) {
+        empty = true;
+        try { logger.log('warn', `Yandex import: ${p.split('?')[0]} had no readable songs`); } catch (_) {}
+        continue;
+      }
+      const cover = yandexCover(r.ogImage) || yandexCover(r.cover && (r.cover.uri || (Array.isArray(r.cover.itemsUri) && r.cover.itemsUri[0]))) || (typeof r.cover === 'string' ? yandexCover(r.cover) : '');
+      return reply(200, { success: true, name: lastfmText(r.title || r.name, 200) || 'Yandex Music playlist', cover, tracks });
     }
-    const text = await response.text();
-    if (text.length > 20e6) return reply(502, { success: false, error: 'Yandex Music sent too much data' });
-    const data = safeJsonParse(text, null);
-    const r = data && data.result && typeof data.result === 'object' ? data.result : (data || {});
-    const tracks = yandexTracks(r);
-    if (!tracks.length) return reply(404, { success: false, error: 'not found: the playlist is empty or private', status: 404 });
-    const cover = yandexCover(r.ogImage) || yandexCover(r.cover && (r.cover.uri || (Array.isArray(r.cover.itemsUri) && r.cover.itemsUri[0]))) || (typeof r.cover === 'string' ? yandexCover(r.cover) : '');
-    return reply(200, { success: true, name: lastfmText(r.title || r.name, 200) || 'Yandex Music playlist', cover, tracks });
+    // 451: Yandex Music doesn't serve the country the request comes from
+    if (lastStatus === 451) return reply(451, { success: false, code: 'yandex_region', error: 'Yandex Music is not available here', status: 451 });
+    if (lastStatus === 401 || lastStatus === 403) return reply(403, { success: false, code: 'yandex_private', error: 'private', status: 403 });
+    if (empty || lastStatus === 404 || !lastStatus) return reply(404, { success: false, error: 'not found: the playlist is empty or private', status: 404 });
+    return reply(502, { success: false, code: 'yandex_failed', error: `Yandex Music answered ${lastStatus}`, status: lastStatus });
   } catch (err) {
     const msg = String((err && err.message) || '');
     const isNet = /timeout|abort|fetch|network|dns|econn|etimedout/i.test(msg) || (err && err.name === 'TimeoutError');

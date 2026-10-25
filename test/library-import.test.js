@@ -33,6 +33,13 @@ test('Yandex Music: public playlists are read, anything else is refused before a
         ] } }), { status: 200 });
       }
       if (u.pathname === '/playlist/lk.0123abcd-0000-1111-2222-333344445555') return new Response(JSON.stringify({ result: { title: 'Shared', cover: { uri: 'https://evil.example/x.png' }, tracks: [{ title: 'S', artist: 'X', duration: 100 }] } }), { status: 200 });
+      // a shared playlist Yandex only knows by its bare uuid, and lists as bare ids unless asked for whole tracks
+      if (u.pathname === '/playlist/aaaa1111-0000-1111-2222-333344445555') {
+        const rich = u.searchParams.get('richTracks') === 'true';
+        return new Response(JSON.stringify({ result: { title: 'Bare', tracks: rich ? [{ track: { title: 'B', artists: [{ name: 'Y' }], durationMs: 90000 } }] : [{ id: 1, albumId: 2 }] } }), { status: 200 });
+      }
+      if (/^\/playlist\/(?:lk\.)?bbbb/.test(u.pathname)) return new Response('{}', { status: 451 });
+      if (u.pathname === '/users/locked/playlists/1') return new Response('{}', { status: 403 });
       return new Response('{}', { status: 404 });
     };
     delete require.cache[require.resolve('../server')];
@@ -59,6 +66,18 @@ test('Yandex Music: public playlists are read, anything else is refused before a
     }
     assert.equal(asked.length, before, 'nothing was fetched for a bad link');
     assert.equal((await get(port, q('https://music.yandex.ru/users/someone/playlists/9'), token)).status, 404);
+
+    // the forms of a shared link are tried in turn: here the bare uuid, asked for whole tracks
+    const bare = await get(port, q('https://music.yandex.ru/playlists/lk.aaaa1111-0000-1111-2222-333344445555'), token);
+    assert.equal(bare.status, 200);
+    assert.deepEqual(bare.data.tracks, [{ title: 'B', artist: 'Y', duration: 90 }]);
+    // why it failed reaches the dialog as Yandex's reason, not a Spotify message
+    const region = await get(port, q('https://music.yandex.ru/playlists/lk.bbbb1111-0000-1111-2222-333344445555'), token);
+    assert.equal(region.status, 451);
+    assert.equal(region.data.code, 'yandex_region');
+    const locked = await get(port, q('https://music.yandex.ru/users/locked/playlists/1'), token);
+    assert.equal(locked.status, 403);
+    assert.equal(locked.data.code, 'yandex_private');
   } finally {
     if (server) await server.stopServer();
     delete require.cache[require.resolve('../server')];

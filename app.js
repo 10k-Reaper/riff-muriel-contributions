@@ -13018,6 +13018,15 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (body.code === 'spotify_not_found' || (provider === 'spotify' && status === 404)) {
         return { code: 'spotify_not_found', title: 'Playlist not found. Is it public?', hint: '', icon: searchIcon };
       }
+      if (body.code === 'yandex_region') {
+        return { code: 'yandex_region', title: "Yandex Music isn't available where you are", hint: 'Yandex only serves some countries', icon: restrictedIcon };
+      }
+      if (body.code === 'yandex_private') {
+        return { code: 'yandex_private', title: "Yandex Music didn't share this playlist", hint: 'Make it public in Yandex Music, or use its older link: music.yandex.ru/users/NAME/playlists/NUMBER', icon: lockIcon };
+      }
+      if (body.code === 'yandex_failed') {
+        return { code: 'yandex_failed', title: "Couldn't read this playlist from Yandex Music", hint: 'Try again later, or use Export files', icon: unknownIcon };
+      }
     }
 
     if (!navigator.onLine || msg.includes('network') || msg.includes('fetch') || msg.includes('dns') || msg.includes('econnrefused') || msg.includes('timeout') || msg.includes('offline') || msg.includes('etimedout')) {
@@ -13036,7 +13045,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       return { code: 'private', title: 'Your playlist is private', hint: 'Make it public and try again', icon: lockIcon };
     }
     if (status === 403 || msg.includes('403') || msg.includes('forbidden') || msg.includes('restricted') || msg.includes('refused')) {
-      return { code: 'restricted', title: "Spotify doesn't allow reading this playlist", hint: 'Try the Export files method', icon: restrictedIcon };
+      return { code: 'restricted', title: provider === 'spotify' ? "Spotify doesn't allow reading this playlist" : "This service doesn't allow reading this playlist", hint: 'Try the Export files method', icon: restrictedIcon };
     }
     return { code: 'unknown', title: "Couldn't read this playlist", hint: (provider === 'spotify' || provider === 'apple') ? 'Try the Export files method' : 'Check the link', icon: unknownIcon };
   }
@@ -13046,8 +13055,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     containerEl.innerHTML = `
       <div class="import-error-icon">${errInfo.icon}</div>
       <div class="import-error-content">
-        <div class="import-error-title">${escapeHtml(errInfo.title)}</div>
-        <div class="import-error-hint">${escapeHtml(errInfo.hint)}</div>
+        <div class="import-error-title">${escapeHtml(T(errInfo.title))}</div>
+        <div class="import-error-hint">${escapeHtml(errInfo.hint ? T(errInfo.hint) : '')}</div>
       </div>
     `;
     containerEl.classList.remove('hidden');
@@ -14436,7 +14445,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     currentLinkImportPlatform = platform || '';
     clearImportError(linkImportError);
     const titles = { youtube: 'Import from YouTube', ytmusic: 'Import from YouTube Music', soundcloud: 'Import from SoundCloud', yandex: 'Import from Yandex Music' };
-    if (linkImportTitle) linkImportTitle.textContent = titles[platform] || 'Import from link';
+    if (linkImportTitle) linkImportTitle.textContent = T(titles[platform] || 'Import from link');
     // logging in to Google works for YouTube and YouTube Music, and only in the desktop app
     if (linkModesContainer) linkModesContainer.classList.toggle('hidden', !(googleApi() && (platform === 'youtube' || platform === 'ytmusic')));
     if (linkImportUrl) {
@@ -14454,8 +14463,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         linkImportUrl.placeholder = T('Paste a YouTube, YouTube Music, SoundCloud or Yandex Music link');
       }
     }
-    fillImportTarget('link', 'New playlist');
-    fillImportTarget('google', 'Separate playlists');
+    fillImportTarget('link', T('New playlist'));
+    fillImportTarget('google', T('Separate playlists'));
     if (linkImportProgressWrap) linkImportProgressWrap.classList.add('hidden');
     if (linkImportWavyContainer) linkImportWavyContainer.innerHTML = '';
     if (btnConfirmLinkImport) btnConfirmLinkImport.dataset.action = 'import';
