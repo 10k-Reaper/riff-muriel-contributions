@@ -266,6 +266,10 @@
           <button class="btn-outline-pill" id="btn-select-favorites" title="Select tracks" aria-label="Select tracks">
             <span>Select</span>
           </button>
+          <button class="btn-outline-pill" id="btn-download-favorites" title="Download all favorites" aria-label="Download all favorites">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+            <span>Download all</span>
+          </button>
           <select class="pill-select" id="favorites-sort" title="Sort favorites" aria-label="Sort favorites">
             <option value="manual">Manual order</option>
             <option value="added-desc">Date added (newest)</option>
@@ -2780,6 +2784,7 @@
     <button type="button" class="btn-outline-pill" id="multi-select-all">Select all</button>
     <button type="button" class="btn-outline-pill" id="multi-select-fav">Favorite</button>
     <button type="button" class="btn-outline-pill" id="multi-select-add">Add to playlist</button>
+    <button type="button" class="btn-outline-pill" id="multi-select-download">Download</button>
     <button type="button" class="btn-outline-pill" id="multi-select-remove">Remove</button>
     <button type="button" class="btn-pill-primary" id="multi-select-done">Done</button>
   </div>

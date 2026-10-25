@@ -6543,7 +6543,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const count = document.getElementById('multi-select-count');
     if (count) count.textContent = `${multiSel.tracks.size} selected`;
     const hasSel = multiSel.tracks.size > 0;
-    ['multi-select-fav', 'multi-select-add', 'multi-select-remove'].forEach(id => {
+    ['multi-select-fav', 'multi-select-add', 'multi-select-download', 'multi-select-remove'].forEach(id => {
       const b = document.getElementById(id);
       if (b) b.disabled = !hasSel;
     });
@@ -13648,18 +13648,19 @@ document.addEventListener('DOMContentLoaded', async () => {
     openModal(el.downloadModal);
   }
 
-  function openDownloadAllModal(playlist) {
+  // a playlist, all favorites or the selected songs: { name, tracks }
+  function openDownloadAllModal(playlist, title = 'Download playlist') {
     if (!el.downloadModal) return;
     const tracks = (playlist && Array.isArray(playlist.tracks) ? playlist.tracks : []).filter(t => t.platform !== 'local');
     if (!tracks.length) {
-      showToast('No remote tracks to download in this playlist', 'info');
+      showToast('No songs to download here (songs from your own files are already on this device)', 'info');
       return;
     }
     trackToDownload = null;
     downloadBatch = { name: playlist.name || 'Playlist', tracks };
     el.downloadModal.classList.add('batch-mode');
     const modalTitle = document.getElementById('download-modal-title');
-    if (modalTitle) modalTitle.textContent = 'Download playlist';
+    if (modalTitle) modalTitle.textContent = title;
     if (el.downloadPreviewTitle) el.downloadPreviewTitle.textContent = playlist.name || 'Playlist';
     if (el.downloadPreviewArtist) el.downloadPreviewArtist.textContent = `${tracks.length} track${tracks.length === 1 ? '' : 's'}`;
     if (el.downloadPreviewThumb) el.downloadPreviewThumb.style.display = 'none';
@@ -14040,6 +14041,22 @@ document.addEventListener('DOMContentLoaded', async () => {
     btnDownloadPlaylist.addEventListener('click', () => {
       const pl = (state.playlists || []).find(p => p.id === state.currentPlaylistId);
       openDownloadAllModal(pl);
+    });
+  }
+  // downloaded songs play straight from the device: no waiting for them to load
+  const btnDownloadFavorites = document.getElementById('btn-download-favorites');
+  if (btnDownloadFavorites) {
+    btnDownloadFavorites.addEventListener('click', () => {
+      openDownloadAllModal({ name: 'Favorites', tracks: sortTracksFor('favorites', state.favorites || []) }, 'Download favorites');
+    });
+  }
+  const btnMultiDownload = document.getElementById('multi-select-download');
+  if (btnMultiDownload) {
+    btnMultiDownload.addEventListener('click', () => {
+      const tracks = [...multiSel.tracks.values()];
+      if (!tracks.length) return;
+      openDownloadAllModal({ name: multiSel.context === 'favorites' ? 'Favorites' : ((state.playlists || []).find(p => p.id === state.currentPlaylistId) || {}).name || 'Songs', tracks },
+        `Download ${tracks.length} song${tracks.length === 1 ? '' : 's'}`);
     });
   }
 
