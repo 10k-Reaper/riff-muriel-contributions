@@ -56,14 +56,17 @@ async function searchJson(target, limit) {
 //  'fmp4' (SoundCloud): init segment + moof/mdat fragments appended → fragmented .m4a
 function joinSegments(parts, container) {
   if (container === 'aac' || !container) return segmentsToAac(parts);
-  const pieces = container === 'mp3' ? parts.map(stripId3) : parts;
+  return concat(container === 'mp3' ? parts.map(stripId3) : parts);
+}
+
+function concat(pieces) {
   const out = new Uint8Array(pieces.reduce((n, x) => n + x.length, 0));
   let o = 0;
   for (const x of pieces) { out.set(x, o); o += x.length; }
   return out;
 }
 
-// Fetches every segment of an HLS media playlist (4 at a time) and joins them into one file.
+// Fetches every segment of an HLS media playlist and joins them into one file.
 async function downloadHls(playlistUrl, headers, signal, container) {
   const m3u = await (await globalThis.__murielFetch(playlistUrl, { headers, signal })).text();
   const lines = m3u.split('\n').map((l) => l.trim());
@@ -74,6 +77,11 @@ async function downloadHls(playlistUrl, headers, signal, container) {
   const map = lines.map((l) => l.startsWith('#EXT-X-MAP') && (l.match(/URI="([^"]+)"/) || [])[1]).find(Boolean);
   if (map) urls.unshift(new URL(map, playlistUrl).href);
   if (!urls.length) throw new Error('empty HLS playlist');
+  return joinSegments(await fetchAll(urls, headers, signal), container);
+}
+
+// Fetches every URL (4 at a time) and returns their bodies in order.
+async function fetchAll(urls, headers, signal) {
   const parts = new Array(urls.length);
   let next = 0;
   // once one segment has failed for good (or the download was cancelled) the other workers stop too,
@@ -99,17 +107,42 @@ async function downloadHls(playlistUrl, headers, signal, container) {
     }
   };
   await Promise.all(Array.from({ length: Math.min(4, urls.length) }, worker));
-  return joinSegments(parts, container);
+  return parts;
 }
+
+// A googlevideo file in 1 MiB ranges (like yt-dlp: long single requests get throttled or cut off),
+// checked to have arrived whole.
+async function downloadRanges(url, headers, signal, size) {
+  const step = 1 << 20;
+  const urls = [];
+  for (let a = 0; a < size; a += step) urls.push(`${url}&range=${a}-${Math.min(size, a + step) - 1}`);
+  const bytes = concat(await fetchAll(urls, headers, signal));
+  if (bytes.length !== size) throw new Error(`incomplete download: ${bytes.length} of ${size} bytes`);
+  return bytes;
+}
+
+// Android plays Opus (WebM) natively; set by bridge.js. iOS keeps the AAC stream.
+const playsOpus = () => !!globalThis.__murielPlaysOpus;
 
 async function download(args, target, signal) {
   const audio = await ex.resolveAudio(target);
   if (signal && signal.aborted) throw new Error('download cancelled');
-  let out = opt(args, '-o');
+  const template = opt(args, '-o');
   // yt-dlp templates: the user-facing download keeps the real container (no ffmpeg on iOS to convert)
-  out = out.includes('%(ext)s') ? out.replace('%(ext)s', audio.ext) : out;
+  const named = (ext) => (template.includes('%(ext)s') ? template.replace('%(ext)s', ext) : template);
+  let out = named(audio.ext);
   let size;
-  if (audio.kind === 'hls') {
+  // full-quality Opus when the extractor found it; any failure falls back to the stream below
+  const opus = audio.opus && playsOpus() ? await downloadRanges(audio.opus.url, audio.headers, signal, audio.opus.size).catch((e) => {
+    if (signal && signal.aborted) throw e;
+    console.warn('[muriel] Opus download failed, using AAC', e && e.message);
+    return null;
+  }) : null;
+  if (opus) {
+    out = named('webm');
+    await store.writeBytes(out, opus);
+    size = opus.length;
+  } else if (audio.kind === 'hls') {
     const bytes = await downloadHls(audio.url, audio.headers, signal, audio.container);
     await store.writeBytes(out, bytes);
     size = bytes.length;

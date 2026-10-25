@@ -56,7 +56,7 @@ async function ytMusicSearch(query, limit) {
 }
 
 // ---- YouTube audio ----
-// Primary: the visionOS client's audio-only HLS (itag 234, ~128 kbps AAC). Its segments download
+// Primary: the visionOS client's audio-only HLS (itag 234, ~128 kbps AAC; Opus on Android, see below). Its segments download
 // without a proof-of-origin token, unlike direct googlevideo files, which now 403 after the first MB
 // for most clients. Same approach yt-dlp uses. Needs a visitor id or YouTube asks to "sign in".
 const VOS_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 15_7_3) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15';
@@ -95,7 +95,12 @@ async function youtubeHlsAudio(id) {
     const playlist = pick(234) || pick(233);
     if (!playlist) throw new Error('no audio rendition');
     const d = j.videoDetails || {};
-    return { kind: 'hls', url: playlist, headers: { 'User-Agent': VOS_UA }, ext: 'aac', artist: (d.author || '').replace(/\s*-\s*Topic$/i, ''), title: d.title, duration: Number(d.lengthSeconds) || 0 };
+    // The same answer lists the full-quality Opus file (itag 251, ~130-160 kbps) as a plain link. For this
+    // client it downloads without a proof-of-origin token (yt-dlp has no GVS token policy for visionos).
+    // Phones that play Opus try it first and fall back to the HLS AAC if it fails (shims/child_process.js).
+    const f251 = ((j.streamingData && j.streamingData.adaptiveFormats) || []).find((f) => f.itag === 251 && f.url && Number(f.contentLength) > 0);
+    const opus = f251 ? { url: f251.url, size: Number(f251.contentLength) } : null;
+    return { kind: 'hls', url: playlist, headers: { 'User-Agent': VOS_UA }, ext: 'aac', opus, artist: (d.author || '').replace(/\s*-\s*Topic$/i, ''), title: d.title, duration: Number(d.lengthSeconds) || 0 };
   }
   throw new Error('YouTube refused the request');
 }

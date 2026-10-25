@@ -2761,7 +2761,7 @@ async function handleDownload(req, res, trackUrl, title, artist, format = 'mp3',
     '--audio-quality', safeQuality,
     '--embed-metadata',
     '-o', tempTemplate,
-    '--extractor-args', 'youtube:player_client=android',
+    '--extractor-args', 'youtube:player_client=default,android',
   ];
   if (canCarryCover) {
     args.push('--embed-thumbnail', '--convert-thumbnails', 'jpg');

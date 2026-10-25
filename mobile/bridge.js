@@ -175,6 +175,8 @@ new MutationObserver((muts) => {
 // Android hardware back: close whatever is on top instead of quitting the app.
 // On Home it backgrounds the app (music keeps playing) rather than closing it.
 if (Capacitor.getPlatform() === 'android') {
+  // YouTube songs download as Opus (WebM) instead of AAC (shims/child_process.js)
+  globalThis.__murielPlaysOpus = true;
   const { App } = require('@capacitor/app');
   const visible = (el) => el && !el.classList.contains('hidden') && getComputedStyle(el).display !== 'none';
   App.addListener('backButton', () => {
