@@ -59,9 +59,10 @@ jobs:
           # downloads so far, kept across builds (GitHub resets the count when the file is replaced; the
           # website adds this to the new file's count). 6 = downloads counted before this existed
           before="$(bash .github/carry-downloads.sh windows-latest Muriel.exe 6)"
+          ver="$(node -p "require('./package.json').version")"
           gh release delete windows-latest --cleanup-tag --yes 2>/dev/null || true
           gh release create windows-latest Muriel.exe \
             --prerelease \
             --target "$GITHUB_SHA" \
             --title "Muriel for Windows (latest build)" \
-            --notes "Portable build of ${GITHUB_SHA::7} (run ${{ github.run_number }}). No install needed: download Muriel.exe and run it. Windows SmartScreen may warn because the exe is unsigned: More info -> Run anyway.<!-- muriel-downloads-before: $before -->"
+            --notes "Muriel $ver. Portable build of ${GITHUB_SHA::7} (run ${{ github.run_number }}). No install needed: download Muriel.exe and run it. Windows SmartScreen may warn because the exe is unsigned: More info -> Run anyway.<!-- muriel-downloads-before: $before --><!-- muriel-version: $ver -->"

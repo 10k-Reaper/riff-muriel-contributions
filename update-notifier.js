@@ -39,12 +39,20 @@
     if (!(published > built + 60000)) return null;
     const asset = (rel.assets || []).find((a) => a.name === ASSETS[channel]);
     const run = Number(((rel.body || '').match(/run (\d+)/) || [])[1]) || 0;
-    return { sha: rel.target_commitish, run, url: (asset && asset.browser_download_url) || rel.html_url, page: rel.html_url };
+    const version = ((rel.body || '').match(/muriel-version: ([0-9][\w.-]*)/) || [])[1] || '';
+    return { sha: rel.target_commitish, run, version, url: (asset && asset.browser_download_url) || rel.html_url, page: rel.html_url };
   }
 
   function open(url) {
     if (window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform()) location.href = url; // the native shell hands outside links to the browser
     else window.open(url, '_blank');
+  }
+
+  // "Muriel 1.2.4" when the new build is a new version, else its build number
+  function label(update) {
+    if (update.version && update.version !== build.version) return `Muriel ${update.version}`;
+    if (update.run && build.run && update.run > build.run) return `Build ${update.run}`;
+    return 'A newer Muriel build';
   }
 
   let banner = null;
@@ -66,7 +74,7 @@
       <div class="update-banner-text"><b>Update available</b><span></span></div>
       <button type="button" class="update-banner-later">Later</button>
       <button type="button" class="update-banner-go">Download</button>`;
-    banner.querySelector('span').textContent = update.run > (build.run || 0) && build.run ? `Build ${update.run} is ready` : 'A newer Muriel build is ready';
+    banner.querySelector('span').textContent = label(update) + ' is ready';
     banner.querySelector('.update-banner-go').addEventListener('click', () => { open(update.url); hideBanner(); });
     banner.querySelector('.update-banner-later').addEventListener('click', () => { store.set('muriel_update_snooze', { sha: update.sha, until: Date.now() + SNOOZE }); hideBanner(); });
     document.body.appendChild(banner);
@@ -89,7 +97,7 @@
     const last = store.get('muriel_update_last') || 0;
     if (!manual && Date.now() - last < CHECK_EVERY) {
       const cached = store.get('muriel_update_found');
-      if (cached && cached.from === build.sha) { current = cached.update; showBanner(current); setStatus('A new build is available', current); }
+      if (cached && cached.from === build.sha) { current = cached.update; showBanner(current); setStatus(`${label(current)} is available`, current); }
       return;
     }
     if (manual) setStatus('Checking…');
@@ -98,12 +106,12 @@
     store.set('muriel_update_last', Date.now());
     current = describe(rel);
     store.set('muriel_update_found', current ? { from: build.sha, update: current } : null);
-    if (current) { setStatus(current.run ? `Build ${current.run} is available` : 'A new build is available', current); showBanner(current); }
+    if (current) { setStatus(`${label(current)} is available`, current); showBanner(current); }
     else setStatus(`You're up to date${build.run ? ` (build ${build.run})` : ''}`);
   }
 
   if (checkBtn) checkBtn.addEventListener('click', () => (current ? open(current.url) : check(true)));
-  if (statusEl) setStatus(enabled ? `Build ${build.run || '?'} · ${String(build.sha).slice(0, 7)}` : 'Development build');
+  if (statusEl) setStatus(enabled ? `${build.version ? `Muriel ${build.version} · ` : ''}Build ${build.run || '?'} · ${String(build.sha).slice(0, 7)}` : 'Development build');
 
   // first check a little after start-up, then whenever the app comes back to the foreground
   setTimeout(() => check(false), 8000);

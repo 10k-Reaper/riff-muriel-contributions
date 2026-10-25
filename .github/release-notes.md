@@ -1,4 +1,4 @@
-## Muriel 1.2.3
+## Muriel 1.2.4
 
 **Downloads**
 - **iPhone:** [ios-latest](https://github.com/cloverscripts/riff-muriel/releases/tag/ios-latest) (`Muriel.ipa`, install with SideStore, AltStore or Sideloadly). Needs iOS 16.2 or newer
@@ -9,8 +9,9 @@
 
 Or get it from the website: https://cloverscripts.github.io/riff-muriel/
 
-**Fixed**
-- **Sync from the home screen:** tapping "Show a code" in the "Sync your devices?" card made the card disappear instead of showing the code and QR code. The code now shows right there
-- **Playlists from the home screen:** opening a playlist from "Your playlists" landed halfway down its song list. It now opens at the top
+**New**
+- **Download all favorites:** Favorites has a "Download all" button, like playlists. Downloaded songs play straight from your device, no waiting for them to load
+- **Download what you select:** tap Select in favorites or a playlist, pick songs, and tap Download
+- **Updates on your phone:** the "Update available" banner now names the new version (like "Muriel 1.2.4 is ready") on iPhone and Android too, and sits below the notch / Dynamic Island
 
-Everything from 1.2.2 is included too: Play and Shuffle buttons on every playlist, repeat in three steps (playlist, then the song with a **1**), the iPhone Dynamic Island player, shuffle and repeat in the Android player, and free sync between your devices.
+Everything from 1.2.3 is included too: sync from the home screen shows its code again, playlists open at the top, Play and Shuffle buttons, repeat in three steps, the iPhone Dynamic Island player and free sync between your devices.
