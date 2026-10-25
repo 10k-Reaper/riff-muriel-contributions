@@ -1,6 +1,8 @@
 // window.electronAPI for the iOS build. Desktop-only features (window controls, tray, mini player,
 // data folders, hardware acceleration) become no-ops; file pickers use the iOS document picker.
 const crypto = require('./shims/crypto');
+const store = require('./shims/store');
+const { Capacitor } = require('@capacitor/core');
 const { Share } = require('@capacitor/share');
 
 function pickFiles(accept, multiple) {
@@ -98,7 +100,12 @@ module.exports = function electronAPI({ ready, port, fs, fileUrlFor }) {
     getDataDir: async () => ({ dir: 'On this iPhone (Files → Muriel)', defaultDir: '/data', isCustom: false }),
     pickDataDir: async () => null,
     setDataDir: async () => ({ success: false, error: 'The music folder is fixed on iPhone' }),
-    getDownloadDir: async () => ({ dir: 'Files → Muriel → Downloads', isCustom: false }),
+    // fixed on phones (Settings hides Change): Files → Muriel → Downloads on iOS, Music/Muriel on Android (shims/store.js)
+    async getDownloadDir() {
+      if (Capacitor.getPlatform() !== 'android') return { dir: 'Files → Muriel → Downloads', isCustom: false };
+      await ready;
+      return { dir: store.downloadsFolder() || "Inside the app (other apps can't see it)", isCustom: false };
+    },
     pickDownloadDir: async () => null,
     setDownloadDir: async () => ({ success: false }),
     resetDownloadDir: async () => ({ success: true }),

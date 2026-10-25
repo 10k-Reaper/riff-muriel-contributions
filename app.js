@@ -13949,6 +13949,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
         el.btnConfirmDownload.disabled = false;
         if (downloadAbort === batchAbort) downloadAbort = null;
+        // on phones the server answers with the app's internal path (/data/Downloads); name the real folder
+        if (isPhoneApp && lastDir) {
+          try { lastDir = (await window.electronAPI.getDownloadDir()).dir || lastDir; } catch (e) {}
+        }
         if (batchAbort.signal.aborted) {
           // cancelCurrentDownload already closed the dialog; another one may be open by now
           if (done) showToast(`Stopped. ${done} of ${tracks.length} songs were downloaded${lastDir ? ' to ' + lastDir : ''}`, 'info');

@@ -434,6 +434,9 @@ html.is-mobile #visualizer-container, html.is-mobile #mini-visualizer { display:
 html.is-mobile .right-panel-header { flex-shrink: 0 !important; min-height: max-content !important; margin-bottom: 0 !important; }
 /* the animated M3 cover is desktop-only (see m3cEnabled in app.js) */
 html.is-mobile .setting-item:has(#toggle-m3-cover) { display: none !important; }
+/* the download folder is fixed on phones (Files → Muriel → Downloads on iPhone, Music/Muriel on Android):
+   Change and Reset did nothing there */
+html.is-mobile #btn-change-download-folder, html.is-mobile #btn-reset-download-folder { display: none !important; }
 /* mini player cover: Muriel's 48px square inside the bar, not Riff 42.3's 72px one that pokes out above it */
 html.is-mobile #playbar-artwork-wrapper, html.is-mobile #m3c-wrap { width: 48px !important; height: 48px !important; margin-top: 0 !important; }
 html.is-mobile #playbar-artwork-wrapper { overflow: hidden !important; border-radius: var(--md-shape-corner-s); }

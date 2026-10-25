@@ -8,6 +8,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
+import android.media.MediaScannerConnection;
 import android.net.Uri;
 import android.net.wifi.WifiManager;
 import android.os.Build;
@@ -216,6 +217,20 @@ public class MediaControlsPlugin extends Plugin {
         if (call == null) return;
         getBridge().releaseCall(call);
         backgroundStatus(call);
+    }
+
+    // A song saved to Music/Muriel (mobile/shims/store.js) goes into the phone's media index right away, so music
+    // apps list it: Android 10 and older only find new files at their next full scan. Takes a path or file:// URI.
+    @PluginMethod
+    public void scanFile(PluginCall call) {
+        String path = call.getString("path", "");
+        if (path != null && path.startsWith("file:")) path = Uri.parse(path).getPath();
+        if (path == null || path.isEmpty()) {
+            call.reject("no path");
+            return;
+        }
+        MediaScannerConnection.scanFile(getContext(), new String[] { path }, null, null);
+        call.resolve();
     }
 
     private boolean unrestricted() {
