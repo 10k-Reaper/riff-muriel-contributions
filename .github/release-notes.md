@@ -1,4 +1,4 @@
-## Muriel 1.2.2
+## Muriel 1.2.3
 
 **Downloads**
 - **iPhone:** [ios-latest](https://github.com/cloverscripts/riff-muriel/releases/tag/ios-latest) (`Muriel.ipa`, install with SideStore, AltStore or Sideloadly). Needs iOS 16.2 or newer
@@ -9,11 +9,8 @@
 
 Or get it from the website: https://cloverscripts.github.io/riff-muriel/
 
-**New**
-- **Play and Shuffle buttons on every playlist**, right under its name. Shuffle plays the whole playlist in random order
-- **Repeat has three steps now:** tap once to repeat the playlist, tap again to repeat the song (the icon gets a **1**), a third tap turns it off. Works from the Android player buttons too
-
 **Fixed**
-- "It only plays the same song over and over": the repeat button used to repeat the song only, which was easy to switch on by accident. Repeat off now plays the playlist once and stops at the end; press play to start it over
+- **Sync from the home screen:** tapping "Show a code" in the "Sync your devices?" card made the card disappear instead of showing the code and QR code. The code now shows right there
+- **Playlists from the home screen:** opening a playlist from "Your playlists" landed halfway down its song list. It now opens at the top
 
-Everything from 1.2.1 is included too: the iPhone Dynamic Island player, shuffle and repeat in the Android player, sorting playlists by album or Z to A, free sync between your devices and "Your playlists" on the home screen.
+Everything from 1.2.2 is included too: Play and Shuffle buttons on every playlist, repeat in three steps (playlist, then the song with a **1**), the iPhone Dynamic Island player, shuffle and repeat in the Android player, and free sync between your devices.
