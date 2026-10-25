@@ -431,7 +431,9 @@
     if (S.engine === 'yt') {
       if (YTP.ready) {
         if (YTP.state === 0) YTP.call('seekTo', 0, true);
-        YTP.call('playVideo');
+        // a cued video that never started gets a fresh load, so an error YouTube kept quiet about shows up now
+        if (YTP.state === 5 || YTP.state === -1) { YTP.vid = S.tracks[S.cur].id; YTP.call('loadVideoById', YTP.vid); }
+        else YTP.call('playVideo');
       } else load(S.cur, true);
     } else if (S.engine === 'sc') {
       if (SCP.booted) SCP.call('play'); else load(S.cur, true);
