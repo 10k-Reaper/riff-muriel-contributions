@@ -1,4 +1,4 @@
-## Muriel 1.3.0
+## Muriel 1.3.1
 
 **Downloads**
 - **iPhone:** [ios-latest](https://github.com/cloverscripts/riff-muriel/releases/tag/ios-latest) (`Muriel.ipa`, install with SideStore, AltStore or Sideloadly). Needs iOS 16.2 or newer
@@ -9,11 +9,12 @@
 
 Or get it from the website: https://cloverscripts.github.io/riff-muriel/
 
-Muriel 1.3.0 brings everything new in Riff 43, plus fixes.
+**Changed**
+- **Last.fm:** connecting is now just a login, so you no longer need your own API key
 
-**New**
+**New in 1.3** (everything new in Riff 43)
 - **Muriel in your language:** Settings → Interface → Language. Song titles, artists and playlist names are never sent for translation.
-- **Last.fm scrobbling:** each profile has its own login. For now you need your own Last.fm API key (free at last.fm/api/account/create).
+- **Last.fm scrobbling:** each profile has its own login
 - **Import and back up:**
   - **YouTube library (desktop):** sign in with Google and import your liked songs and playlists from YouTube and YouTube Music.
   - **Yandex Music:** import playlists.
