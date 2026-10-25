@@ -458,6 +458,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     isPlaying: false,
     isMuted: localStorage.getItem('muriel_muted') === '1',
     volume: savedVolume,
+    // repeat: 'off', 'all' (the queue starts over) or 'one' (the song plays again); isRepeat means 'one'
+    repeatMode: ({ '1': 'one', all: 'all' })[localStorage.getItem('muriel_repeat')] || 'off',
     isRepeat: localStorage.getItem('muriel_repeat') === '1',
     isShuffle: localStorage.getItem('muriel_shuffle') === '1',
     isAutoRemix: false,
@@ -5384,6 +5386,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   window.pauseSmooth = pauseSmooth;
   window.playSmooth = playSmooth;
 
+  let queueEndedToken = -1; // the song the queue ended on with repeat off, see the 'ended' handler
   function togglePlayPause() {
     if (!state.currentTrack) {
       if (state.queue.length > 0) playTrack(state.queue[0]);
@@ -5396,6 +5399,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (state.isPlaying) {
       pauseSmooth();
       saveQueueState();
+    } else if (queueEndedToken === state.loadToken && el.nativeAudio && el.nativeAudio.ended) {
+      queueEndedToken = -1;
+      playNext();
     } else if (el.nativeAudio && !el.nativeAudio.src && state.currentTrack) {
       const resumeAt = state.queueRestorePosition || 0;
       state.queueRestorePosition = 0;
@@ -5454,6 +5460,17 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (!pool.length) pool = q.filter((t, i) => i !== state.queueIndex);
     shuffleBag.planned = pool[Math.floor(Math.random() * pool.length)] || null;
     return shuffleBag.planned;
+  }
+
+  // With repeat off, the queue plays once: true while the last song of it plays (with shuffle on, the last
+  // one not heard yet). Repeat 'all' starts over instead, and My Wave keeps adding songs.
+  function queueFinished() {
+    const q = state.queue;
+    if (state.repeatMode !== 'off' || state.myWaveActive || !q.length) return false;
+    if (!state.isShuffle) return state.queueIndex >= q.length - 1;
+    if (shuffleBag.next.some(t => q.indexOf(t) >= 0 && t !== q[state.queueIndex])) return false;
+    const played = shuffleBag.queue === q ? shuffleBag.played : new Set();
+    return q.every((t, i) => i === state.queueIndex || played.has(t));
   }
 
   function recordPlayedIndex(idx) {
@@ -5673,6 +5690,10 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (state.isRepeat) {
         el.nativeAudio.currentTime = 0;
         playSmooth();
+      } else if (queueFinished()) {
+        // repeat is off and that was the last song: stop here; play starts the queue over
+        queueEndedToken = state.loadToken;
+        saveQueueState();
       } else {
         state._isNaturalEnding = true;
         try {
@@ -5726,7 +5747,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       const X = parseInt(localStorage.getItem('muriel_crossfade') || '0', 10);
       // "end of track" sleep timer: let the song end on its own so the ended handler can stop playback
       const sleepAtEnd = !!(state.sleepTimer && state.sleepTimer.mode === 'end');
-      if (X > 0 && !crossfadeTriggered && !state.isRepeat && !sleepAtEnd && dur > X && cur >= dur - X && (!audioEngine || !audioEngine.isLiveStream(el.nativeAudio))) {
+      if (X > 0 && !crossfadeTriggered && !state.isRepeat && !sleepAtEnd && dur > X && cur >= dur - X && !queueFinished() && (!audioEngine || !audioEngine.isLiveStream(el.nativeAudio))) {
         crossfadeTriggered = true;
         crossfadeFadeInPending = true;
         if (audioEngine) audioEngine.fadeOut(X / 2);
@@ -7961,6 +7982,19 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (state.currentPlaylistId) openPlaylistDetail(state.currentPlaylistId);
     });
   }
+  // Play goes through the playlist in the order shown; Shuffle turns shuffle on and starts on a random song
+  function playOpenPlaylist(shuffle) {
+    const pl = state.playlists.find(p => p.id === state.currentPlaylistId);
+    if (!pl || !pl.tracks || !pl.tracks.length) return;
+    const list = sortTracksFor('playlist', pl.tracks);
+    setShuffle(shuffle);
+    const i = shuffle ? Math.floor(Math.random() * list.length) : 0;
+    playTrack(list[i], list, i, 'playlist');
+  }
+  if (el.btnPlayPlaylist) el.btnPlayPlaylist.addEventListener('click', () => playOpenPlaylist(false));
+  const btnShufflePlaylist = document.getElementById('btn-shuffle-playlist');
+  if (btnShufflePlaylist) btnShufflePlaylist.addEventListener('click', () => playOpenPlaylist(true));
+
   (function setupFavAllPlaylist() {
     const btn = document.getElementById('btn-fav-all-playlist');
     if (!btn) return;
@@ -8921,24 +8955,34 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (el.btnNext) el.btnNext.addEventListener('click', playNext);
   if (el.btnPrev) el.btnPrev.addEventListener('click', playPrev);
 
+  function setShuffle(on) {
+    state.isShuffle = !!on;
+    localStorage.setItem('muriel_shuffle', state.isShuffle ? '1' : '0');
+    if (el.btnShuffle) el.btnShuffle.classList.toggle('active', state.isShuffle);
+    window.dispatchEvent(new Event('muriel:modes')); // the phone's lock-screen / Dynamic Island buttons follow
+  }
   if (el.btnShuffle) {
     el.btnShuffle.classList.toggle('active', state.isShuffle);
-    el.btnShuffle.addEventListener('click', () => {
-      state.isShuffle = !state.isShuffle;
-      localStorage.setItem('muriel_shuffle', state.isShuffle ? '1' : '0');
-      el.btnShuffle.classList.toggle('active', state.isShuffle);
-      window.dispatchEvent(new Event('muriel:modes')); // the phone's lock-screen / Dynamic Island buttons follow
-    });
+    el.btnShuffle.addEventListener('click', () => setShuffle(!state.isShuffle));
   }
 
+  // one tap repeats the playlist, the next one the song (the icon gets a 1), the third turns repeat off
+  const REPEAT_TITLES = { off: 'Repeat', all: 'Repeat: playlist', one: 'Repeat: this song' };
+  function setRepeatMode(mode) {
+    state.repeatMode = REPEAT_TITLES[mode] ? mode : 'off';
+    state.isRepeat = state.repeatMode === 'one';
+    localStorage.setItem('muriel_repeat', ({ off: '0', all: 'all', one: '1' })[state.repeatMode]);
+    if (el.btnRepeat) {
+      el.btnRepeat.classList.toggle('active', state.repeatMode !== 'off');
+      el.btnRepeat.classList.toggle('repeat-one', state.isRepeat);
+      el.btnRepeat.title = REPEAT_TITLES[state.repeatMode];
+      el.btnRepeat.setAttribute('aria-label', REPEAT_TITLES[state.repeatMode]);
+    }
+    window.dispatchEvent(new Event('muriel:modes'));
+  }
   if (el.btnRepeat) {
-    el.btnRepeat.classList.toggle('active', state.isRepeat);
-    el.btnRepeat.addEventListener('click', () => {
-      state.isRepeat = !state.isRepeat;
-      localStorage.setItem('muriel_repeat', state.isRepeat ? '1' : '0');
-      el.btnRepeat.classList.toggle('active', state.isRepeat);
-      window.dispatchEvent(new Event('muriel:modes'));
-    });
+    setRepeatMode(state.repeatMode);
+    el.btnRepeat.addEventListener('click', () => setRepeatMode(({ off: 'all', all: 'one', one: 'off' })[state.repeatMode]));
   }
 
   window.toggleShuffle = () => el.btnShuffle && el.btnShuffle.click();
@@ -16544,7 +16588,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     prev: () => playPrev(),
     seek: (sec) => { if (isFinite(sec)) el.nativeAudio.currentTime = Math.max(0, sec); },
     toggleShuffle: () => { if (el.btnShuffle) el.btnShuffle.click(); return state.isShuffle; },
-    toggleRepeat: () => { if (el.btnRepeat) el.btnRepeat.click(); return state.isRepeat; },
+    toggleRepeat: () => { if (el.btnRepeat) el.btnRepeat.click(); return state.repeatMode; },
     isFavorite: (t) => state.favorites.some((f) => isSameTrack(f, t)),
     toggleFavorite: (t) => { toggleFavoriteTrack(t); window.dispatchEvent(new Event('muriel:library')); return state.favorites.some((f) => isSameTrack(f, t)); },
     createPlaylist(name, tracks = []) {

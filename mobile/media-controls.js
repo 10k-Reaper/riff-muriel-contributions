@@ -31,7 +31,7 @@ module.exports = function mediaControls() {
       loading: !c.state.isPlaying && !!c.state.trackLoading,
       rate: a.playbackRate || 1,
       shuffle: !!c.state.isShuffle,
-      repeat: !!c.state.isRepeat,
+      repeat: c.state.repeatMode || (c.state.isRepeat ? 'one' : 'off'), // 'off', 'all' or 'one'
     }).catch(() => {});
   }
   // several events arrive together on a song change; send once

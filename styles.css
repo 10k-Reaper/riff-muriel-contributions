@@ -2362,6 +2362,10 @@ body.m3-cover-on .artwork-wrapper {
   color: var(--md-sys-color-primary);
   background: var(--md-sys-color-surface-container-highest);
 }
+/* the 1 inside the repeat icon: repeating this song */
+#btn-repeat:not(.repeat-one) .repeat-one-mark {
+  display: none;
+}
 
 .play-pause-wrapper {
   width: 70px;

@@ -75,7 +75,7 @@ public class MediaControlsPlugin extends Plugin {
     static final String CUSTOM_SHUFFLE = "io.github.cloverscripts.muriel.SHUFFLE";
     static final String CUSTOM_REPEAT = "io.github.cloverscripts.muriel.REPEAT";
     private boolean shuffle;
-    private boolean repeat;
+    private String repeat = "off"; // "off", "all" (the playlist) or "one" (the song)
     private PowerManager.WakeLock wakeLock;
     private WifiManager.WifiLock wifiLock;
     private final Handler handler = new Handler(Looper.getMainLooper());
@@ -104,6 +104,15 @@ public class MediaControlsPlugin extends Plugin {
                 else if (CUSTOM_REPEAT.equals(action)) send("repeat", -1);
             }
         });
+    }
+
+    // the repeat button: dim when off, lit for the playlist, lit with a 1 for the song
+    private int repeatIcon() {
+        return "one".equals(repeat) ? R.drawable.ic_repeat_one_on : "all".equals(repeat) ? R.drawable.ic_repeat_on : R.drawable.ic_repeat_off;
+    }
+
+    private String repeatLabel() {
+        return "one".equals(repeat) ? "Repeat this song" : "all".equals(repeat) ? "Repeat playlist" : "Repeat off";
     }
 
     void send(String action, double position) {
@@ -137,7 +146,8 @@ public class MediaControlsPlugin extends Plugin {
         boolean loading = !nowPlaying && Boolean.TRUE.equals(call.getBoolean("loading", false));
         float rate = call.getFloat("rate", 1f);
         shuffle = Boolean.TRUE.equals(call.getBoolean("shuffle", false));
-        repeat = Boolean.TRUE.equals(call.getBoolean("repeat", false));
+        repeat = call.getString("repeat", "off");
+        if (!"all".equals(repeat) && !"one".equals(repeat)) repeat = "off";
         String art = call.getString("artwork", "");
         if (art == null) art = "";
         if (!art.equals(artworkUrl)) {
@@ -164,8 +174,7 @@ public class MediaControlsPlugin extends Plugin {
                 // shuffle goes left of "previous", repeat right of "next"; lit when on
                 .addCustomAction(new PlaybackStateCompat.CustomAction.Builder(CUSTOM_SHUFFLE,
                         shuffle ? "Shuffle on" : "Shuffle off", shuffle ? R.drawable.ic_shuffle_on : R.drawable.ic_shuffle_off).build())
-                .addCustomAction(new PlaybackStateCompat.CustomAction.Builder(CUSTOM_REPEAT,
-                        repeat ? "Repeat on" : "Repeat off", repeat ? R.drawable.ic_repeat_one_on : R.drawable.ic_repeat_off).build())
+                .addCustomAction(new PlaybackStateCompat.CustomAction.Builder(CUSTOM_REPEAT, repeatLabel(), repeatIcon()).build())
                 .build());
         session.setActive(true);
         refreshNotification();
@@ -289,8 +298,7 @@ public class MediaControlsPlugin extends Plugin {
                 .addAction(playing ? android.R.drawable.ic_media_pause : android.R.drawable.ic_media_play, playing ? "Pause" : "Play",
                         PlaybackService.intent(ctx, PlaybackService.ACTION_TOGGLE, 2))
                 .addAction(android.R.drawable.ic_media_next, "Next", PlaybackService.intent(ctx, PlaybackService.ACTION_NEXT, 3))
-                .addAction(repeat ? R.drawable.ic_repeat_one_on : R.drawable.ic_repeat_off, repeat ? "Repeat on" : "Repeat off",
-                        PlaybackService.intent(ctx, PlaybackService.ACTION_REPEAT, 6))
+                .addAction(repeatIcon(), repeatLabel(), PlaybackService.intent(ctx, PlaybackService.ACTION_REPEAT, 6))
                 .setStyle(new androidx.media.app.NotificationCompat.MediaStyle()
                         .setMediaSession(session.getSessionToken())
                         .setShowActionsInCompactView(1, 2, 3));
