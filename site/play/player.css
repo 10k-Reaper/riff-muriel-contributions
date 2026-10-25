@@ -201,7 +201,7 @@ body.is-playing .np-kicker { color: var(--pink-soft); }
 .np-next-list .dur { font-size: 12.5px; }
 
 /* ---------- player bar ---------- */
-.bar { position: fixed; z-index: 40; left: 12px; right: 12px; bottom: calc(12px + env(safe-area-inset-bottom)); max-width: 1316px; margin: 0 auto; height: 76px; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 600px) minmax(0, 1fr); align-items: center; gap: 20px; padding: 0 18px 0 12px; border-radius: 20px; background: rgba(26, 26, 31, 0.86); border: 1px solid rgba(255, 255, 255, 0.09); box-shadow: 0 20px 50px -10px rgba(0, 0, 0, 0.7); -webkit-backdrop-filter: blur(28px) saturate(1.7); backdrop-filter: blur(28px) saturate(1.7); animation: barIn .5s .1s var(--ease) both; }
+.bar { position: fixed; z-index: 40; left: 12px; right: 12px; bottom: calc(12px + env(safe-area-inset-bottom)); max-width: 1316px; margin: 0 auto; height: 76px; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 600px) minmax(0, 1fr); align-items: center; gap: 20px; padding: 0 18px 0 12px; border-radius: 20px; background: rgba(28, 28, 33, 0.93); border: 1px solid rgba(255, 255, 255, 0.09); box-shadow: 0 20px 50px -10px rgba(0, 0, 0, 0.7); -webkit-backdrop-filter: blur(28px) saturate(1.7); backdrop-filter: blur(28px) saturate(1.7); animation: barIn .5s .1s var(--ease) both; }
 @keyframes barIn { from { opacity: 0; transform: translateY(16px); } }
 .bar-np { display: flex; align-items: center; gap: 12px; min-width: 0; }
 .bar-art { position: relative; flex: none; width: 52px; height: 52px; border-radius: 10px; overflow: hidden; background: #26262c; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4); }
@@ -286,13 +286,13 @@ body.is-buffering .spin { opacity: 1; }
   .brand-name { font-size: 16px; }
   .brand-sub { font-size: 13px; padding-left: 9px; }
   .view { padding-top: 10px; }
-  .hero { flex-direction: column; align-items: center; text-align: center; gap: 18px; padding: 4px 0 22px; }
-  .cover { width: min(62vw, 240px); border-radius: 14px; }
+  .hero { flex-direction: column; align-items: center; text-align: center; gap: 16px; padding: 2px 0 20px; }
+  .cover { width: min(54vw, 212px); border-radius: 14px; }
   .hero-text { width: 100%; }
   .eyebrow { font-size: 11px; }
   .pl-name { font-size: 26px; letter-spacing: -0.025em; margin: 4px 0 4px; -webkit-line-clamp: 2; }
   .pl-meta { font-size: 14px; }
-  .hero-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 18px; }
+  .hero-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 16px; }
   .hero-actions .btn { min-width: 0; height: 48px; border-radius: 14px; }
   .hero-actions .btn.primary, .hero-actions .btn.tonal { background-clip: padding-box; }
   #btn-add { grid-column: 1 / -1; height: 44px; }

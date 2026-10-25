@@ -29,7 +29,10 @@
     muted: store.get('muriel_web_muted') === '1',
     engine: '', playing: false, buffering: false, wantPlay: false,
     time: 0, dur: 0, seeking: false, gen: 0,
+    hold: { until: 0, to: 0 }, // right after a seek, players still report the old position for a moment
   };
+  // a position reported by a player, unless it's stale news from before our last seek
+  const fresh = (pos) => Date.now() > S.hold.until || Math.abs(pos - S.hold.to) < 1.5;
   let rows = [];
 
   // ---------- small helpers ----------
@@ -74,7 +77,8 @@
     i.alt = '';
     i.decoding = 'async';
     if (lazy) i.loading = 'lazy';
-    i.addEventListener('load', () => i.classList.add('ok'));
+    // a missing YouTube thumbnail comes back as a 120x90 gray placeholder
+    i.addEventListener('load', () => { if (i.naturalWidth && i.naturalWidth <= 120) i.remove(); else i.classList.add('ok'); });
     i.addEventListener('error', () => i.remove());
     i.src = src;
     return i;
@@ -288,7 +292,7 @@
         w.bind(E.FINISH, () => { this.playing = false; onScState('finish'); });
         w.bind(E.PLAY_PROGRESS, (d) => {
           this.pos = (Number(d && d.currentPosition) || 0) / 1000;
-          if (S.engine === 'sc' && !S.seeking) { S.time = this.pos; renderTime(); }
+          if (S.engine === 'sc' && !S.seeking && fresh(this.pos)) { S.time = this.pos; renderTime(); }
         });
         w.bind(E.ERROR, () => onScError());
         setTimeout(() => { if (!this.booted) reject(new Error('SoundCloud took too long')); }, 20000);
@@ -503,6 +507,7 @@
     if (S.engine === 'yt') YTP.call('seekTo', t, true);
     else if (S.engine === 'sc') SCP.call('seekTo', Math.round(t * 1000));
     S.time = t;
+    S.hold = { until: Date.now() + 1200, to: t };
     renderTime();
     positionState();
   }
@@ -676,7 +681,7 @@
     if (S.engine === 'yt' && YTP.ready && !S.seeking && String(YTP.call('getVideoUrl') || '').includes(YTP.vid)) {
       const t = Number(YTP.call('getCurrentTime'));
       const d = Number(YTP.call('getDuration'));
-      if (Number.isFinite(t)) S.time = t;
+      if (Number.isFinite(t) && fresh(t)) S.time = t;
       if (Number.isFinite(d) && d > 0) S.dur = d;
     }
     renderTime();
@@ -1046,6 +1051,19 @@
     renderUpNext();
   }
 
+  // on phones and tablets the player sits in the page: bring it fully into view when playback starts
+  function revealPlayer() {
+    if (!window.matchMedia('(max-width: 1023px)').matches) return;
+    const r = $('np-stage').getBoundingClientRect();
+    const bar = $('bar').getBoundingClientRect();
+    const bottom = (bar.height ? bar.top : window.innerHeight) - 12;
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    let dy = 0;
+    if (r.top < 12) dy = r.top - 12;
+    else if (r.bottom > bottom) dy = Math.min(r.bottom - bottom, r.top - 12);
+    if (dy) window.scrollBy({ top: dy, behavior: reduce ? 'auto' : 'smooth' });
+  }
+
   function rowClick(e) {
     const b = e.target.closest('button.song');
     if (!b || !e.currentTarget.contains(b)) return;
@@ -1069,7 +1087,7 @@
     $('btn-play-all').addEventListener('click', () => {
       setShuffle(false);
       const f = firstPlayable();
-      if (f >= 0) playFrom(S.order[f]);
+      if (f >= 0) { playFrom(S.order[f]); revealPlayer(); }
     });
     $('btn-shuffle-all').addEventListener('click', () => {
       const ok = S.tracks.map((_, i) => i).filter(playable);
@@ -1077,6 +1095,7 @@
       const pick = ok[Math.floor(Math.random() * ok.length)];
       setShuffle(true, pick);
       playFrom(pick);
+      revealPlayer();
     });
     $('btn-add').addEventListener('click', onAdd);
     document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') cancelAddTimer(); });
