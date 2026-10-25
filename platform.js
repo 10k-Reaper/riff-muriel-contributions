@@ -174,7 +174,10 @@ function ytDlpCommand(args) {
   }
   const ffmpeg = resolveBinary('ffmpeg');
   const extra = ffmpeg && !findInPath('ffmpeg') ? ['--ffmpeg-location', path.dirname(ffmpeg)] : [];
-  return { bin, args: extra.concat(args) };
+  // YouTube's player checks need a JavaScript runtime, and without one yt-dlp sees fewer (lower quality)
+  // formats. Electron runs as plain Node when ELECTRON_RUN_AS_NODE is set, so the app is the runtime.
+  const js = process.versions && process.versions.electron && process.execPath ? ['--js-runtimes', `node:${process.execPath}`] : [];
+  return { bin, args: extra.concat(js, args), env: js.length ? { ...process.env, ELECTRON_RUN_AS_NODE: '1' } : process.env };
 }
 
 function clearBinaryCache() {

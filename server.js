@@ -1304,7 +1304,7 @@ function directYoutubeSearch(query, filterSpam = false) {
 function executeYtDlp(args, timeoutMs = 25000, opts = {}) {
   return new Promise((resolve, reject) => {
     const cmd = ytDlpCommand(args);
-    const proc = spawn(cmd.bin, cmd.args, { windowsHide: true });
+    const proc = spawn(cmd.bin, cmd.args, { windowsHide: true, env: cmd.env });
     if (opts && typeof opts.onChild === 'function') {
       try { opts.onChild(proc); } catch (_) {}
     }
@@ -1389,7 +1389,7 @@ async function downloadTrackToDisk(trackUrl, trackId, platform, meta = {}) {
   ];
 
   if (platform === 'youtube') {
-    args.push('--extractor-args', 'youtube:player_client=android');
+    args.push('--extractor-args', 'youtube:player_client=default,android');
   }
 
   args.push('--', trackUrl);
@@ -1410,7 +1410,7 @@ async function downloadTrackToDisk(trackUrl, trackId, platform, meta = {}) {
   };
 
   const job = new Promise((resolve) => {
-    const proc = spawn(cmd.bin, cmd.args, { windowsHide: true });
+    const proc = spawn(cmd.bin, cmd.args, { windowsHide: true, env: cmd.env });
     downloadProcs.set(cleanId, proc);
     proc.on('close', async (code) => {
       if (downloadProcs.get(cleanId) === proc) downloadProcs.delete(cleanId);
@@ -1485,7 +1485,7 @@ async function prefetchTrack(trackUrl, trackId, platform, meta = null) {
       'bestaudio/best'
     ];
     if (platform === 'youtube') {
-      args.push('--extractor-args', 'youtube:player_client=android');
+      args.push('--extractor-args', 'youtube:player_client=default,android');
     }
     args.push('--', trackUrl);
 
@@ -2060,7 +2060,7 @@ async function handleStreamInfo(req, res, trackUrl, trackId, platform = 'youtube
     try {
       const args = ['--no-config', '-g', '--no-warnings', '--no-playlist', '--prefer-free-formats', '-f', 'bestaudio/best'];
       if (platform === 'youtube') {
-        args.push('--extractor-args', 'youtube:player_client=android');
+        args.push('--extractor-args', 'youtube:player_client=default,android');
       }
       args.push('--', trackUrl);
       const raw = await executeYtDlp(args, 18000);
@@ -2074,7 +2074,7 @@ async function handleStreamInfo(req, res, trackUrl, trackId, platform = 'youtube
   if (!streamUrl && platform === 'youtube' && (title || artist)) {
     for (const alt of await alternativeUploads(cleanId, title, artist, duration)) {
       try {
-        const raw = await executeYtDlp(['--no-config', '-g', '--no-warnings', '--no-playlist', '--prefer-free-formats', '-f', 'bestaudio/best', '--extractor-args', 'youtube:player_client=android', '--', alt], 18000);
+        const raw = await executeYtDlp(['--no-config', '-g', '--no-warnings', '--no-playlist', '--prefer-free-formats', '-f', 'bestaudio/best', '--extractor-args', 'youtube:player_client=default,android', '--', alt], 18000);
         streamUrl = raw.trim().split('\n').map(l => l.trim()).find(l => l.startsWith('http')) || null;
         if (streamUrl) break;
       } catch (e) {
