@@ -10,14 +10,21 @@ function limitBytes() {
   return (Number.isFinite(mb) && mb > 0 ? mb : 2048) * 1024 * 1024;
 }
 
-// when each song was last played, from History (it survives restarts; file times only record the download)
+// when each song was last played, from History (it survives restarts; file times only record the download).
+// The cache is shared by every profile on the phone, so every profile's History counts.
 function lastPlayedById() {
   const out = new Map();
-  try {
-    for (const t of JSON.parse(localStorage.getItem('devsize_history') || '[]')) {
-      if (t && t.id && t.playedAt) out.set(String(t.id).replace(/[^a-zA-Z0-9_-]/g, '_'), Number(t.playedAt) || 0);
-    }
-  } catch (e) {}
+  const P = window.MurielProfiles;
+  const histories = P ? P.list().map((p) => P.peek(p.id, 'devsize_history')) : [localStorage.getItem('devsize_history')];
+  for (const h of histories) {
+    try {
+      for (const t of JSON.parse(h || '[]')) {
+        if (!t || !t.id || !t.playedAt) continue;
+        const id = String(t.id).replace(/[^a-zA-Z0-9_-]/g, '_');
+        out.set(id, Math.max(out.get(id) || 0, Number(t.playedAt) || 0));
+      }
+    } catch (e) {}
+  }
   return out;
 }
 

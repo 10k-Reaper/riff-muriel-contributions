@@ -24,6 +24,14 @@ html.is-mobile .titlebar {
 }
 html.is-mobile .titlebar-controls,
 html.is-mobile #btn-mini-player { display: none !important; }
+/* the profile avatar (profiles.js) sits top right, big enough for a thumb */
+html.is-mobile .profile-switch { height: 36px; margin: -4px -6px -4px 8px; padding: 3px; }
+html.is-mobile .profile-switch.named { padding-right: 12px; }
+html.is-mobile .profile-switch .profile-avatar { width: 30px; height: 30px; font-size: 14px; }
+html.is-mobile .profile-switch .profile-avatar.emoji { font-size: 17px; }
+html.is-mobile .profile-menu { background: var(--md-sys-color-surface-container-highest-solid) !important; box-shadow: 0 8px 24px rgba(0, 0, 0, .35); }
+html.is-mobile .profile-menu-item { min-height: 48px; }
+html.is-mobile .profile-swatch { width: 26px; height: 26px; }
 html.is-mobile .top-nav {
   position: static !important;
   transform: none !important;

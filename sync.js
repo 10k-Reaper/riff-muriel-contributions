@@ -536,9 +536,14 @@
     if (!section) return;
     const cats = catsOn();
     const parts = [`<span class="settings-section-title">Sync <span class="sync-badge">New</span></span>`];
+    // every profile on this device has its own group (its keys, device id included, are its own: profiles-core.js)
+    const prof = window.MurielProfiles;
+    const profNote = prof && prof.list().length > 1
+      ? `<span>This links the profile “${esc(prof.current().name)}”; every profile on this device links its own devices. Open the same profile on the other device before you link.</span>` : '';
     parts.push(`<div class="m3-group"><div class="setting-item"><div class="sync-intro">
       <b>Your music on all your devices</b>
       <span>Link your phone and computer: playlists, favorites, history, Encore stats and what you're listening to stay the same everywhere. Free, no account. Your data stays on your devices; linked devices talk to each other directly while they're open.</span>
+      ${profNote}
     </div></div></div>`);
     if (group) {
       const rows = [`<div class="setting-item sync-device"><span class="sync-dev-icon">${deviceIcon(kind)}</span><div class="sync-dev-text"><b>${esc(device.name)}</b><span>This device</span></div></div>`];
@@ -677,5 +682,7 @@
     link: startLinking,
     join: joinWithCode,
     handleLink,
+    // before switching profiles (profiles.js): leaves the link service now instead of when the page goes
+    stop: () => { stopLinking(); stopPeer(); },
   };
 })();
