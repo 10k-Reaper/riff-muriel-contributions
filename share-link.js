@@ -1,7 +1,10 @@
 // Shared playlists: the whole playlist travels inside the link (after the #, so it never reaches a server).
 // https://cloverscripts.github.io/riff-muriel/play/#p=<payload>  — opens the web player
 // muriel://playlist?p=<payload>                                   — opens the app
-// payload: "z" + base64url(deflate-raw(JSON)) or, where the browser can't compress, "j" + base64url(JSON).
+// payload, when every song is on YouTube (the usual case): "y" + base64url(name length byte, name, then each
+// video id as its 8 bytes). Titles aren't in the link; fillInfo() looks them up from YouTube. That keeps a
+// 10-song link around 170 characters.
+// Otherwise: "z" + base64url(deflate-raw(JSON)) or, where the browser can't compress, "j" + base64url(JSON).
 // JSON: { v: 1, n: name, t: [[kind, ref, title, artist, seconds], ...] }; kind "y" = YouTube / YouTube Music
 // (ref = video id), "s" = SoundCloud (ref = track URL), "u" = anything else with a URL. Songs from files on
 // the device can't be shared and are left out. Used by the app (app.js), the website (site/play) and tests.
@@ -62,10 +65,30 @@
     return new Uint8Array(await res.arrayBuffer());
   }
 
+  // a YouTube id is 64 bits: 11 base64url characters whose last one carries 2 unused bits
+  const idBytes = (id) => { const b = b64url.dec(id); return b.length === 8 && b64url.enc(b) === id ? b : null; };
+
+  // name + ids only; null when a song isn't a plain YouTube video
+  function packIds(name, rows) {
+    if (!rows.length || rows.some((r) => r[0] !== 'y')) return null;
+    const ids = rows.map((r) => idBytes(r[1]));
+    if (ids.some((b) => !b)) return null;
+    let nameBytes = new TextEncoder().encode(name);
+    for (let n = name.length; nameBytes.length > 255; n--) nameBytes = new TextEncoder().encode(name.slice(0, n));
+    const out = new Uint8Array(1 + nameBytes.length + ids.length * 8);
+    out[0] = nameBytes.length;
+    out.set(nameBytes, 1);
+    ids.forEach((b, i) => out.set(b, 1 + nameBytes.length + i * 8));
+    return 'y' + b64url.enc(out);
+  }
+
   // { name, tracks } -> payload string (and how many songs made it in)
   async function encode(playlist) {
     const rows = (playlist && Array.isArray(playlist.tracks) ? playlist.tracks : []).map(packTrack).filter(Boolean).slice(0, MAX_TRACKS);
-    const json = JSON.stringify({ v: 1, n: clip((playlist && playlist.name) || 'Playlist', 100), t: rows });
+    const name = clip((playlist && playlist.name) || 'Playlist', 100);
+    const short = packIds(name, rows);
+    if (short) return { payload: short, count: rows.length };
+    const json = JSON.stringify({ v: 1, n: name, t: rows });
     const bytes = new TextEncoder().encode(json);
     const payload = canZip ? 'z' + b64url.enc(await pipe(bytes, CompressionStream, 'deflate-raw')) : 'j' + b64url.enc(bytes);
     return { payload, count: rows.length };
@@ -76,6 +99,18 @@
     const p = String(payload || '').trim();
     if (p.length < 2 || p.length > 400000) throw new Error('not a playlist link');
     let bytes = b64url.dec(p.slice(1));
+    if (p[0] === 'y') {
+      const len = bytes[0];
+      const rest = bytes.length - 1 - len;
+      if (!(bytes.length > 1 + len) || rest % 8) throw new Error('not a playlist link');
+      const name = clip(new TextDecoder().decode(bytes.subarray(1, 1 + len)), 100) || 'Shared playlist';
+      const tracks = [];
+      for (let o = 1 + len; o < bytes.length && tracks.length < MAX_TRACKS; o += 8) {
+        // title and artist come from fillInfo()
+        tracks.push({ ...unpackTrack(['y', b64url.enc(bytes.subarray(o, o + 8)), 'YouTube video', '', 0]), needsInfo: true });
+      }
+      return { name, tracks };
+    }
     if (p[0] === 'z') {
       if (!canZip) throw new Error('this browser is too old to open the link');
       bytes = await pipe(bytes, DecompressionStream, 'deflate-raw');
@@ -86,18 +121,56 @@
     return { name: clip(data.n, 100) || 'Shared playlist', tracks };
   }
 
-  // the payload in a pasted link: the web player link, muriel://playlist?p=… or the bare payload
+  // the payload in a pasted link: the web player link or muriel://playlist?p=…
+  // (a bare payload isn't taken: "juicewrld" typed into the search bar looked like one)
   function payloadFrom(text) {
-    const s = String(text || '').trim();
-    const m = /[#?&]p=([zj][A-Za-z0-9_-]+)/.exec(s);
-    if (m) return m[1];
-    return /^[zj][A-Za-z0-9_-]{8,}$/.test(s) ? s : '';
+    const m = /[#?&]p=([yzj][A-Za-z0-9_-]+)/.exec(String(text || '').trim());
+    return m ? m[1] : '';
+  }
+
+  // "Artist - Song (Official Video)" uploaded by "ArtistVEVO" -> { title: 'Song', artist: 'Artist' }
+  function tidy(title, author) {
+    const junk = /\s*[([](?:[^)\]]*\b(?:official|lyrics?|audio|video|visuali[sz]er|hd|4k|remaster(?:ed)?|m\/?v)\b[^)\]]*)[)\]]/gi;
+    let t = String(title || '').replace(junk, '').replace(/\s{2,}/g, ' ').trim();
+    let a = String(author || '').trim();
+    if (/\s-\sTopic$/i.test(a)) a = a.replace(/\s-\sTopic$/i, '');
+    else {
+      const m = /^(.+?)\s[-–—]\s(.+)$/.exec(t);
+      if (m) { a = m[1]; t = m[2]; }
+      else a = a.replace(/VEVO$/, '').replace(/\s*official$/i, '');
+    }
+    return { title: clip(t || title, 140), artist: clip(a, 80) };
+  }
+
+  // Looks up the title and artist of songs from a short link (YouTube's oEmbed, open to any page).
+  // Songs it can't find keep "YouTube video". opts.fetch for tests, opts.onUpdate(track) as each one lands.
+  async function fillInfo(tracks, opts = {}) {
+    const get = opts.fetch || ((u, o) => fetch(u, o));
+    const todo = (tracks || []).filter((t) => t && t.needsInfo);
+    let next = 0;
+    const worker = async () => {
+      while (next < todo.length) {
+        const t = todo[next++];
+        try {
+          const signal = typeof AbortSignal !== 'undefined' && AbortSignal.timeout ? AbortSignal.timeout(8000) : undefined;
+          const r = await get(`https://www.youtube.com/oembed?format=json&url=${encodeURIComponent(`https://www.youtube.com/watch?v=${t.id}`)}`, { signal });
+          if (r.ok) {
+            const d = await r.json();
+            if (d && d.title) Object.assign(t, tidy(d.title, d.author_name));
+          }
+        } catch (e) { /* stays "YouTube video" */ }
+        delete t.needsInfo;
+        if (opts.onUpdate) opts.onUpdate(t);
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(8, todo.length) }, worker));
+    return tracks;
   }
 
   const webLink = (payload) => `${WEB}#p=${payload}`;
   const appLink = (payload) => `muriel://playlist?p=${payload}`;
 
-  const api = { encode, decode, payloadFrom, webLink, appLink, packTrack, unpackTrack, WEB };
+  const api = { encode, decode, payloadFrom, fillInfo, tidy, webLink, appLink, packTrack, unpackTrack, WEB };
   if (typeof module === 'object' && module.exports) module.exports = api;
   else root.MurielShare = api;
 })(typeof window !== 'undefined' ? window : globalThis);

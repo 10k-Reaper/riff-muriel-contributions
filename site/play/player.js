@@ -1020,6 +1020,23 @@
       return;
     }
     openPlaylist(p, pl);
+    if (pl.tracks.some((t) => t.needsInfo)) fillTitles(pl.tracks, gen);
+  }
+
+  // short links carry only video ids: titles and artists fill in as YouTube answers
+  function fillTitles(tracks, gen) {
+    window.MurielShare.fillInfo(tracks, {
+      onUpdate: (t) => {
+        if (gen !== S.gen) return;
+        const i = S.tracks.indexOf(t);
+        const row = rows[i];
+        if (row) {
+          row.querySelector('.t').textContent = t.title;
+          row.querySelector('.an').textContent = t.artist || 'Unknown artist';
+        }
+        if (i === S.cur) showTrack(i); else renderUpNext();
+      },
+    });
   }
   function decodeHashSafe(s) { try { return decodeURIComponent(s); } catch (e) { return s; } }
 

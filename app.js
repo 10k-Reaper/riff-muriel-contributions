@@ -8048,6 +8048,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     try {
       const { name, tracks } = await S.decode(payload);
       if (!tracks.length) { showToast('That playlist link has no songs Muriel can play', 'info'); return true; }
+      // short links carry only YouTube ids: look up titles and artists first
+      if (tracks.some(t => t.needsInfo)) { showToast(`Adding "${name}"…`, 'info'); await S.fillInfo(tracks); }
       const key = (list) => list.map(t => `${t.platform}:${t.id}`).join('|');
       const same = state.playlists.find(p => p.name === name && key(p.tracks || []) === key(tracks));
       if (same) { openPlaylistDetail(same.id); showToast(`You already have "${name}"`, 'info'); return true; }

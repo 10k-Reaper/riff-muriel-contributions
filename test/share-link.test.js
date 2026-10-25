@@ -29,8 +29,46 @@ test('songs from files on the device are left out', async () => {
 
 test('the payload is found in every way a link gets pasted', async () => {
   const { payload } = await share.encode({ name: 'a', tracks: [yt('nac6B__nFl0', 'Illegal', 'P', 150)] });
-  for (const s of [share.webLink(payload), share.appLink(payload), payload, `  ${share.webLink(payload)}\n`]) assert.strictEqual(share.payloadFrom(s), payload);
+  for (const s of [share.webLink(payload), share.appLink(payload), `  ${share.webLink(payload)}\n`, `Night drive on Muriel 🎧 ${share.webLink(payload)}`]) assert.strictEqual(share.payloadFrom(s), payload);
   assert.strictEqual(share.payloadFrom('https://www.youtube.com/playlist?list=PL123'), '');
+  // searches that happen to look like a payload stay searches
+  for (const q of ['juicewrld', 'justinbieber', 'zaralarsson', 'yungblud123']) assert.strictEqual(share.payloadFrom(q), '');
+});
+
+test('an all-YouTube playlist makes a short link, and titles are looked up afterwards', async () => {
+  const ids = ['4NRXx6U8ABQ', 'fJ9rUzIMcZQ', 'hT_nvWreIhg', 'OPf0YbXqDm0', '60ItHLz5WEA', 'JGwWNGJdvx8', '09R8_2nJtjg', 'YQHsXMglC9A', 'nac6B__nFl0', '51zjlMhdSTE'];
+  const { payload, count } = await share.encode({ name: 'Muriel Hits', tracks: ids.map((id) => yt(id, 'some title', 'someone', 200)) });
+  assert.strictEqual(count, 10);
+  assert.strictEqual(payload[0], 'y');
+  assert.ok(share.webLink(payload).length < 180, `link ${share.webLink(payload).length} chars`);
+  const back = await share.decode(payload);
+  assert.strictEqual(back.name, 'Muriel Hits');
+  assert.deepStrictEqual(back.tracks.map((t) => t.id), ids);
+  assert.ok(back.tracks.every((t) => t.needsInfo && t.title === 'YouTube video' && t.platform === 'youtube'));
+
+  const answers = {
+    '4NRXx6U8ABQ': { title: 'The Weeknd - Blinding Lights (Official Video)', author_name: 'TheWeekndVEVO' },
+    fJ9rUzIMcZQ: { title: 'Bohemian Rhapsody', author_name: 'Queen - Topic' },
+  };
+  const seen = [];
+  await share.fillInfo(back.tracks, {
+    fetch: async (url) => {
+      const id = decodeURIComponent(url).match(/v=([\w-]{11})/)[1];
+      return answers[id] ? { ok: true, json: async () => answers[id] } : { ok: false, status: 401 };
+    },
+    onUpdate: (t) => seen.push(t.id),
+  });
+  assert.deepStrictEqual([back.tracks[0].title, back.tracks[0].artist], ['Blinding Lights', 'The Weeknd']);
+  assert.deepStrictEqual([back.tracks[1].title, back.tracks[1].artist], ['Bohemian Rhapsody', 'Queen']);
+  assert.strictEqual(back.tracks[2].title, 'YouTube video'); // not found: placeholder stays
+  assert.ok(back.tracks.every((t) => !('needsInfo' in t)));
+  assert.strictEqual(seen.length, 10);
+});
+
+test('a playlist with SoundCloud songs keeps titles in the link', async () => {
+  const { payload } = await share.encode({ name: 'Mix', tracks: [yt('4NRXx6U8ABQ', 'Blinding Lights', 'The Weeknd', 200), { id: '1', title: 'Set', artist: 'DJ', platform: 'soundcloud', url: 'https://soundcloud.com/dj/set' }] });
+  assert.strictEqual(payload[0], 'z');
+  assert.ok((await share.decode(payload)).tracks.every((t) => !t.needsInfo));
 });
 
 test('a big playlist still makes a reasonable link', async () => {
@@ -41,7 +79,7 @@ test('a big playlist still makes a reasonable link', async () => {
 });
 
 test('junk is refused instead of half-imported', async () => {
-  for (const bad of ['', 'zzzz', 'x' + Buffer.from('{}').toString('base64'), 'j' + Buffer.from(JSON.stringify({ v: 2, t: [] })).toString('base64url')]) {
+  for (const bad of ['', 'zzzz', 'yAA', 'y' + Buffer.from([5, 1, 2, 3]).toString('base64url'), 'y' + Buffer.from([0, 1, 2, 3]).toString('base64url'), 'x' + Buffer.from('{}').toString('base64'), 'j' + Buffer.from(JSON.stringify({ v: 2, t: [] })).toString('base64url')]) {
     await assert.rejects(share.decode(bad));
   }
   // rows that aren't valid are dropped, the rest kept
