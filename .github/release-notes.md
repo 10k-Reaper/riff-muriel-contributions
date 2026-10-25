@@ -1,4 +1,4 @@
-## Muriel 1.2.8
+## Muriel 1.2.9
 
 **Downloads**
 - **iPhone:** [ios-latest](https://github.com/cloverscripts/riff-muriel/releases/tag/ios-latest) (`Muriel.ipa`, install with SideStore, AltStore or Sideloadly). Needs iOS 16.2 or newer
@@ -9,11 +9,12 @@
 
 Or get it from the website: https://cloverscripts.github.io/riff-muriel/
 
-**Fixed**
-- **Songs that wouldn't play (Android, Spotify imports):** a SoundCloud or YouTube Music song that fails now tries the same song on YouTube before giving up. SoundCloud songs that are only offered as a stream play since 1.2.6.
-- **Spotify import:** songs are no longer matched to a remix, cover, sped-up or bootleg upload when the Spotify song is the original
-- **Downloads on Android:** downloaded songs are now saved to **Music/Muriel**, where your file manager and music apps can find them (before, they were hidden inside the app). Songs you downloaded earlier move there automatically. Android 10 and older ask for storage access once.
-- **Artists with the same name:** tapping an artist now opens that exact artist instead of the best-known one with the same name. The artist page also shows other artists with that name, one tap away.
-- **Error log:** when a song can't load, the shared error log now says why
+**New**
+- **Profiles:** give everyone who uses a device their own Muriel. Each profile has its own playlists, favorites, history, Encore stats, theme, and sound and lyrics settings.
+  - **Switch** with the round avatar in the top bar.
+  - **Manage** profiles (add, rename, pick a color or emoji, delete) in Settings → Profiles.
+  - **Sync:** each profile links to its own devices, so your profile on the computer syncs with your profile on the phone.
+  - **Your data:** everything you have now becomes your first profile; nothing is lost or moved.
+  - **Shared:** downloads, songs kept for offline listening and your music folder stay shared by all profiles on a device.
 
-Everything from 1.2.7 is included too: shorter share links, the web player, Opus audio on Android and full-quality YouTube on desktop.
+Everything from 1.2.8 is included too: songs that wouldn't play try YouTube, downloads on Android go to Music/Muriel, artists with the same name open the right artist, and shorter share links.
