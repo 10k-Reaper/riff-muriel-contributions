@@ -30,6 +30,8 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="muriel" android:host="link" />
+                <!-- muriel://playlist?p=… from a shared playlist link (adds the playlist) -->
+                <data android:scheme="muriel" android:host="playlist" />
             </intent-filter>
 
         </activity>

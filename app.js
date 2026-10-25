@@ -6482,6 +6482,13 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   async function performSearch(query) {
     if (!query || !query.trim()) return;
+    // a shared playlist link pasted into the search bar adds the playlist
+    if (window.MurielShare && window.MurielShare.payloadFrom(query)) {
+      if (el.searchInput) { el.searchInput.value = ''; el.searchInput.blur(); }
+      if (el.searchClearBtn) el.searchClearBtn.classList.add('hidden');
+      importSharedPlaylist(query);
+      return;
+    }
 
     const searchToken = (state.searchToken || 0) + 1;
     state.searchToken = searchToken;
@@ -8006,6 +8013,58 @@ document.addEventListener('DOMContentLoaded', async () => {
     const i = shuffle ? Math.floor(Math.random() * list.length) : 0;
     playTrack(list[i], list, i, 'playlist');
   }
+  // Share: the playlist goes inside a link (share-link.js) that opens in the web player or in Muriel
+  async function sharePlaylist(pl) {
+    const S = window.MurielShare;
+    if (!pl || !S) return;
+    let link, count;
+    try { const r = await S.encode({ name: pl.name, tracks: pl.tracks || [] }); link = S.webLink(r.payload); count = r.count; } catch (e) { showToast("Couldn't make a link for this playlist", 'error'); return; }
+    if (!count) { showToast("Songs from your own files can't be shared, and this playlist has nothing else", 'info'); return; }
+    const skipped = (pl.tracks || []).length - count;
+    const note = skipped > 0 ? ` (${skipped} song${skipped === 1 ? '' : 's'} from your own files left out)` : '';
+    if (window.electronAPI && window.electronAPI.shareText) { // phones: the share sheet
+      const r = await window.electronAPI.shareText(pl.name, `${pl.name} on Muriel 🎧 ${link}`);
+      if (r === 'copied') showToast('Link copied' + note, 'success');
+      else if (r === 'shared' && note) showToast('Shared' + note, 'info');
+      else if (r === 'failed') showToast("Couldn't share the link", 'error');
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(link);
+      showToast('Link copied. Anyone can open it in the browser or in Muriel' + note, 'success');
+    } catch (e) { window.prompt('Copy this link', link); }
+  }
+  const btnSharePlaylist = document.getElementById('btn-share-playlist');
+  if (btnSharePlaylist) btnSharePlaylist.addEventListener('click', () => sharePlaylist(state.playlists.find(p => p.id === state.currentPlaylistId)));
+
+  // a playlist someone shared: from a muriel://playlist link, the search bar or the link importer
+  let importingShare = '';
+  async function importSharedPlaylist(text) {
+    const S = window.MurielShare;
+    const payload = S ? S.payloadFrom(text) : '';
+    if (!payload) return false;
+    if (importingShare === payload) return true;
+    importingShare = payload;
+    try {
+      const { name, tracks } = await S.decode(payload);
+      if (!tracks.length) { showToast('That playlist link has no songs Muriel can play', 'info'); return true; }
+      const key = (list) => list.map(t => `${t.platform}:${t.id}`).join('|');
+      const same = state.playlists.find(p => p.name === name && key(p.tracks || []) === key(tracks));
+      if (same) { openPlaylistDetail(same.id); showToast(`You already have "${name}"`, 'info'); return true; }
+      const taken = new Set(state.playlists.map(p => p.name));
+      let finalName = name;
+      for (let i = 2; taken.has(finalName); i++) finalName = `${name} (${i})`;
+      createPlaylist(finalName, tracks);
+      showToast(`Added "${finalName}" (${tracks.length} song${tracks.length === 1 ? '' : 's'})`, 'success');
+    } catch (e) {
+      showToast("That playlist link didn't work. It may have been cut off, so ask for it again", 'error');
+    } finally {
+      setTimeout(() => { if (importingShare === payload) importingShare = ''; }, 3000);
+    }
+    return true;
+  }
+  window.addEventListener('muriel:deeplink', (e) => { if (/^muriel:\/\/playlist/i.test(String(e.detail || ''))) importSharedPlaylist(e.detail); });
+
   if (el.btnPlayPlaylist) el.btnPlayPlaylist.addEventListener('click', () => playOpenPlaylist(false));
   const btnShufflePlaylist = document.getElementById('btn-shuffle-playlist');
   if (btnShufflePlaylist) btnShufflePlaylist.addEventListener('click', () => playOpenPlaylist(true));
@@ -8801,6 +8860,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (el.searchInput) {
     el.searchInput.addEventListener('input', (e) => {
       const val = e.target.value;
+      if (window.MurielShare && window.MurielShare.payloadFrom(val)) { performSearch(val); return; }
       if (val && el.searchClearBtn) {
         el.searchClearBtn.classList.remove('hidden');
       } else if (el.searchClearBtn) {
@@ -13494,6 +13554,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   async function handleLinkImportAction() {
     clearImportError(linkImportError);
     const url = linkImportUrl ? linkImportUrl.value.trim() : '';
+    if (window.MurielShare && window.MurielShare.payloadFrom(url)) { closeLinkImportModal(); importSharedPlaylist(url); return; }
     if (!url) {
       const errInfo = classifyImportError('link', 404, 'unsupported link');
       showImportError(linkImportError, errInfo);

@@ -4,7 +4,7 @@ name: Website
 on:
   push:
     branches: [main]
-    paths: ['site/**', '.github/workflows/pages.yml']
+    paths: ['site/**', 'share-link.js', '.github/workflows/pages.yml']
   workflow_dispatch:
 
 permissions:
@@ -25,6 +25,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/configure-pages@v5
+      # the web player reads shared playlist links with the same code as the app
+      - run: cp share-link.js site/play/share-link.js
       - uses: actions/upload-pages-artifact@v3
         with:
           path: site
