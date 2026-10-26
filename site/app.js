@@ -31,13 +31,12 @@
   }
   function updateMainLinks() {
     const href = mainHref();
-    ['main-dl', 'np-play', 'np-get'].forEach((id) => { $(id).href = href; });
+    ['main-dl', 'np-get'].forEach((id) => { $(id).href = href; });
   }
   if (os) {
     $('main-dl-label').textContent = `Download for ${OS_NAME[os]}`;
     $('main-dl').setAttribute('aria-label', `Download Muriel for ${OS_NAME[os]}`);
-    $('np-title').textContent = `Muriel for ${OS_NAME[os]}`;
-    $('np-get').textContent = os === 'ios' ? 'Get it' : 'Download';
+    $('np-get').textContent = os === 'ios' ? 'Get' : 'Download';
   }
   updateMainLinks();
 
@@ -64,11 +63,6 @@
   const mineTab = tabs.find((t) => t.dataset.os === os);
   if (mineTab) mineTab.classList.add('mine');
   selectTab(os || 'android');
-  // the sidebar's library opens the matching tab
-  document.querySelectorAll('[data-os-link]').forEach((b) => b.addEventListener('click', () => {
-    selectTab(b.dataset.osLink);
-    $('download').scrollIntoView({ behavior: 'smooth' });
-  }));
 
   // ---- download counter ----
   // The phone and Windows builds are "rolling" releases that every build replaces, and GitHub resets a
@@ -79,13 +73,7 @@
     'ios-latest': { file: 'Muriel.ipa', platform: 'ios', seed: 1640 },
     'windows-latest': { file: 'Muriel.exe', platform: 'windows', seed: 6 },
   };
-  const PLATFORMS = [
-    ['android', 'Android', 'var(--android)'],
-    ['ios', 'iPhone', 'var(--ios-c)'],
-    ['windows', 'Windows', 'var(--windows)'],
-    ['mac', 'Mac', 'var(--mac)'],
-    ['linux', 'Linux', 'var(--linux)'],
-  ];
+  const PLATFORMS = [['android', 'Android'], ['ios', 'iPhone'], ['windows', 'Windows'], ['mac', 'Mac'], ['linux', 'Linux']];
   // installers only: .yml and .blockmap files are fetched by the desktop auto-updater, not by people
   const platformOf = (name) => (/\.apk$/i.test(name) ? 'android'
     : /\.ipa$/i.test(name) ? 'ios'
@@ -157,7 +145,7 @@
     $('count-sr').textContent = `${fmt(total)} downloads`;
     const ranked = PLATFORMS.filter(([k]) => per[k] > 0).sort((a, b) => per[b[0]] - per[a[0]]);
     const top = ranked.length ? per[ranked[0][0]] : 1;
-    $('ranks').innerHTML = ranked.map(([k, label, color]) => `<li style="--c:${color}"><b>${label}</b><span class="c">${fmt(per[k])}</span><span class="bar"><i style="width:${Math.max(2, (per[k] / top) * 100)}%"></i></span></li>`).join('');
+    $('ranks').innerHTML = ranked.map(([k, label]) => `<li><span class="r-name">${label}</span><span class="r-n">${fmt(per[k])}</span><span class="r-bar"><i style="width:${Math.max(2, (per[k] / top) * 100)}%"></i></span></li>`).join('');
     const cardCounts = { android: per.android, ios: per.ios, windows: per.windows, desktop: per.mac + per.linux };
     document.querySelectorAll('[data-count]').forEach((el) => {
       const n = cardCounts[el.dataset.count];
@@ -198,7 +186,6 @@
       $('linux-line').textContent = `mkdir -p ~/Applications && curl -L -o ~/Applications/Muriel.AppImage ${appImage.browser_download_url} && chmod +x ~/Applications/Muriel.AppImage && ~/Applications/Muriel.AppImage`;
     }
     $('rel-version').textContent = rel.tag_name;
-    $('np-sub').textContent = `${rel.tag_name} · free, no ads`;
     updateMainLinks();
   }
 
@@ -245,43 +232,50 @@
     .then((j) => { if (j && Number.isFinite(j.stargazers_count)) { showStars(j.stargazers_count); store.set('muriel_site_stars', j.stargazers_count); } })
     .catch(() => {});
 
-  // ---- the player bar: the page is the "song" ----
-  const sections = [...document.querySelectorAll('#top, #features, #screens, #download, #faq')];
-  const nameOf = (s) => s.dataset.secName || s.id;
-  const navLinks = [...document.querySelectorAll('.side-nav a')];
-  function currentIndex() {
-    const line = window.innerHeight * 0.35;
-    let idx = 0;
-    sections.forEach((s, i) => { if (s.getBoundingClientRect().top <= line) idx = i; });
-    return idx;
-  }
+  // ---- the bar at the top: where you are, and the menu on small screens ----
+  const nav = $('nav');
+  const toggle = $('nav-toggle');
+  const setMenu = (open) => { nav.classList.toggle('open', open); toggle.setAttribute('aria-expanded', open ? 'true' : 'false'); };
+  toggle.addEventListener('click', () => setMenu(!nav.classList.contains('open')));
+  document.querySelectorAll('#nav-links a').forEach((a) => a.addEventListener('click', () => setMenu(false)));
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') setMenu(false); });
+  const sections = [...document.querySelectorAll('#features, #inside, #download, #faq')];
+  const navLinks = [...document.querySelectorAll('#nav-links a[data-sec]')];
   let ticking = false;
   function onScroll() {
     ticking = false;
-    const max = document.documentElement.scrollHeight - window.innerHeight;
-    const p = max > 0 ? Math.min(1, window.scrollY / max) : 0;
-    $('scroll-prog').style.width = `${p * 100}%`;
-    $('prog-line').style.width = `${p * 100}%`;
-    const i = currentIndex();
-    $('sec-now').textContent = nameOf(sections[i]);
-    $('sec-left').textContent = i < sections.length - 1 ? nameOf(sections[i + 1]) : 'The end';
-    navLinks.forEach((a) => a.classList.toggle('on', a.dataset.sec === sections[i].id));
+    const line = window.innerHeight * 0.4;
+    let current = null;
+    sections.forEach((s) => { if (s.getBoundingClientRect().top <= line) current = s.id; });
+    navLinks.forEach((a) => a.classList.toggle('on', a.dataset.sec === current));
   }
   window.addEventListener('scroll', () => { if (!ticking) { ticking = true; requestAnimationFrame(onScroll); } }, { passive: true });
-  window.addEventListener('resize', onScroll, { passive: true });
   onScroll();
-  const jump = (d) => {
-    const i = Math.max(0, Math.min(sections.length - 1, currentIndex() + d));
-    sections[i].scrollIntoView({ behavior: 'smooth' });
-  };
-  $('sec-prev').addEventListener('click', () => jump(-1));
-  $('sec-next').addEventListener('click', () => jump(1));
 
-  // screenshot shelf arrows
+  // ---- things rise into place as they scroll into view, once ----
+  const reveals = document.querySelectorAll('.reveal');
+  if ('IntersectionObserver' in window) {
+    const io = new IntersectionObserver((entries) => entries.forEach((e) => {
+      if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); }
+    }), { rootMargin: '0px 0px -8% 0px', threshold: 0.12 });
+    reveals.forEach((el) => io.observe(el));
+  } else {
+    reveals.forEach((el) => el.classList.add('in'));
+  }
+
+  // ---- screenshot gallery paddles ----
   const shelf = $('shelf');
-  document.querySelectorAll('[data-scroll]').forEach((b) => b.addEventListener('click', () => {
+  const paddles = [...document.querySelectorAll('[data-scroll]')];
+  paddles.forEach((b) => b.addEventListener('click', () => {
     shelf.scrollBy({ left: Number(b.dataset.scroll) * shelf.clientWidth * 0.8, behavior: 'smooth' });
   }));
+  const syncPaddles = () => {
+    const max = shelf.scrollWidth - shelf.clientWidth - 2;
+    paddles.forEach((b) => { b.disabled = Number(b.dataset.scroll) < 0 ? shelf.scrollLeft <= 2 : shelf.scrollLeft >= max; });
+  };
+  shelf.addEventListener('scroll', () => requestAnimationFrame(syncPaddles), { passive: true });
+  window.addEventListener('resize', syncPaddles, { passive: true });
+  syncPaddles();
 
   document.querySelectorAll('[data-copy]').forEach((b) => b.addEventListener('click', async () => {
     try {
