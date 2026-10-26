@@ -207,6 +207,12 @@ html.is-mobile .settings-nav {
   gap: 6px !important;
 }
 html.is-mobile .settings-nav-btn { flex: 0 0 auto !important; white-space: nowrap !important; }
+/* Settings kept the computer's 32px page padding, and the pane sized itself to its widest row (Icon style's 236px
+   picker) instead of the screen, so the whole page sat shifted right and ran off the edge (issue #9) */
+html.is-mobile .settings-view { padding: 24px 4px !important; }
+html.is-mobile .settings-layout { align-items: stretch !important; }
+html.is-mobile .setting-item-top:has(> #icon-pack-dropdown) { flex-wrap: wrap !important; }
+html.is-mobile #icon-pack-dropdown { flex: 1 1 100% !important; width: auto !important; }
 html.is-mobile .settings-card,
 html.is-mobile .modal-backdrop > * { max-width: calc(100vw - 24px) !important; }
 html.is-mobile .track-row { padding: 8px 6px !important; gap: 12px !important; }
