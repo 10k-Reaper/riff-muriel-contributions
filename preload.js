@@ -65,6 +65,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   logError: (level, message, stack) => ipcRenderer.send('log-error', { level, message, stack }),
   openLogsFolder: () => ipcRenderer.send('open-logs-folder'),
   getDiagnostics: () => ipcRenderer.invoke('get-diagnostics'),
+  copyText: (text) => ipcRenderer.invoke('copy-text', text),
   getAudioOutputInfo: () => ipcRenderer.invoke('get-audio-output-info'),
   // YouTube / YouTube Music library import (google-library.js) and playlist files / backups (backup.js)
   googleLogin: (profile) => ipcRenderer.invoke('google-login', profile),

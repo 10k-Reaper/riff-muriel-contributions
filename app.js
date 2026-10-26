@@ -17493,20 +17493,47 @@ document.addEventListener('DOMContentLoaded', async () => {
   const btnCopyDiagnostics = document.getElementById('btn-copy-diagnostics');
   if (btnCopyDiagnostics) {
     btnCopyDiagnostics.addEventListener('click', async () => {
-      if (window.electronAPI && typeof window.electronAPI.getDiagnostics === 'function') {
-        navigator.clipboard.writeText(await window.electronAPI.getDiagnostics());
-        showToast(Tm('Diagnostics copied. Paste it into your report'), 'info');
-      }
+      const api = window.electronAPI || {};
+      let text = '';
+      try {
+        if (typeof api.getDiagnostics === 'function') text = await api.getDiagnostics();
+        else {
+          // phones: no main process to ask, so the app's own details and its error log
+          text = [`Muriel ${(window.MURIEL_BUILD && window.MURIEL_BUILD.version) || ''} (${(window.Capacitor && window.Capacitor.getPlatform && window.Capacitor.getPlatform()) || 'web'})`,
+            navigator.userAgent, `Language ${navigator.language}`, '--- log ---', window.MurielLog ? window.MurielLog.text() : 'no log'].join('\n');
+        }
+      } catch (e) { text = `Diagnostics failed: ${e && e.message}`; }
+      if (await copyText(text)) showToast(Tm('Diagnostics copied. Paste it into your report'), 'info');
+      else showToast(Tm("Couldn't copy the diagnostics"), 'error');
     });
   }
 
   const btnOpenLogs = document.getElementById('btn-open-logs');
   if (btnOpenLogs) {
-    btnOpenLogs.addEventListener('click', () => {
-      if (window.electronAPI && typeof window.electronAPI.openLogsFolder === 'function') {
-        window.electronAPI.openLogsFolder();
+    btnOpenLogs.addEventListener('click', async () => {
+      const api = window.electronAPI || {};
+      if (typeof api.openLogsFolder === 'function') api.openLogsFolder();
+      // phones have no folder to open: share the log instead
+      else if (typeof api.shareText === 'function') {
+        const res = await api.shareText('Muriel error log', window.MurielLog ? window.MurielLog.text() : 'no log');
+        if (res === 'copied') showToast(Tm('Log copied to clipboard'), 'info');
       }
     });
+  }
+
+  // the clipboard: the desktop app's own (always allowed), else the page's, else the old select-and-copy
+  async function copyText(text) {
+    const api = window.electronAPI || {};
+    try { if (typeof api.copyText === 'function') { await api.copyText(text); return true; } } catch (e) {}
+    try { await navigator.clipboard.writeText(text); return true; } catch (e) {}
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = text; ta.setAttribute('readonly', ''); ta.style.cssText = 'position:fixed;left:-9999px;top:0;opacity:0';
+      document.body.appendChild(ta); ta.select();
+      const ok = document.execCommand('copy');
+      ta.remove();
+      return ok;
+    } catch (e) { return false; }
   }
 
   let trackArtCurrentTrack = null;

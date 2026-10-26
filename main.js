@@ -1,4 +1,4 @@
-const { app, BrowserWindow, dialog, ipcMain, screen, shell, Tray, Menu, nativeImage, globalShortcut, powerMonitor } = require('electron');
+const { app, BrowserWindow, dialog, ipcMain, screen, shell, Tray, Menu, nativeImage, globalShortcut, powerMonitor, clipboard } = require('electron');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
@@ -352,6 +352,8 @@ function runGUI() {
       return lines.join('\n');
     });
     ipcMain.on('open-logs-folder', () => { shell.openPath(LOG_DIR); });
+    // the system clipboard directly: the page's navigator.clipboard refuses once the click's moment has passed
+    ipcMain.handle('copy-text', (e, text) => { clipboard.writeText(String(text || '')); return true; });
 
       ipcMain.handle('get-server-port', () => serverPort);
       ipcMain.handle('get-gpu-compositing', () => { try { return String(app.getGPUFeatureStatus().gpu_compositing || ''); } catch (e) { return ''; } });
