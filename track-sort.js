@@ -59,4 +59,74 @@ function backfillAddedAt(tracks, newestFirst) {
   return changed ? list : tracks;
 }
 
-if (typeof module !== 'undefined') module.exports = { TRACK_SORT_MODES, sortTracks, backfillAddedAt };
+// Favourites (#10): the same song reaches the heart from several places with different ids: an album row has an
+// id made from the album ("<albumId>_1_3", no platform), the player bar the YouTube video it resolved to, a
+// YouTube Music search 'ytmusic' or no platform at all. favoriteTrackKey() makes the id comparable; isSameSong() also
+// matches the same title and artist (and a close length) across sources.
+const TS_YT_VIDEO_ID = /^[A-Za-z0-9_-]{11}$/;
+
+function tsYoutubeIdOf(t) {
+  if (!t) return '';
+  const id = String(t.id || t.videoId || '').replace(/^(?:yt|youtube|ytm|ytmusic):/i, '');
+  if (TS_YT_VIDEO_ID.test(id)) return id;
+  const url = String(t.url || '');
+  const m = url.match(/^https?:\/\/(?:(?:www|m|music)\.)?(?:youtube\.com\/(?:watch\?(?:.*&)?v=|shorts\/|embed\/)|youtu\.be\/)([A-Za-z0-9_-]{11})/);
+  return m ? m[1] : '';
+}
+
+function favoriteTrackKey(t) {
+  if (!t) return '';
+  const platform = String(t.platform || '').toLowerCase();
+  if (!platform || platform === 'youtube' || platform === 'ytmusic' || platform === 'yt') {
+    const yt = tsYoutubeIdOf(t);
+    if (yt) return `youtube:${yt}`;
+  }
+  const p = platform === 'ytmusic' || platform === 'yt' || !platform ? 'youtube' : platform;
+  if (t.id) return `${p}:${String(t.id).replace(/^(?:yt|youtube|ytm|ytmusic|sc|soundcloud):/i, '')}`;
+  if (t.url) return `${p}:${t.url}`;
+  return `${p}:${tsSongKey(t)}|${Math.round(Number(t.duration) || 0)}`;
+}
+
+const TS_TITLE_NOISE = /\s*[([](?:[^)\]]*\b(?:official|audio|video|lyrics?|visuali[sz]er|hd|hq|4k|remaster(?:ed)?|explicit|clean|mv|m\/v)\b[^)\]]*)[)\]]/gi;
+function tsNormTitle(s) {
+  return String(s || '').replace(TS_TITLE_NOISE, '').toLowerCase().normalize('NFKD').replace(/[̀-ͯ]/g, '')
+    .replace(/\s+-\s+(?:official|audio|video|lyrics?).*$/, '').replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+}
+function tsNormArtist(s) {
+  const first = String(s || '').replace(/\s*-\s*topic$/i, '').split(/\s*(?:,|&|\bfeat\.?|\bft\.?|\bx\b|\band\b|;)\s*/i)[0];
+  return tsNormTitle(first);
+}
+function tsSongKey(t) { return t ? `${tsNormTitle(t.title)}|${tsNormArtist(t.artist)}` : ''; }
+
+function isSameSong(a, b) {
+  if (!a || !b) return false;
+  if (favoriteTrackKey(a) === favoriteTrackKey(b)) return true;
+  const pa = String(a.platform || '').toLowerCase(), pb = String(b.platform || '').toLowerCase();
+  if (pa === 'local' || pb === 'local') return false;
+  const ka = tsSongKey(a);
+  if (!tsNormTitle(a.title) || !tsNormArtist(a.artist) || ka !== tsSongKey(b)) return false;
+  const da = Number(a.duration) || 0, db = Number(b.duration) || 0;
+  return !(da > 0 && db > 0 && Math.abs(da - db) > 6);
+}
+
+// keeps the first copy of every song (favourites are newest first, so the newest heart wins)
+function dedupeFavoriteTracks(tracks) {
+  if (!Array.isArray(tracks)) return tracks;
+  const out = [];
+  const keys = new Set();
+  const bySong = new Map();
+  for (const t of tracks) {
+    if (!t) continue;
+    const k = favoriteTrackKey(t);
+    const sk = tsSongKey(t);
+    const same = bySong.get(sk) || [];
+    if (keys.has(k) || same.some((o) => isSameSong(o, t))) continue;
+    keys.add(k);
+    same.push(t);
+    bySong.set(sk, same);
+    out.push(t);
+  }
+  return out.length === tracks.length ? tracks : out;
+}
+
+if (typeof module !== 'undefined') module.exports = { TRACK_SORT_MODES, sortTracks, backfillAddedAt, favoriteTrackKey, isSameSong, dedupeFavoriteTracks };

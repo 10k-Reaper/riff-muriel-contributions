@@ -581,7 +581,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   };
 
   function migrateAddedAt() {
-    const favorites = backfillAddedAt(state.favorites, true);
+    // the same song favourited from several places (album row, player bar, search) was kept once per source (#10)
+    const favorites = backfillAddedAt(dedupeFavoriteTracks(state.favorites), true);
     if (favorites !== state.favorites) {
       state.favorites = favorites;
       localStorage.setItem('devsize_favorites', JSON.stringify(state.favorites));
@@ -6769,17 +6770,27 @@ document.addEventListener('DOMContentLoaded', async () => {
     fadeRows.forEach(r => { if (r.isConnected) updateRowFade(r); else fadeRows.delete(r); });
   }, { passive: true });
 
+  // a mouse wheel over a sideways row scrolls the row while it can still go that way; at its ends the page
+  // scrolls on (Ctrl+wheel is zoom, left alone)
+  function wheelRowSideways(row, e) {
+    if (e.ctrlKey || e.defaultPrevented || row.scrollWidth <= row.clientWidth + 1) return;
+    const delta = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
+    if ((delta < 0 && row.scrollLeft > 0) || (delta > 0 && row.scrollLeft < row.scrollWidth - row.clientWidth - 1)) {
+      e.preventDefault();
+      row.scrollBy({ left: e.deltaMode === 1 ? delta * 40 : delta, behavior: 'smooth' });
+    }
+  }
+  // rows drawn without bindHorizontalWheel (For you: artists and songs, Your playlists, an artist's namesakes)
+  // scrolled the whole page under the wheel (#10): one listener for all of them
+  const SIDEWAYS_ROWS = '.fy-row, .home-pl-row, .sp-row, .search-albums-row';
+  document.addEventListener('wheel', (e) => {
+    const row = e.target && e.target.closest ? e.target.closest(SIDEWAYS_ROWS) : null;
+    if (row && !row._wheelBound) wheelRowSideways(row, e);
+  }, { passive: false });
   function bindHorizontalWheel(row) {
     if (!row || row._wheelBound) return;
     row._wheelBound = true;
-    row.addEventListener('wheel', (e) => {
-      if (row.scrollWidth <= row.clientWidth) return;
-      const delta = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
-      if ((delta < 0 && row.scrollLeft > 0) || (delta > 0 && row.scrollLeft < row.scrollWidth - row.clientWidth - 1)) {
-        e.preventDefault();
-        row.scrollBy({ left: delta, behavior: 'smooth' });
-      }
-    }, { passive: false });
+    row.addEventListener('wheel', (e) => wheelRowSideways(row, e), { passive: false });
 
     row.addEventListener('scroll', () => updateRowFade(row), { passive: true });
     fadeRows.add(row);
@@ -7019,7 +7030,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
       }
 
-      const isFav = state.favorites.some(f => isSameTrack(f, track));
+      const isFav = state.favorites.some(f => isSameSong(f, track));
       const rowThumb = getTrackThumbUrl(track);
       const isAlbum = context === 'album';
       const albumArtist = (track.albumArtist || '').trim().toLowerCase();
@@ -7136,7 +7147,7 @@ document.addEventListener('DOMContentLoaded', async () => {
           btnFav.addEventListener('click', (e) => {
             e.stopPropagation();
             toggleFavoriteTrack(track);
-            const isFavNow = state.favorites.some(f => isSameTrack(f, track));
+            const isFavNow = state.favorites.some(f => isSameSong(f, track));
             const svg = btnFav.querySelector('svg');
             if (svg) svg.setAttribute('fill', isFavNow ? 'currentColor' : 'none');
           });
@@ -7230,7 +7241,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   function openTrackContextMenu(x, y, track, context, row) {
     closeTrackContextMenu();
-    const isFav = state.favorites.some(f => isSameTrack(f, track));
+    const isFav = state.favorites.some(f => isSameSong(f, track));
     const items = [
       { label: 'Play', run: () => row.click() },
       { label: 'Play next', run: () => {
@@ -7257,7 +7268,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       { label: 'Add to playlist…', run: () => openAddToPlaylistModal(track) },
       { label: isFav ? 'Remove from favorites' : 'Add to favorites', run: () => {
         toggleFavoriteTrack(track);
-        const on = state.favorites.some(f => isSameTrack(f, track));
+        const on = state.favorites.some(f => isSameSong(f, track));
         const svg = row.querySelector('.btn-row-fav svg');
         if (svg) svg.setAttribute('fill', on ? 'currentColor' : 'none');
       } }
@@ -7807,10 +7818,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   function toggleFavoriteTrack(track) {
     if (!track) return;
-    const exists = state.favorites.some(f => isSameTrack(f, track));
+    const exists = state.favorites.some(f => isSameSong(f, track));
     
     if (exists) {
-      state.favorites = state.favorites.filter(f => !isSameTrack(f, track));
+      state.favorites = state.favorites.filter(f => !isSameSong(f, track));
     } else {
       state.favorites.unshift(stampAddedAt(track));
     }
@@ -7827,7 +7838,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       el.favIcon.setAttribute('fill', 'none');
       return;
     }
-    const isFav = state.favorites.some(f => isSameTrack(f, state.currentTrack));
+    const isFav = state.favorites.some(f => isSameSong(f, state.currentTrack));
     el.favIcon.setAttribute('fill', isFav ? 'currentColor' : 'none');
   }
 
@@ -8729,7 +8740,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       let added = 0;
       for (let i = pl.tracks.length - 1; i >= 0; i--) {
         const track = pl.tracks[i];
-        if (!state.favorites.some(f => isSameTrack(f, track))) {
+        if (!state.favorites.some(f => isSameSong(f, track))) {
           state.favorites.unshift(stampAddedAt(track));
           added++;
         }
@@ -8796,7 +8807,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     on('multi-select-fav', () => {
       let added = 0;
       multiSel.tracks.forEach(t => {
-        if (!state.favorites.some(f => isSameTrack(f, t))) { state.favorites.unshift(stampAddedAt(t)); added++; }
+        if (!state.favorites.some(f => isSameSong(f, t))) { state.favorites.unshift(stampAddedAt(t)); added++; }
       });
       localStorage.setItem('devsize_favorites', JSON.stringify(state.favorites));
       updateFavoritesBadge();
@@ -9008,11 +9019,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     requestAnimationFrame(() => {
       document.querySelectorAll('.no-enter-anim').forEach(c => c.classList.remove('no-enter-anim'));
-      [el.viewDiscover, el.viewFavorites, el.viewAlbums, el.viewLocal, el.viewHistory, el.viewQueue, el.viewPlaylistDetail, el.viewAlbum, el.viewArtist, el.viewSettings].forEach(v => {
+      [el.viewDiscover, el.viewFavorites, el.viewAlbums, document.getElementById('view-artists'), el.viewLocal, el.viewHistory, el.viewQueue, el.viewPlaylistDetail, el.viewAlbum, el.viewArtist, el.viewSettings].forEach(v => {
         if (v) v.classList.remove('active');
       });
 
-        [el.navDiscover, el.navFavorites, el.navAlbums, el.navLocal, el.navHistory, el.navQueue, el.navSettings].forEach(n => {
+        [el.navDiscover, el.navFavorites, el.navAlbums, document.getElementById('nav-artists'), el.navLocal, el.navHistory, el.navQueue, el.navSettings].forEach(n => {
           if (n) n.classList.remove('active');
         });
 
@@ -9029,6 +9040,12 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (el.viewAlbums) el.viewAlbums.classList.add('active');
             if (el.navAlbums) el.navAlbums.classList.add('active');
             renderSavedAlbums();
+          } else if (viewName === 'artists') {
+            const v = document.getElementById('view-artists');
+            const n = document.getElementById('nav-artists');
+            if (v) v.classList.add('active');
+            if (n) n.classList.add('active');
+            renderArtistsTab();
           } else if (viewName === 'local') {
             if (el.viewLocal) el.viewLocal.classList.add('active');
             if (el.navLocal) el.navLocal.classList.add('active');
@@ -9317,6 +9334,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (el.navDiscover) el.navDiscover.addEventListener('click', () => switchView('discover'));
   if (el.navFavorites) el.navFavorites.addEventListener('click', () => switchView('favorites'));
   if (el.navAlbums) el.navAlbums.addEventListener('click', () => switchView('albums'));
+  const navArtistsBtn = document.getElementById('nav-artists');
+  if (navArtistsBtn) navArtistsBtn.addEventListener('click', () => switchView('artists'));
   if (el.navLocal) el.navLocal.addEventListener('click', () => switchView('local'));
   if (el.navHistory) el.navHistory.addEventListener('click', () => switchView('history'));
   if (el.navQueue) el.navQueue.addEventListener('click', () => switchView('queue'));
@@ -14429,6 +14448,11 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (googleLoginStatus) { googleLoginStatus.textContent = 'Logging in…'; googleLoginStatus.style.color = 'var(--md-sys-color-on-surface-variant)'; }
       try { googleConnected = !!(await api.googleLogin(googleProfile())).loggedIn; } catch (e) {}
       updateGoogleAuthUI();
+      // Google often refuses sign-ins inside an app window ("This browser or app may not be secure", #10):
+      // say so, and point to what still works without a login
+      if (!googleConnected && googleLoginStatus) {
+        googleLoginStatus.textContent = T('Not connected. If Google said this browser or app may not be secure, it blocks sign-ins inside apps: import your public playlists with their link instead.');
+      }
     });
   }
   if (btnGoogleLogout) {
@@ -14554,7 +14578,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       // liked songs become favorites of the open profile
       let newFavorites = 0;
       for (const t of likes) {
-        if (!state.favorites.some((f) => isSameTrack(f, t))) { state.favorites.push(stampAddedAt(t)); newFavorites++; }
+        if (!state.favorites.some((f) => isSameSong(f, t))) { state.favorites.push(stampAddedAt(t)); newFavorites++; }
         progress(++done, total);
       }
       if (newFavorites) {
@@ -16567,7 +16591,50 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
     }
     if (on && state.serverPort) fetchFollowedMeta(list);
+    updateArtistsCount();
+    if (state.currentView === 'artists') renderArtistsTab();
   }
+
+  // ---- the Artists tab (#10): the artists you follow, like the Albums tab; Settings > Tracks > Show Artists tab ----
+  function updateArtistsCount() {
+    const n = getFollowedArtists().filter((a) => a && a.name).length;
+    const badge = document.getElementById('artists-count');
+    if (badge) badge.textContent = n;
+    const sub = document.getElementById('artists-subtitle');
+    if (sub) sub.textContent = n === 1 ? T('1 artist followed') : Tf('{0} artists followed', n);
+  }
+  function renderArtistsTab() {
+    const grid = document.getElementById('followed-artists-grid');
+    if (!grid) return;
+    const list = getFollowedArtists().filter((a) => a && a.name);
+    updateArtistsCount();
+    grid.innerHTML = '';
+    if (!list.length) {
+      grid.innerHTML = `<div class="empty-hint">${escapeHtml(T('No artists yet. Open an artist and tap Follow to see them here.'))}</div>`;
+      return;
+    }
+    list.forEach((a) => grid.appendChild(followedArtistCard(a)));
+    if (state.serverPort) fetchFollowedMeta(list);
+  }
+  const btnShowArtists = document.getElementById('btn-show-artists');
+  function applyShowArtists() {
+    const show = localStorage.getItem('muriel_show_artists') === '1';
+    document.body.classList.toggle('hide-artists-tab', !show);
+    const nav = document.getElementById('nav-artists');
+    if (nav) nav.classList.toggle('nav-collapsed', !show);
+    if (btnShowArtists) btnShowArtists.classList.toggle('active', show);
+    if (!show && state.currentView === 'artists') switchView('discover');
+    updateArtistsCount();
+    refreshStacks();
+    updateNavIndicator(false);
+  }
+  if (btnShowArtists) {
+    btnShowArtists.addEventListener('click', () => {
+      localStorage.setItem('muriel_show_artists', localStorage.getItem('muriel_show_artists') === '1' ? '0' : '1');
+      applyShowArtists();
+    });
+  }
+  applyShowArtists();
 
   function renderSpotifyHome() {
     if (!spHomeReady || !isSpotifyHome()) return;
@@ -19067,8 +19134,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     seek: (sec) => { if (isFinite(sec)) el.nativeAudio.currentTime = Math.max(0, sec); },
     toggleShuffle: () => { if (el.btnShuffle) el.btnShuffle.click(); return state.isShuffle; },
     toggleRepeat: () => { if (el.btnRepeat) el.btnRepeat.click(); return state.repeatMode; },
-    isFavorite: (t) => state.favorites.some((f) => isSameTrack(f, t)),
-    toggleFavorite: (t) => { toggleFavoriteTrack(t); window.dispatchEvent(new Event('muriel:library')); return state.favorites.some((f) => isSameTrack(f, t)); },
+    isFavorite: (t) => state.favorites.some((f) => isSameSong(f, t)),
+    toggleFavorite: (t) => { toggleFavoriteTrack(t); window.dispatchEvent(new Event('muriel:library')); return state.favorites.some((f) => isSameSong(f, t)); },
     createPlaylist(name, tracks = []) {
       if (!name || !name.trim()) return null;
       const pl = { id: 'pl_' + Date.now(), name: name.trim(), tracks: tracks.slice() };
@@ -19121,7 +19188,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
       }
       if (has('devsize_favorites')) {
-        state.favorites = safeArray('devsize_favorites');
+        state.favorites = dedupeFavoriteTracks(safeArray('devsize_favorites'));
         updateFavoritesBadge();
         updateFavoriteIcon();
         if (state.currentView === 'favorites') renderFavoritesView();

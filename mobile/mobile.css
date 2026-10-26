@@ -437,6 +437,12 @@ html.is-mobile .nav-item.nav-collapsed { display: none !important; }
 /* seven tabs (Albums on) still fit a 360px wide phone */
 html.is-mobile body:not(.hide-albums-tab) .nav-item,
 html.is-mobile body:not(.hide-albums-tab) .rail-icon-btn { width: 46px !important; }
+html.is-mobile body:not(.hide-artists-tab) .nav-item,
+html.is-mobile body:not(.hide-artists-tab) .rail-icon-btn { width: 46px !important; }
+/* eight tabs (Albums and Artists on) */
+html.is-mobile body:not(.hide-albums-tab):not(.hide-artists-tab) .nav-item,
+html.is-mobile body:not(.hide-albums-tab):not(.hide-artists-tab) .rail-icon-btn { width: 40px !important; }
+html.is-mobile .followed-artists-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px 12px; }
 html.is-mobile .sort-dropdown { min-width: 0; max-width: 100%; }
 html.is-mobile .sort-dropdown .m3-dropdown-menu { max-height: 50vh; overflow-y: auto; }
 html.is-mobile .m3-dropdown-option { min-height: 44px; }
