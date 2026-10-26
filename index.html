@@ -2321,6 +2321,17 @@
         </div>
 
         <div class="audio-panel active" data-audio-panel="tempo">
+          <div class="setting-item tempo-presets-item">
+            <div class="setting-item-top">
+              <span class="setting-name">Speed &amp; pitch presets</span>
+            </div>
+            <div class="tempo-preset-chips" id="tempo-preset-chips"></div>
+            <div class="tempo-preset-save">
+              <input type="text" class="tempo-preset-name" id="tempo-preset-name" maxlength="40" placeholder="Name this speed &amp; pitch">
+              <button type="button" class="chip-btn" id="btn-save-tempo-preset">Save preset</button>
+            </div>
+          </div>
+
           <div class="setting-item">
             <div class="setting-item-top">
               <span class="setting-name">Speed</span>
@@ -2351,6 +2362,26 @@
               <span class="setting-value" id="val-gain">100%</span>
             </div>
             <input type="range" class="pill-range" id="slider-gain" min="0" max="200" step="1" value="100">
+          </div>
+
+          <div class="setting-item track-audio-item">
+            <div class="setting-item-top" style="align-items: center;">
+              <div style="display: flex; flex-direction: column; gap: 2px; min-width: 0;">
+                <span class="setting-name">For this track only</span>
+                <span class="track-audio-hint" id="track-audio-hint">Speed, pitch and volume changes apply to the playing song only</span>
+              </div>
+              <button type="button" class="effect-switch-btn" id="toggle-track-audio" aria-label="For this track only"><span class="thumb"></span></button>
+            </div>
+          </div>
+
+          <div class="setting-item track-audio-item">
+            <div class="setting-item-top" style="align-items: center;">
+              <div style="display: flex; flex-direction: column; gap: 2px; min-width: 0;">
+                <span class="setting-name">Ignore per-track settings</span>
+                <span class="track-audio-hint">Play every song with the global values; saved per-track settings are kept</span>
+              </div>
+              <button type="button" class="effect-switch-btn" id="toggle-ignore-track-audio" aria-label="Ignore per-track settings"><span class="thumb"></span></button>
+            </div>
           </div>
         </div>
 
@@ -3427,6 +3458,7 @@
   <script src="lyrics-rtl.js"></script>
   <script src="lyrics-sources.js"></script>
   <script src="track-trim.js"></script>
+  <script src="track-audio.js"></script>
   <script src="track-sort.js"></script>
   <script src="search-text.js"></script>
   <script src="library-tools.js"></script>
