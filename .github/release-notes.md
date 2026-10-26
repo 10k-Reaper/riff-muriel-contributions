@@ -1,4 +1,4 @@
-## Muriel 1.3.2
+## Muriel 1.3.3
 
 **Downloads**
 - **iPhone:** [ios-latest](https://github.com/cloverscripts/riff-muriel/releases/tag/ios-latest) (`Muriel.ipa`, install with SideStore, AltStore or Sideloadly). Needs iOS 16.2 or newer
@@ -10,6 +10,9 @@
 Or get it from the website: https://cloverscripts.github.io/riff-muriel/
 
 **Fixed**
+- **Settings on phones:** the page sat shifted to the right and was cut off at the edge. It fits the screen again, at any font size.
+
+**Fixed in 1.3.2**
 - **Yandex Music import:** shared playlist links (music.yandex.ru/playlists/lk.…) are read now. When Yandex refuses, the message says why, instead of "Spotify doesn't allow reading this playlist".
 - **Import dialog:** its title and menu follow the app's language
 
