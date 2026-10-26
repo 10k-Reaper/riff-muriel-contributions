@@ -359,6 +359,7 @@ function runGUI() {
       ipcMain.handle('get-app-version', () => app.getVersion());
       ipcMain.handle('get-audio-output-info', async () => getSystemAudioOutputInfo());
       require('./plugins').register(() => mainWindow);
+      require('./discord-presence').register(() => mainWindow);
       // YouTube / YouTube Music library import through a Google login (its own browser storage per profile)
       require('./google-library').register(() => mainWindow);
 

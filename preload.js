@@ -61,6 +61,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   openPluginsFolder: () => ipcRenderer.send('plugins-open-folder'),
   removePlugin: (file) => ipcRenderer.send('plugins-remove', file),
   importPlugins: () => ipcRenderer.invoke('plugins-import'),
+  discordPresenceUpdate: (trackInfo) => ipcRenderer.send('discord-presence-update', trackInfo),
+  discordPresenceClear: () => ipcRenderer.send('discord-presence-clear'),
   openExternal: (u) => ipcRenderer.send('open-external', u),
   logError: (level, message, stack) => ipcRenderer.send('log-error', { level, message, stack }),
   openLogsFolder: () => ipcRenderer.send('open-logs-folder'),
