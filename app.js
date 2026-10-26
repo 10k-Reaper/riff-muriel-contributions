@@ -2200,7 +2200,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     
     audioEngine.setHqEnabled(state.hqEnabled);
     audioEngine.setHqSettings(state.hqSettings);
-    audioEngine.setAudioSettings(state.audioSettings);
+    audioEngine.setAudioSettings(effectiveAudioSettings());
     audioEngine.setVolume(state.volume, state.isMuted);
     
     startVisualizers();
@@ -2237,7 +2237,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
   
   function applyAudioSettings() {
-    audioEngine.setAudioSettings(state.audioSettings);
+    audioEngine.setAudioSettings(effectiveAudioSettings());
     audioEngine.setVolume(state.volume, state.isMuted);
     audioEngine.applySettings(el.nativeAudio);
     persistSoundSettings();
@@ -2250,6 +2250,171 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
     }
   }
+
+
+  // ---- Per-track speed / pitch / volume and speed & pitch presets (issue #11; logic in track-audio.js) ----
+  // state.audioSettings stays the global sound; a song's own tempo values (keyed by its canonical id) go over it
+  var trackAudioStore = null;
+  var trackAudioOnlyDraft = false; // "For this track only" switched on, nothing changed yet
+  var trackAudioLastKey = '';
+  function trackAudioLib() { return window.MurielTrackAudio || null; }
+  function allTrackAudio() {
+    if (!trackAudioStore) {
+      const TA = trackAudioLib();
+      const raw = safeJson('muriel_track_audio', {});
+      trackAudioStore = TA ? TA.cleanStore(raw) : {};
+    }
+    return trackAudioStore;
+  }
+  function saveAllTrackAudio() {
+    try { localStorage.setItem('muriel_track_audio', JSON.stringify(trackAudioStore || {})); } catch (e) { console.warn('Failed to save per-track audio', e); }
+  }
+  function trackAudioKey(track) { return track ? (getTrackCanonicalId(track) || '') : ''; }
+  function ignoreTrackAudio() { try { return localStorage.getItem('muriel_ignore_track_audio') === '1'; } catch (e) { return false; } }
+  function currentTrackAudio() {
+    const key = trackAudioKey(state.currentTrack);
+    return key ? allTrackAudio()[key] || null : null;
+  }
+  function effectiveAudioSettings() {
+    const TA = trackAudioLib();
+    if (!TA) return state.audioSettings;
+    return TA.effectiveSettings(state.audioSettings, currentTrackAudio(), ignoreTrackAudio());
+  }
+  // a speed / pitch / volume change from a slider or a preset: the playing song's own, or the global one
+  function setTempoValues(values) {
+    const TA = trackAudioLib();
+    const key = trackAudioKey(state.currentTrack);
+    const perTrack = TA && key && !ignoreTrackAudio() && (trackAudioOnlyDraft || currentTrackAudio());
+    if (perTrack) {
+      const base = TA.normalizeEntry(currentTrackAudio() || {}, TA.normalizeEntry(state.audioSettings));
+      trackAudioStore = TA.setEntry(allTrackAudio(), key, { ...base, ...values });
+      trackAudioOnlyDraft = false;
+      saveAllTrackAudio();
+    } else {
+      Object.assign(state.audioSettings, values);
+    }
+    renderTrackAudioControls();
+  }
+  function renderTrackAudioControls() {
+    const sw = document.getElementById('toggle-track-audio');
+    const ign = document.getElementById('toggle-ignore-track-audio');
+    const hint = document.getElementById('track-audio-hint');
+    const ignored = ignoreTrackAudio();
+    const has = !!currentTrackAudio();
+    if (sw) {
+      sw.classList.toggle('active', !ignored && (has || trackAudioOnlyDraft));
+      sw.disabled = ignored || !state.currentTrack;
+      const row = sw.closest('.setting-item');
+      if (row) row.classList.toggle('is-disabled', sw.disabled);
+    }
+    if (ign) ign.classList.toggle('active', ignored);
+    if (hint) {
+      hint.textContent = !state.currentTrack ? T('Play a song to give it its own speed, pitch and volume')
+        : ignored ? T('Per-track settings are ignored: every song uses the global values')
+        : has ? T('This song keeps its own speed, pitch and volume')
+        : T('Speed, pitch and volume changes apply to the playing song only');
+    }
+    renderTempoPresets();
+  }
+  function onTrackAudioTrackChange() {
+    const key = trackAudioKey(state.currentTrack);
+    if (key === trackAudioLastKey) return;
+    trackAudioLastKey = key;
+    trackAudioOnlyDraft = false;
+    applyAudioSettings();
+    syncSettingsSlidersToState();
+    renderTrackAudioControls();
+  }
+  function customTempoPresets() {
+    const TA = trackAudioLib();
+    return TA ? TA.cleanPresets(safeJson('muriel_tempo_presets', [])) : [];
+  }
+  function renderTempoPresets() {
+    const wrap = document.getElementById('tempo-preset-chips');
+    const TA = trackAudioLib();
+    if (!wrap || !TA) return;
+    const cur = effectiveAudioSettings();
+    const custom = customTempoPresets();
+    wrap.innerHTML = '';
+    for (const p of [...TA.BUILTIN_PRESETS, ...custom]) {
+      const chip = document.createElement('button');
+      chip.type = 'button';
+      chip.className = 'chip-btn tempo-preset-chip' + (TA.presetMatches(p, cur) ? ' active' : '');
+      const label = document.createElement('span');
+      if (p.builtin) { label.textContent = T(p.name); } else { label.textContent = p.name; label.setAttribute('data-no-i18n', ''); }
+      chip.appendChild(label);
+      chip.addEventListener('click', () => {
+        initAudioContext();
+        setTempoValues(p.values);
+        state.activePresetId = null;
+        applyAudioSettings();
+        syncSettingsSlidersToState();
+        renderPresets();
+      });
+      if (!p.builtin) {
+        const del = document.createElement('span');
+        del.className = 'tempo-preset-del';
+        del.setAttribute('role', 'button');
+        del.setAttribute('aria-label', T('Delete preset'));
+        del.title = T('Delete preset');
+        del.textContent = '×';
+        del.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const list = customTempoPresets().filter(x => x.id !== p.id);
+          try { localStorage.setItem('muriel_tempo_presets', JSON.stringify(list)); } catch (err) {}
+          renderTempoPresets();
+        });
+        chip.appendChild(del);
+      }
+      wrap.appendChild(chip);
+    }
+  }
+  (function setupTrackAudio() {
+    const sw = document.getElementById('toggle-track-audio');
+    const ign = document.getElementById('toggle-ignore-track-audio');
+    if (sw) sw.addEventListener('click', () => {
+      if (sw.disabled) return;
+      const key = trackAudioKey(state.currentTrack);
+      if (!key) return;
+      if (currentTrackAudio() || trackAudioOnlyDraft) {
+        // off: the song goes back to the global values
+        trackAudioStore = trackAudioLib().setEntry(allTrackAudio(), key, null);
+        trackAudioOnlyDraft = false;
+        saveAllTrackAudio();
+      } else {
+        trackAudioOnlyDraft = true;
+      }
+      applyAudioSettings();
+      syncSettingsSlidersToState();
+      renderTrackAudioControls();
+    });
+    if (ign) ign.addEventListener('click', () => {
+      try { localStorage.setItem('muriel_ignore_track_audio', ignoreTrackAudio() ? '0' : '1'); } catch (e) {}
+      trackAudioOnlyDraft = false;
+      applyAudioSettings();
+      syncSettingsSlidersToState();
+      renderTrackAudioControls();
+    });
+    window.addEventListener('storage', (e) => { if (!e.key || /muriel_track_audio$/.test(e.key)) trackAudioStore = null; });
+
+    const saveBtn = document.getElementById('btn-save-tempo-preset');
+    const nameInput = document.getElementById('tempo-preset-name');
+    const save = () => {
+      const TA = trackAudioLib();
+      if (!TA || !nameInput) return;
+      const p = TA.makePreset(nameInput.value, effectiveAudioSettings());
+      if (!p) { nameInput.focus(); return; }
+      const list = customTempoPresets();
+      list.push(p);
+      try { localStorage.setItem('muriel_tempo_presets', JSON.stringify(list)); } catch (e) {}
+      nameInput.value = '';
+      showToast(Tm('Preset saved'), 'info');
+      renderTempoPresets();
+    };
+    if (saveBtn) saveBtn.addEventListener('click', save);
+    if (nameInput) nameInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); save(); } });
+    renderTrackAudioControls();
+  })();
 
 
   let cachedTrackWidth = 0;
@@ -2878,7 +3043,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   const EQ_BAND_LABELS = ['32', '64', '125', '250', '500', '1k', '2k', '4k', '8k', '16k'];
 
   function syncSettingsSlidersToState() {
-    const s = state.audioSettings;
+    const s = effectiveAudioSettings();
     // the engine dropdown is plain markup that always said hqmusic-3, whatever engine was saved or reset to
     const engine = state.hqSettings && state.hqSettings.engine;
     if (engine) {
@@ -3381,6 +3546,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     state.currentTrack = track;
     emitPluginEvent('trackchange', track);
+    onTrackAudioTrackChange();
     state.currentTrackContext = context;
     state.currentTrackIndexInContext = startIndex;
 
@@ -10029,8 +10195,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (el.sliderSpeed) {
     el.sliderSpeed.addEventListener('input', (e) => {
       const val = parseFloat(e.target.value);
-      state.audioSettings.speed = val;
-      state.audioSettings.speedPitch = 1.0;
+      setTempoValues({ speed: val, speedPitch: 1.0 });
       if (el.sliderSpeedPitch) el.sliderSpeedPitch.value = 1.0;
       if (el.valSpeedPitch) el.valSpeedPitch.textContent = '1.00x';
       if (el.valSpeed) el.valSpeed.textContent = `${val.toFixed(2)}x`;
@@ -10044,8 +10209,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     el.sliderSpeedPitch.addEventListener('input', (e) => {
       initAudioContext();
       const val = parseFloat(e.target.value);
-      state.audioSettings.speedPitch = val;
-      state.audioSettings.speed = 1.0;
+      setTempoValues({ speedPitch: val, speed: 1.0 });
       if (el.sliderSpeed) el.sliderSpeed.value = 1.0;
       if (el.valSpeed) el.valSpeed.textContent = '1.00x';
       if (el.valSpeedPitch) el.valSpeedPitch.textContent = `${val.toFixed(2)}x`;
@@ -10059,7 +10223,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     el.sliderPitch.addEventListener('input', (e) => {
       initAudioContext();
       const val = parseInt(e.target.value, 10);
-      state.audioSettings.pitch = val;
+      setTempoValues({ pitch: val });
       if (el.valPitch) el.valPitch.textContent = `${val > 0 ? '+' : ''}${val} st`;
       state.activePresetId = null;
       applyAudioSettings();
@@ -10095,7 +10259,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     el.sliderGain.addEventListener('input', (e) => {
       initAudioContext();
       const val = parseInt(e.target.value, 10);
-      state.audioSettings.volume = val / 100;
+      setTempoValues({ volume: val / 100 });
       if (el.valGain) el.valGain.textContent = `${val}%`;
       state.activePresetId = null;
       applyAudioSettings();
@@ -17892,6 +18056,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     state.queueRestorePosition = Number(saved.position) || 0;
     state.currentTrack = track || null;
     if (state.currentTrack) updateNowPlayingUI(state.currentTrack);
+    onTrackAudioTrackChange();
     updateQueueBadge();
     if (el.queueCount) {
       el.queueCount.classList.remove('restored');

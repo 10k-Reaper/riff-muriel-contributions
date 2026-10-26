@@ -8725,3 +8725,14 @@ body.perf .dl-mode-tab, body.perf .cc-float-time { transition: none !important; 
   .cc-time-pill.active { background: var(--md-sys-color-surface-container-high); }
   body[data-icon-pack="solar"] :is(.sidebar, .playbar) svg[stroke="currentColor"] { fill: none !important; }
 }
+
+/* Audio → Tempo: speed & pitch presets, per-track switches (#11) */
+.tempo-preset-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.tempo-preset-chip { display: inline-flex; align-items: center; gap: 6px; padding: 6px 14px; font-size: calc(13px * var(--font-scale, 1)); }
+.tempo-preset-del { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: 50%; font-size: 14px; line-height: 1; opacity: 0.7; }
+.tempo-preset-del:hover { opacity: 1; background: var(--md-sys-color-surface-container-highest); }
+.tempo-preset-save { display: flex; gap: 8px; margin-top: 10px; align-items: center; }
+.tempo-preset-name { flex: 1; min-width: 0; padding: 8px 14px; border-radius: var(--md-shape-corner-full); border: 1px solid var(--md-sys-color-outline-variant); background: var(--md-sys-color-surface-container); color: var(--md-sys-color-on-surface); font: inherit; font-size: calc(13px * var(--font-scale, 1)); }
+.tempo-preset-save .chip-btn { flex: none; padding: 8px 14px; font-size: calc(13px * var(--font-scale, 1)); }
+.track-audio-hint { font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline); }
+.track-audio-item.is-disabled .effect-switch-btn { opacity: 0.45; cursor: default; }
