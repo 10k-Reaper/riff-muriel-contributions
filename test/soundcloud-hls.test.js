@@ -33,6 +33,8 @@ const { spawn, joinSegments } = require('../mobile/shims/child_process');
 // ---- a fake SoundCloud ----
 let track;
 let routes;
+let resolved = [];
+let searchHits = [];
 const bytes = (...b) => new Uint8Array(b);
 function respond(body, status = 200) {
   return {
@@ -46,7 +48,14 @@ globalThis.__murielFetch = async (input) => {
   const url = String(input);
   if (url === 'https://soundcloud.com/') return respond('<script crossorigin src="https://a-v2.sndcdn.com/assets/app.js"></script>');
   if (url === 'https://a-v2.sndcdn.com/assets/app.js') return respond('x={client_id:"abcdefghijklmnopqrstuvwxyz123456"}');
-  if (url.startsWith('https://api-v2.soundcloud.com/resolve')) return respond(track);
+  if (url.startsWith('https://api-v2.soundcloud.com/resolve')) {
+    const asked = decodeURIComponent(url.match(/url=([^&]+)/)[1]);
+    resolved.push(asked);
+    // like the real api: only canonical soundcloud.com links resolve
+    return /^https:\/\/soundcloud\.com\/[^?]+$/.test(asked) ? respond(track) : respond({ code: 404 }, 404);
+  }
+  if (url === 'https://on.soundcloud.com/AbC123') return { ...respond('<html></html>'), url: 'https://soundcloud.com/artist/sets/mix?ref=clipboard&si=F2373777&utm_source=clipboard' };
+  if (url.startsWith('https://api-v2.soundcloud.com/search/tracks')) return respond({ collection: searchHits });
   for (const [prefix, body] of Object.entries(routes)) if (url.startsWith(prefix)) return typeof body === 'number' ? respond('', body) : respond(body);
   return respond('', 404);
 };
@@ -63,7 +72,7 @@ function runDownload(target) {
   });
 }
 
-beforeEach(() => { written.clear(); routes = {}; });
+beforeEach(() => { written.clear(); routes = {}; resolved = []; searchHits = []; });
 
 test('prefers progressive MP3 when SoundCloud still has it', async () => {
   track = baseTrack([tc('hls', 'audio/mpeg', 'hls'), tc('progressive', 'audio/mpeg', 'prog')]);
@@ -117,6 +126,46 @@ test('a playlist with an encryption key is refused instead of saving noise', asy
   routes['https://cf-hls-media.sndcdn.com/playlist/z.m3u8'] = '#EXTM3U\n#EXT-X-KEY:METHOD=AES-128,URI="k"\n#EXTINF:10,\nseg\n';
   await assert.rejects(runDownload('https://soundcloud.com/artist/song'), /encrypted/);
   assert.equal(written.size, 0);
+});
+
+// #13: SoundCloud no longer serves MP3 HLS; the "audio/mpegurl" transcoding is an adaptive master playlist
+test('the audio/mpegurl master playlist is not taken for MP3 segments', async () => {
+  track = baseTrack([tc('hls', 'audio/mpegurl', 'abr'), tc('hls', 'audio/mp4; codecs="mp4a.40.2"', 'aac')]);
+  assert.deepEqual(ex.scCandidates(track.media.transcodings).map((c) => c.tc.url), ['https://api-v2.soundcloud.com/media/aac']);
+  routes['https://api-v2.soundcloud.com/media/aac'] = { url: 'https://playback.media-streaming.soundcloud.cloud/x/aac_96k/playlist.m3u8' };
+  const a = await ex.resolveAudio('https://soundcloud.com/artist/song');
+  assert.equal(a.container, 'fmp4');
+});
+
+// #13: links from the app's Share button (on.soundcloud.com) and the mobile site answered "SoundCloud 404"
+test('share links, mobile-site links and tracking parameters resolve', async () => {
+  track = { kind: 'playlist', title: 'Mix', tracks: [{ id: 1, title: 'One', user: { username: 'A' }, duration: 1000, permalink_url: 'https://soundcloud.com/a/one' }] };
+  for (const link of [
+    'https://on.soundcloud.com/AbC123',
+    'https://m.soundcloud.com/artist/sets/mix',
+    'https://soundcloud.com/artist/sets/mix?si=abc&utm_source=clipboard&utm_medium=text',
+    'https://www.soundcloud.com/artist/sets/mix/',
+  ]) {
+    const pl = await ex.playlist(link);
+    assert.equal(pl.title, 'Mix', link);
+    assert.equal(pl.entries.length, 1);
+  }
+  assert.deepEqual([...new Set(resolved)], ['https://soundcloud.com/artist/sets/mix']);
+});
+
+// #13: search offered songs SoundCloud only streams encrypted, which then failed to play
+test('search leaves out DRM-only songs and previews', async () => {
+  const hit = (id, transcodings, policy = 'ALLOW') => ({ kind: 'track', id, title: `t${id}`, user: { username: 'u' }, duration: 200000, policy, permalink_url: `https://soundcloud.com/u/t${id}`, media: { transcodings } });
+  searchHits = [
+    hit(1, [tc('ctr-encrypted-hls', 'audio/mp4', 'e1'), tc('cbc-encrypted-hls', 'audio/mpegurl', 'e2')], 'MONETIZE'),
+    hit(2, [tc('hls', 'audio/mp4; codecs="mp4a.40.2"', 'a2'), tc('hls', 'audio/mpegurl', 'm2')]),
+    hit(3, [tc('hls', 'audio/mp4', 'a3')], 'SNIP'),
+    hit(4, [tc('progressive', 'audio/mpeg', 'p4')]),
+  ];
+  const r = await ex.soundcloudSearch('x', 5);
+  assert.deepEqual(r.map((t) => t.id), ['2', '4']);
+  assert.ok(r.every((t) => t.playable === true));
+  assert.equal((await ex.soundcloudSearch('x', 1)).length, 1);
 });
 
 test('YouTube segments still go through the AAC path', () => {

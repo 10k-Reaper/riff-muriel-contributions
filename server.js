@@ -476,6 +476,43 @@ function trackFingerprint(track) {
 const recentlyRecommendedTrackIds = new Set();
 const recentlyRecommendedKeys = new Set();
 
+// The SoundCloud web client's public client_id, read from soundcloud.com's script bundles (it rotates now and then).
+let scClientIdCache = { id: '', at: 0 };
+async function soundcloudClientId(html) {
+  if (scClientIdCache.id && Date.now() - scClientIdCache.at < 6 * 3600 * 1000) return scClientIdCache.id;
+  const page = html || await fetchWithTimeout('https://soundcloud.com/', { headers: { 'User-Agent': 'Mozilla/5.0' } }, 8000).then((r) => r.text());
+  const scripts = [...page.matchAll(/src="(https:\/\/a-v2\.sndcdn\.com\/assets\/[^"]+\.js)"/g)].map((x) => x[1]).reverse();
+  for (const s of scripts) {
+    try {
+      const m = (await fetchWithTimeout(s, {}, 8000).then((r) => r.text())).match(/client_id\s*[:=]\s*["']([a-zA-Z0-9]{20,})["']/);
+      if (m) { scClientIdCache = { id: m[1], at: Date.now() }; return m[1]; }
+    } catch (_) {}
+  }
+  throw new Error('SoundCloud client id not found');
+}
+
+// Whether SoundCloud streams a track in a form that can be played here: many major-label songs are only
+// offered encrypted (DRM; yt-dlp: "This video is DRM protected") or as a 30-second Go+ preview.
+function soundcloudTrackPlayable(t) {
+  if (!t || t.policy === 'SNIP' || t.policy === 'BLOCK') return false;
+  const list = (t.media && t.media.transcodings) || [];
+  return list.some((x) => x && !x.snipped && x.format && (x.format.protocol === 'progressive' || x.format.protocol === 'hls'));
+}
+
+// Of these SoundCloud track ids, the ones that can be played; null when SoundCloud couldn't be asked
+// (then nothing is left out: a song that fails still falls back to YouTube when played).
+async function soundcloudPlayableIds(ids) {
+  if (!ids.length) return new Set();
+  try {
+    const cid = await soundcloudClientId();
+    const items = await fetchWithTimeout(`https://api-v2.soundcloud.com/tracks?ids=${ids.slice(0, 50).join(',')}&client_id=${cid}`, { headers: { 'User-Agent': 'Mozilla/5.0' } }, 8000).then((r) => (r.ok ? r.json() : null));
+    if (!Array.isArray(items)) return null;
+    return new Set(items.filter(soundcloudTrackPlayable).map((t) => String(t.id)));
+  } catch (_) {
+    return null;
+  }
+}
+
 async function searchSoundcloud(query, limit = 14) {
   const cacheKey = `sc:${limit}:${String(query || '').trim().toLowerCase()}`;
   if (searchCache.has(cacheKey)) {
@@ -493,7 +530,7 @@ async function searchSoundcloud(query, limit = 14) {
     try {
       const raw = await executeYtDlp(args, 18000);
       const data = JSON.parse(raw);
-      const entries = (data.entries || []).map((item) => {
+      let entries = (data.entries || []).map((item) => {
         let thumbnail = '';
         if (item.thumbnails && item.thumbnails.length > 0) {
           thumbnail = item.thumbnails[item.thumbnails.length - 1].url;
@@ -512,10 +549,16 @@ async function searchSoundcloud(query, limit = 14) {
           duration: item.duration || 0,
           thumbnail: thumbnail,
           url: trackUrl,
-          platform: 'soundcloud'
+          platform: 'soundcloud',
+          playable: item.playable === true
         };
       // SoundCloud Go+ previews (always exactly 30 s) only ever play the first 30 seconds
       }).filter((t) => !(t.duration >= 29.5 && t.duration <= 30.5));
+      // yt-dlp's search doesn't say which songs are DRM-only and can never play; ask SoundCloud
+      // (the phone build's search already checked, and marks its results playable)
+      const unknown = entries.filter((t) => !t.playable && /^\d+$/.test(t.id)).map((t) => t.id);
+      const ok = unknown.length ? await soundcloudPlayableIds(unknown) : null;
+      entries = entries.filter((t) => !ok || !unknown.includes(t.id) || ok.has(t.id)).map(({ playable, ...t }) => t);
 
       if (entries.length > 0) {
         cacheSearchResult(cacheKey, entries);
@@ -1872,7 +1915,15 @@ async function handleSearch(req, res, query, platform = 'youtube', limit = 20) {
   try {
     const raw = await executeYtDlp(args, 25000);
     const data = JSON.parse(raw);
-    const entries = await Promise.all((data.entries || []).map(async (item) => {
+    let found = data.entries || [];
+    if (platform === 'soundcloud') {
+      // songs SoundCloud only streams encrypted (DRM) can never play here: leave them out (#13).
+      // The phone build's search checked already and marks its results playable.
+      const unknown = found.filter((item) => item && item.playable !== true && /^\d+$/.test(String(item.id))).map((item) => String(item.id));
+      const ok = unknown.length ? await soundcloudPlayableIds(unknown) : null;
+      if (ok) found = found.filter((item) => !item || !unknown.includes(String(item.id)) || ok.has(String(item.id)));
+    }
+    const entries = await Promise.all(found.map(async (item) => {
       let thumbnail = '';
       if (item.thumbnails && item.thumbnails.length > 0) {
         thumbnail = item.thumbnails[item.thumbnails.length - 1].url;
@@ -3933,6 +3984,56 @@ async function handleAppleImport(req, res, inputUrl) {
   }
 }
 
+// A SoundCloud link as the api resolves it: share links (on.soundcloud.com/…) are followed, the mobile site's
+// m.soundcloud.com becomes soundcloud.com, and share tracking (?si=…&utm_…) is dropped. Secret links keep
+// their token, which is part of the path.
+async function soundcloudCanonicalUrl(link) {
+  let u = new URL(String(link).trim());
+  if (u.hostname === 'on.soundcloud.com') {
+    const r = await fetchWithTimeout(u.href, { headers: { 'User-Agent': 'Mozilla/5.0' } }, 10000);
+    if (!r.url || /^https?:\/\/on\.soundcloud\.com/.test(r.url)) throw new Error('SoundCloud short link could not be opened');
+    u = new URL(r.url);
+  }
+  if (/(^|\.)soundcloud\.com$/.test(u.hostname)) u.hostname = 'soundcloud.com';
+  return `https://soundcloud.com${u.pathname.replace(/\/+$/, '')}`;
+}
+
+async function soundcloudApi(pathAndQuery) {
+  for (const fresh of [false, true]) {
+    if (fresh) scClientIdCache = { id: '', at: 0 };
+    const cid = await soundcloudClientId();
+    const r = await fetchWithTimeout(`https://api-v2.soundcloud.com${pathAndQuery}${pathAndQuery.includes('?') ? '&' : '?'}client_id=${cid}`, { headers: { 'User-Agent': 'Mozilla/5.0' } }, 15000);
+    if (r.status === 401 || r.status === 403) continue; // client_id rotated
+    if (!r.ok) throw new Error(`SoundCloud ${r.status}`);
+    return r.json();
+  }
+  throw new Error('SoundCloud refused the request');
+}
+
+// A SoundCloud set or track link → { name, cover, tracks } in the order of the set
+async function soundcloudImport(link) {
+  const obj = await soundcloudApi(`/resolve?url=${encodeURIComponent(await soundcloudCanonicalUrl(link))}`);
+  const list = obj.kind === 'track' ? [obj] : (Array.isArray(obj.tracks) ? obj.tracks.slice(0, 5000) : []);
+  // long sets only carry full data for their first few tracks; the rest is fetched by id
+  const full = new Map(list.filter((t) => t && t.title).map((t) => [t.id, t]));
+  const missing = list.filter((t) => t && !t.title).map((t) => t.id);
+  for (let i = 0; i < missing.length; i += 50) {
+    const items = await soundcloudApi(`/tracks?ids=${missing.slice(i, i + 50).join(',')}`).catch(() => []);
+    if (Array.isArray(items)) items.forEach((t) => full.set(t.id, t));
+  }
+  const tracks = list.map((t) => t && full.get(t.id)).filter(Boolean).map((t) => ({
+    id: String(t.id),
+    title: t.title || 'untitled',
+    artist: (t.user && (t.user.username || t.user.name)) || 'unknown artist',
+    duration: Math.round((t.full_duration || t.duration || 0) / 1000),
+    thumbnail: t.artwork_url || (t.user && t.user.avatar_url) || '',
+    url: t.permalink_url || '',
+    platform: 'soundcloud',
+    isCached: false
+  }));
+  return { name: obj.title || 'SoundCloud Playlist', cover: obj.artwork_url || (tracks[0] && tracks[0].thumbnail) || '', tracks };
+}
+
 async function handlePlaylistImport(req, res, inputUrl) {
   let parsed;
   try {
@@ -3953,55 +4054,18 @@ async function handlePlaylistImport(req, res, inputUrl) {
 
   const platform = isSoundCloud ? 'soundcloud' : (host === 'music.youtube.com' ? 'ytmusic' : 'youtube');
 
-  if (isSoundCloud && inputUrl.includes('/sets/')) {
+  if (isSoundCloud) {
+    // SoundCloud's own api: share links (on.soundcloud.com) and sets with songs SoundCloud only streams
+    // encrypted both work here, where yt-dlp gives up on the whole set at the first DRM-only song (#13)
     try {
-      const page = await fetchWithTimeout(inputUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } }).then(r => r.text());
-      const hyd = page.match(/window\.__sc_hydration\s*=\s*(\[[\s\S]*?\]);\s*<\/script>/);
-      if (hyd) {
-        const list = JSON.parse(hyd[1]);
-        const pl = list.find(x => x.hydratable === 'playlist')?.data;
-        if (pl && Array.isArray(pl.tracks)) {
-          let cid = 'tHVbSbDP4TaoMbPppngv6Tdry83vNbMQ';
-          const scripts = [...page.matchAll(/src="(https:\/\/a-v2\.sndcdn\.com\/assets\/[^"]+\.js)"/g)].map(x => x[1]);
-          for (const s of scripts) {
-            try {
-              const code = await fetchWithTimeout(s).then(r => r.text());
-              const cm = code.match(/client_id[:=]["']([a-zA-Z0-9]{32})["']/);
-              if (cm) { cid = cm[1]; break; }
-            } catch (_) {}
-          }
-          const full = pl.tracks.filter(t => t && t.title);
-          const missing = pl.tracks.filter(t => t && !t.title).map(t => t.id);
-          for (let i = 0; i < missing.length; i += 50) {
-            const chunk = missing.slice(i, i + 50);
-            try {
-              const u = `https://api-v2.soundcloud.com/tracks?ids=${chunk.join(',')}&client_id=${cid}`;
-              const items = await fetchWithTimeout(u, { headers: { 'User-Agent': 'Mozilla/5.0' } }).then(r => r.json());
-              if (Array.isArray(items)) full.push(...items);
-            } catch (_) {}
-          }
-          const tracks = full.map(t => ({
-            id: String(t.id),
-            title: t.title || 'untitled',
-            artist: (t.user && (t.user.username || t.user.name)) || 'unknown artist',
-            duration: Math.round((t.duration || t.full_duration || 0) / 1000),
-            thumbnail: t.artwork_url || (t.user && t.user.avatar_url) || '',
-            url: t.permalink_url || '',
-            platform: 'soundcloud',
-            isCached: false
-          }));
-          if (tracks.length > 0) {
-            res.writeHead(200, { 'Content-Type': 'application/json' });
-            return res.end(JSON.stringify({
-              success: true,
-              name: pl.title || 'SoundCloud Playlist',
-              cover: pl.artwork_url || '',
-              tracks
-            }));
-          }
-        }
+      const pl = await soundcloudImport(inputUrl);
+      if (pl && pl.tracks.length > 0) {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ success: true, ...pl }));
       }
-    } catch (_) {}
+    } catch (e) {
+      try { logger.log('warn', `SoundCloud import via api failed, trying yt-dlp: ${e && e.message}`); } catch (_) {}
+    }
   }
   const args = [
     '--dump-single-json',
