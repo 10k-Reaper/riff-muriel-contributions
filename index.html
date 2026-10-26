@@ -131,6 +131,13 @@
           </div>
         </button>
 
+        <button class="nav-item nav-collapsed" data-view="artists" id="nav-artists" title="Artists">
+          <div class="nav-indicator">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1"/></svg>
+            <span class="nav-badge" id="artists-count">0</span>
+          </div>
+        </button>
+
         <button class="nav-item" data-view="local" id="nav-local" title="My files">
           <div class="nav-indicator">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -337,6 +344,16 @@
           </div>
         </div>
         <div class="saved-albums-grid" id="saved-albums-grid"></div>
+      </section>
+
+      <section class="content-view" id="view-artists">
+        <div class="view-header">
+          <div>
+            <h2>Artists</h2>
+            <span class="view-subtitle" id="artists-subtitle">0 artists followed</span>
+          </div>
+        </div>
+        <div class="followed-artists-grid" id="followed-artists-grid"></div>
       </section>
 
       <section class="content-view" id="view-local">
@@ -1208,6 +1225,16 @@
                   <span style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">Save albums from the album page and find them in their own tab</span>
                 </div>
                 <button type="button" class="effect-switch-btn" id="btn-show-albums"><span class="thumb"></span></button>
+              </div>
+            </div>
+
+            <div class="setting-item">
+              <div class="setting-item-top" style="align-items: center;">
+                <div style="display: flex; flex-direction: column; gap: 2px;">
+                  <span class="setting-name">Show Artists tab</span>
+                  <span style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">The artists you follow, in their own tab</span>
+                </div>
+                <button type="button" class="effect-switch-btn" id="btn-show-artists"><span class="thumb"></span></button>
               </div>
             </div>
 

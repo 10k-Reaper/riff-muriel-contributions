@@ -8493,6 +8493,10 @@ body.mini .profile-switch { display: none; }
 #nav-albums.nav-collapsed { max-height: 0; opacity: 0; margin-top: 0; margin-bottom: 0; padding-top: 0; padding-bottom: 0; pointer-events: none; }
 body.hide-albums-tab #nav-albums,
 body.hide-albums-tab #btn-save-album { display: none !important; }
+#nav-artists.nav-collapsed { max-height: 0; opacity: 0; margin-top: 0; margin-bottom: 0; padding-top: 0; padding-bottom: 0; pointer-events: none; }
+body.hide-artists-tab #nav-artists { display: none !important; }
+.followed-artists-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(152px, 1fr)); gap: 24px 18px; padding: 8px 0 32px; }
+.followed-artists-grid > .empty-hint { grid-column: 1 / -1; }
 .saved-albums-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(156px, 1fr)); gap: 20px; padding: 8px 0 32px; }
 .saved-albums-grid > .empty-hint { grid-column: 1 / -1; }
 .album-actions { gap: 12px; flex-wrap: wrap; }
