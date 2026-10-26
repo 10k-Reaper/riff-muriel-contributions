@@ -1,4 +1,4 @@
-## Muriel 1.3.3
+## Muriel 1.3.4
 
 **Downloads**
 - **iPhone:** [ios-latest](https://github.com/cloverscripts/riff-muriel/releases/tag/ios-latest) (`Muriel.ipa`, install with SideStore, AltStore or Sideloadly). Needs iOS 16.2 or newer
@@ -9,7 +9,19 @@
 
 Or get it from the website: https://cloverscripts.github.io/riff-muriel/
 
+**New**
+- **Per-song sound:** in Audio → Tempo, "For this track only" keeps speed, pitch and volume for one song. "Ignore per-track settings" plays everything with the global values again, without deleting what songs saved.
+- **Speed & pitch presets:** Normal, Slowed, Daycore, Sped up, Nightcore and Practice, plus your own.
+- **Artists tab:** the artists you follow in one grid (turn it on in Settings).
+
 **Fixed**
+- **SoundCloud:** share links (on.soundcloud.com, m.soundcloud.com) import again. Search no longer shows songs that SoundCloud only streams encrypted, which never played.
+- **Favorites:** the same song can't end up in favorites twice any more; existing duplicates are cleaned up.
+- **Home rows:** the mouse wheel scrolls the artists and playlists rows instead of the whole page.
+- **Copy diagnostics and the logs button** work again, on phones too.
+- **Google login:** when Google refuses the sign-in, Muriel now says why and suggests importing playlists by link.
+
+**Fixed in 1.3.3**
 - **Settings on phones:** the page sat shifted to the right and was cut off at the edge. It fits the screen again, at any font size.
 
 **Fixed in 1.3.2**
