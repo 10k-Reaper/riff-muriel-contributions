@@ -164,9 +164,34 @@ const scEntry = (t) => ({
 // SoundCloud Go+ songs only stream a 30-second preview without a subscription
 const isPreview = (t) => t.policy === 'SNIP' || ((t.media && t.media.transcodings) || []).some((x) => x.snipped);
 
+// Major-label songs are often streamed only encrypted (DRM): they can't play anywhere outside SoundCloud's own
+// player, so search leaves them out instead of offering a song that fails with "could not extract audio stream".
+const isPlayable = (t) => !isPreview(t) && scCandidates((t.media && t.media.transcodings) || []).length > 0;
+
 async function soundcloudSearch(query, limit) {
-  const r = await scApi(`/search/tracks?q=${encodeURIComponent(query)}&limit=${limit}`);
-  return (r.collection || []).filter((t) => t.kind === 'track' && !isPreview(t)).map(scEntry);
+  // ask for more than needed: a good share of the results can be previews or DRM-only
+  const r = await scApi(`/search/tracks?q=${encodeURIComponent(query)}&limit=${Math.min(50, limit * 3)}`);
+  return (r.collection || []).filter((t) => t.kind === 'track' && isPlayable(t)).slice(0, limit).map((t) => ({ ...scEntry(t), playable: true }));
+}
+
+// The api only resolves canonical https://soundcloud.com/... links. The app's Share button gives
+// on.soundcloud.com short links (and the mobile site m.soundcloud.com ones): those answered "SoundCloud 404".
+async function scCanonicalUrl(pageUrl) {
+  let u;
+  try { u = new URL(String(pageUrl).trim()); } catch (_) { return String(pageUrl); }
+  if (u.hostname === 'on.soundcloud.com') {
+    const r = await globalThis.__murielFetch(u.href, { headers: { 'User-Agent': DESKTOP_UA } });
+    let target = r.url && !/^https?:\/\/on\.soundcloud\.com/.test(r.url) ? r.url : '';
+    if (!target) {
+      const html = await r.text().catch(() => '');
+      target = (html.match(/<link[^>]+rel="canonical"[^>]+href="([^"]+)"/) || html.match(/property="og:url"[^>]+content="([^"]+)"/) || [])[1] || '';
+    }
+    if (!target) throw new Error('SoundCloud short link could not be opened');
+    u = new URL(target);
+  }
+  if (/(^|\.)soundcloud\.com$/.test(u.hostname)) u.hostname = 'soundcloud.com';
+  // share links carry tracking parameters (si, utm_*, ref…); a secret link keeps its token in the path
+  return `https://soundcloud.com${u.pathname.replace(/\/+$/, '')}`;
 }
 
 // Which of a track's transcodings Muriel can play, best first. Many tracks no longer have a progressive MP3,
@@ -178,7 +203,8 @@ function scCandidates(list) {
   const kind = (x) => {
     if (proto(x) === 'progressive') return { rank: 0, ext: 'mp3' };
     if (proto(x) !== 'hls') return null; // encrypted or unknown
-    if (/audio\/mpeg/.test(mime(x))) return { rank: 1, kind: 'hls', container: 'mp3', ext: 'mp3' };
+    // audio/mpegurl is an adaptive master playlist, not MP3 segments (and its stream url answers 404)
+    if (/audio\/mpeg(?!url)/.test(mime(x))) return { rank: 1, kind: 'hls', container: 'mp3', ext: 'mp3' };
     if (/audio\/mp4|mp4a|aac/.test(mime(x))) return { rank: 2, kind: 'hls', container: 'fmp4', ext: 'm4a' };
     return null; // e.g. Opus in Ogg segments
   };
@@ -190,7 +216,7 @@ function scCandidates(list) {
 }
 
 async function soundcloudAudio(pageUrl) {
-  const t = await scApi(`/resolve?url=${encodeURIComponent(pageUrl)}`);
+  const t = await scApi(`/resolve?url=${encodeURIComponent(await scCanonicalUrl(pageUrl))}`);
   if (isPreview(t)) throw new Error('SoundCloud only has a 30-second preview of this song');
   const list = (t.media && t.media.transcodings) || [];
   if (!list.length) throw new Error('no SoundCloud stream');
@@ -263,7 +289,7 @@ async function youtubePlaylist(listId, limit) {
 }
 
 async function soundcloudPlaylist(pageUrl, limit) {
-  const set = await scApi(`/resolve?url=${encodeURIComponent(pageUrl)}`);
+  const set = await scApi(`/resolve?url=${encodeURIComponent(await scCanonicalUrl(pageUrl))}`);
   if (set.kind === 'track') return { title: set.title, entries: [scEntry(set)] };
   const tracks = (set.tracks || []).slice(0, limit);
   // long sets only carry full data for the first few tracks; fetch the rest by id
@@ -289,4 +315,4 @@ async function playlist(pageUrl, limit = 500) {
   throw new Error(`unsupported link ${s}`);
 }
 
-module.exports = { youtubeSearch, ytMusicSearch, soundcloudSearch, resolveAudio, playlist, scCandidates };
+module.exports = { youtubeSearch, ytMusicSearch, soundcloudSearch, resolveAudio, playlist, scCandidates, scCanonicalUrl, isPlayable };
