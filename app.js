@@ -11301,21 +11301,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   }
 
-  const btnToggleAdv = document.getElementById('btn-toggle-adv-section');
-  const advWrapper = document.getElementById('adv-collapsible-wrapper');
-  if (btnToggleAdv && advWrapper) {
-    const isAdvOpen = localStorage.getItem('muriel_adv_open') === 'true';
-    if (isAdvOpen) {
-      btnToggleAdv.classList.add('is-open');
-      advWrapper.classList.add('is-open');
-    }
-    btnToggleAdv.addEventListener('click', () => {
-      const nowOpen = advWrapper.classList.toggle('is-open');
-      btnToggleAdv.classList.toggle('is-open', nowOpen);
-      localStorage.setItem('muriel_adv_open', nowOpen ? 'true' : 'false');
-    });
-  }
-
   document.body.classList.toggle('no-blur', !getAdv('blur_fx', true));
 
   const sliderGlassBlur = document.getElementById('slider-glass-blur');
@@ -11994,15 +11979,26 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.querySelectorAll('#view-settings .settings-section').forEach(s => s.classList.toggle('cat-hidden', s.dataset.cat !== cat));
     document.querySelectorAll('#settings-nav .settings-nav-btn').forEach(b => b.classList.toggle('active', b.dataset.cat === cat));
     const title = document.getElementById('settings-pane-title'); if (title) title.textContent = settingsCatLabel(cat);
+    syncSettingsGroupTitles();
     // after the frame's style work, so it doesn't force a second layout of the whole settings page
     const pane = document.querySelector('#view-settings .settings-pane'); if (pane) requestAnimationFrame(() => { if (pane.scrollTop) pane.scrollTop = 0; });
-    if (settingsNarrow.matches) settingsScrollTop();
+    settingsScrollTop();
     try { localStorage.setItem('muriel_settings_cat', cat); } catch (e) {}
     if (cat === 'custom-themes' && typeof renderThemeCards === 'function') renderThemeCards();
     if (cat === 'plugins' && typeof reloadPluginsList === 'function') reloadPluginsList();
     refreshStacks();
   }
   window.showSettingsCategory = showSettingsCategory;
+  // a group whose rows are all hidden here (desktop-only rows on a phone, Windows-only rows) hides its title too
+  function syncSettingsGroupTitles() {
+    document.querySelectorAll('#view-settings .settings-group-title').forEach((t) => {
+      const g = t.nextElementSibling;
+      if (!g || !g.classList.contains('m3-group')) return;
+      const any = [...g.children].some((r) => !r.classList.contains('gs-retired') && !r.classList.contains('hidden') && r.style.display !== 'none');
+      t.classList.toggle('group-empty', !any);
+      g.classList.toggle('group-empty', !any);
+    });
+  }
   function settingsScrollTop() {
     let n = settingsView && settingsView.parentElement;
     while (n && n !== document.body) { if (n.scrollTop) n.scrollTop = 0; n = n.parentElement; }

@@ -6539,6 +6539,11 @@ body.mini.mini-lyrics-on #btn-mini-lyrics {
 .settings-searching .settings-pane > .settings-search-empty { order: -1; }
 .settings-searching .settings-nav-btn.active { background: transparent; color: var(--md-sys-color-on-surface-variant); }
 .settings-section .ss-miss { display: none !important; }
+/* group headers inside a category (Riff's group title) */
+.settings-group-title { margin: 20px 4px 8px; font-weight: 600; color: var(--md-sys-color-on-surface); }
+.settings-section > .settings-group-title:first-child { margin-top: 4px; }
+#view-settings:not(.settings-searching) .settings-section > .settings-group-title + .m3-group { margin-top: -12px; }
+.settings-group-title.group-empty, .m3-group.group-empty { display: none; }
 .settings-search-cat { font-size: calc(13px * var(--font-scale, 1)); font-weight: 500; color: var(--md-sys-color-primary); padding: 0 4px; }
 .settings-search-empty { padding: 48px 16px; text-align: center; color: var(--md-sys-color-on-surface-variant); font-size: calc(14px * var(--font-scale, 1)); }
 /* phones' back bar above an open category; wide windows have the list beside it instead */

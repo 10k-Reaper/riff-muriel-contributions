@@ -651,7 +651,8 @@
               </div>
               <div class="settings-search-empty hidden" id="settings-search-empty">No settings match your search</div>
               <div class="settings-section" data-cat="interface">
-                <div class="m3-group">
+                <div class="settings-group-title" data-i18n>Language</div>
+                <div class="m3-group" data-group="language">
             <div class="setting-item" id="setting-ui-lang-row">
               <div class="setting-item-top">
                 <span class="setting-name"><span data-i18n>Language</span><span class="ui-lang-en-hint" data-no-i18n> · Language</span></span>
@@ -670,7 +671,9 @@
               </div>
               <div id="ui-lang-hint" style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline); margin-top: 6px;">Muriel's menus and messages. Other languages are translated automatically by Google Translate the first time, then kept on this device. Song titles, names and your playlists are never sent.</div>
             </div>
-
+                </div>
+                <div class="settings-group-title" data-i18n>Layout &amp; size</div>
+                <div class="m3-group" data-group="layout">
             <div class="setting-item">
               <div class="setting-item-top">
                 <span class="setting-name">UI scale</span>
@@ -679,7 +682,6 @@
               <input type="range" class="pill-range" id="settings-slider-scale" min="80" max="130" step="5" value="100">
               <div class="setting-hints"><span>Compact</span><span>Default</span><span>Large</span></div>
             </div>
-
             <div class="setting-item">
               <div class="setting-item-top">
                 <span class="setting-name">Font scale</span>
@@ -688,7 +690,6 @@
               <input type="range" class="pill-range" id="slider-font-scale" min="80" max="130" step="5" value="100">
               <div class="setting-hints"><span>Small</span><span>Default</span><span>Large</span></div>
             </div>
-
             <div class="setting-item" id="setting-interface-font">
               <div class="setting-item-top">
                 <span class="setting-name">Interface font</span>
@@ -700,7 +701,6 @@
               </div>
               <div style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline); margin-top: 6px;">SF Pro is loaded from fonts.cdnfonts.com when selected</div>
             </div>
-
             <div class="setting-item" id="setting-icon-pack-row">
               <div class="setting-item-top" style="align-items: center;">
                 <div style="display: flex; flex-direction: column; gap: 2px;">
@@ -724,7 +724,14 @@
                 </div>
               </div>
             </div>
-
+            <div class="setting-item">
+              <div class="setting-item-top">
+                <span class="setting-name">Corner radius</span>
+                <span class="setting-value" id="val-corner-radius" data-i18n>Default</span>
+              </div>
+              <input type="range" class="pill-range" id="slider-corner-radius" min="0" max="32" step="4" value="16">
+              <div class="setting-hints"><span>Sharp</span><span>16px</span><span>Round</span></div>
+            </div>
             <div class="setting-item" id="setting-hide-titlebar-row">
               <div class="setting-item-top" style="align-items: center;">
                 <div style="display: flex; flex-direction: column; gap: 2px;">
@@ -734,7 +741,18 @@
                 <button class="effect-switch-btn" id="btn-hide-titlebar"><span class="thumb"></span></button>
               </div>
             </div>
-
+            <div class="setting-item">
+              <div class="setting-item-top" style="align-items: center;">
+                <div style="display: flex; flex-direction: column; gap: 2px;">
+                  <span class="setting-name">No-Hand cursor</span>
+                  <span style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">Replaces the hand and grab cursors with the normal arrow</span>
+                </div>
+                <button class="effect-switch-btn active" id="btn-no-hand-cursor"><span class="thumb"></span></button>
+              </div>
+            </div>
+                </div>
+                <div class="settings-group-title" data-i18n>Search bar</div>
+                <div class="m3-group" data-group="search">
             <div class="setting-item" id="setting-search-pos-row">
               <div class="setting-item-top">
                 <span class="setting-name">Position of searchbar</span>
@@ -756,7 +774,6 @@
                 </div>
               </div>
             </div>
-
             <div class="setting-item" id="setting-engine-api-row">
               <div class="setting-item-top">
                 <span class="setting-name">Search engine</span>
@@ -778,7 +795,6 @@
                 </div>
               </div>
             </div>
-
             <div class="setting-item">
               <div class="setting-item-top" style="align-items: center;">
                 <div style="display: flex; flex-direction: column; gap: 2px;">
@@ -788,7 +804,6 @@
                 <button class="effect-switch-btn" id="btn-compact-engine-btns"><span class="thumb"></span></button>
               </div>
             </div>
-
             <div class="setting-item">
               <div class="setting-item-top" style="align-items: center;">
                 <div style="display: flex; flex-direction: column; gap: 2px;">
@@ -798,76 +813,130 @@
                 <button class="effect-switch-btn" id="btn-hide-engine-btns"><span class="thumb"></span></button>
               </div>
             </div>
-
             <div class="setting-item">
-              <div class="setting-item-top">
-                <span class="setting-name">Corner radius</span>
-                <span class="setting-value" id="val-corner-radius" data-i18n>Default</span>
+              <div class="setting-item-top" style="align-items: center;">
+                <span class="setting-name">Show artists in search</span>
+                <button class="effect-switch-btn active" id="btn-search-artists"><span class="thumb"></span></button>
               </div>
-              <input type="range" class="pill-range" id="slider-corner-radius" min="0" max="32" step="4" value="16">
-              <div class="setting-hints"><span>Sharp</span><span>16px</span><span>Round</span></div>
             </div>
-
             <div class="setting-item">
-              <div class="setting-item-top" style="align-items: center; justify-content: space-between;">
-                <span class="setting-name">Interface opacity</span>
-                <div style="display: flex; align-items: center; gap: 8px;">
-                  <span class="setting-value" id="val-ui-alpha">100%</span>
-                  <button class="btn-outline-pill" id="btn-reset-ui-alpha" style="padding: 2px 10px; font-size: calc(12px * var(--font-scale, 1));">Reset</button>
+                    <div class="setting-item-top" style="align-items: center;">
+                      <div style="display: flex; flex-direction: column; gap: 2px;">
+                        <span class="setting-name">Albums</span>
+                        <span style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">Shows albums in search results</span>
+                      </div>
+                      <button class="effect-switch-btn active" data-adv="albums"><span class="thumb"></span></button>
+                    </div>
+                  </div>
                 </div>
+                <div class="settings-group-title" data-i18n>Tabs &amp; Home</div>
+                <div class="m3-group" data-group="home">
+            <div class="setting-item">
+              <div class="setting-item-top" style="align-items: center;">
+                <span class="setting-name">Show My files tab</span>
+                <button class="effect-switch-btn active" id="btn-show-local"><span class="thumb"></span></button>
               </div>
-              <input type="range" class="pill-range" id="slider-ui-alpha" min="20" max="100" step="1" value="20">
-              <div class="setting-hints"><span>20%</span><span>Default</span><span>100%</span></div>
             </div>
-
             <div class="setting-item">
               <div class="setting-item-top" style="align-items: center;">
                 <div style="display: flex; flex-direction: column; gap: 2px;">
-                  <span class="setting-name">Glass blur</span>
-                  <span style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">Frosts see-through panels so your background shows through softly. Lower the interface opacity to see it. Uses extra GPU</span>
+                  <span class="setting-name">Show Albums tab</span>
+                  <span style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">Save albums from the album page and find them in their own tab</span>
                 </div>
-                <button class="effect-switch-btn" data-adv="glass_blur"><span class="thumb"></span></button>
+                <button type="button" class="effect-switch-btn" id="btn-show-albums"><span class="thumb"></span></button>
               </div>
             </div>
-
-            <div class="setting-item" id="setting-glass-strength">
-              <div class="setting-item-top">
-                <span class="setting-name">Glass blur strength</span>
-                <span class="setting-value" id="val-glass-blur">16px</span>
-              </div>
-              <input type="range" class="pill-range" id="slider-glass-blur" min="4" max="40" step="1" value="16">
-              <div class="setting-hints"><span>4px</span><span>Default</span><span>40px</span></div>
-            </div>
-
-            <div class="setting-item">
-              <div class="setting-item-top" style="align-items: center; justify-content: space-between;">
-                <span class="setting-name">Text opacity</span>
-                <div style="display: flex; align-items: center; gap: 8px;">
-                  <span class="setting-value" id="val-text-alpha">100%</span>
-                  <button class="btn-outline-pill" id="btn-reset-text-alpha" style="padding: 2px 10px; font-size: calc(12px * var(--font-scale, 1));">Reset</button>
-                </div>
-              </div>
-              <input type="range" class="pill-range" id="slider-text-alpha" min="1" max="100" step="1" value="100">
-              <div class="setting-hints"><span>1%</span><span>Default</span><span>100%</span></div>
-            </div>
-
             <div class="setting-item">
               <div class="setting-item-top" style="align-items: center;">
                 <div style="display: flex; flex-direction: column; gap: 2px;">
-                  <span class="setting-name">No-Hand cursor</span>
-                  <span style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">Replaces the hand and grab cursors with the normal arrow</span>
+                  <span class="setting-name">Show Artists tab</span>
+                  <span style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">The artists you follow, in their own tab</span>
                 </div>
-                <button class="effect-switch-btn active" id="btn-no-hand-cursor"><span class="thumb"></span></button>
+                <button type="button" class="effect-switch-btn" id="btn-show-artists"><span class="thumb"></span></button>
               </div>
             </div>
-
+            <div class="setting-item" id="setting-home-layout">
+                    <div class="setting-item-top">
+                      <span class="setting-name">Home layout</span>
+                    </div>
+                    <div class="theme-mode-toggle" id="home-layout-toggle">
+                      <button type="button" class="theme-mode-btn" id="home-layout-riff" data-layout="muriel" style="display: inline-flex; align-items: center; justify-content: center; gap: 6px;">
+                        <img src="assets/icon.png" width="16" height="16" style="border-radius: 4px; object-fit: contain;" alt="">
+                        <span>Muriel</span>
+                      </button>
+                      <button type="button" class="theme-mode-btn active" id="home-layout-spotify" data-layout="spotify" style="display: inline-flex; align-items: center; justify-content: center; gap: 6px;">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2zm4.586 14.424c-.18.295-.563.387-.857.207-2.35-1.434-5.308-1.758-8.793-.963-.335.077-.67-.133-.746-.469-.077-.334.132-.67.467-.747 3.812-.871 7.085-.506 9.721 1.107.294.18.387.564.208.865zm1.224-2.72c-.226.367-.706.482-1.072.257-2.687-1.652-6.785-2.131-9.965-1.166-.413.127-.848-.106-.973-.517-.125-.413.108-.848.52-.973 3.632-1.102 8.147-.568 11.233 1.328.366.226.481.707.257 1.071zm.105-2.835C14.692 8.95 8.085 8.731 4.708 9.756c-.494.15-1.018-.129-1.168-.623-.15-.495.13-1.018.624-1.168 3.943-1.197 11.23-.944 15.045 1.32.444.264.59.84.327 1.284-.264.444-.84.59-1.284.327z"/></svg>
+                        <span>Spotify</span>
+                      </button>
+                    </div>
+                    <div style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline); margin-top: 6px;">Muriel: the big carousel. Spotify: quick picks, Daily Mixes and what's trending, in rows.</div>
+                  </div>
+            <div class="setting-item">
+                    <div class="setting-item-top" style="align-items: center;">
+                      <div style="display: flex; flex-direction: column; gap: 2px;">
+                        <span class="setting-name">Jump back in</span>
+                        <span style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">Recently played tracks on the home page</span>
+                      </div>
+                      <button class="effect-switch-btn active" data-adv="jump_back"><span class="thumb"></span></button>
+                    </div>
+                  </div>
+            <div class="setting-item">
+                    <div class="setting-item-top" style="align-items: center;">
+                      <div style="display: flex; flex-direction: column; gap: 2px;">
+                        <span class="setting-name">Your artists</span>
+                        <span style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">The artists you follow on the home page</span>
+                      </div>
+                      <button class="effect-switch-btn active" data-adv="fav_artists"><span class="thumb"></span></button>
+                    </div>
+                  </div>
+            <div class="setting-item">
+                    <div class="setting-item-top" style="align-items: center;">
+                      <div style="display: flex; flex-direction: column; gap: 2px;">
+                        <span class="setting-name">My Wave recommendations</span>
+                        <span style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">Show personal recommendations on the home page</span>
+                      </div>
+                      <button class="effect-switch-btn active" data-adv="my_wave"><span class="thumb"></span></button>
+                    </div>
+                  </div>
+            <div class="setting-item">
+                    <div class="setting-item-top" style="align-items: center;">
+                      <div style="display: flex; flex-direction: column; gap: 2px;">
+                        <span class="setting-name">Ambient light on home page</span>
+                        <span style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">Display colored glow behind the recommendation card</span>
+                      </div>
+                      <button class="effect-switch-btn active" data-adv="my_wave_ambient"><span class="thumb"></span></button>
+                    </div>
+                  </div>
+                </div>
+                <div class="settings-group-title" data-i18n>Player bar</div>
+                <div class="m3-group" data-group="playbar">
+            <div class="setting-item">
+              <div class="setting-item-top" style="align-items: center;">
+                <span class="setting-name">Wavy progress bar</span>
+                <button class="effect-switch-btn active" id="btn-wavy-progress"><span class="thumb"></span></button>
+              </div>
+            </div>
+            <div class="setting-item">
+              <div class="setting-item-top" style="align-items: center;">
+                <span class="setting-name">Progress bar knob</span>
+                <button class="effect-switch-btn active" id="btn-progress-knob"><span class="thumb"></span></button>
+              </div>
+            </div>
+            <div class="setting-item">
+              <div class="setting-item-top" style="align-items: center;">
+                <div style="display: flex; flex-direction: column; gap: 2px;">
+                  <span class="setting-name">Progress bar background</span>
+                  <span style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">Show the uncompleted track rail in the playbar</span>
+                </div>
+                <button class="effect-switch-btn active" id="btn-progress-bg"><span class="thumb"></span></button>
+              </div>
+            </div>
             <div class="setting-item">
               <div class="setting-item-top" style="align-items: center;">
                 <span class="setting-name">Show wave visualizer in bottom bar</span>
                 <button class="effect-switch-btn active" id="btn-bar-wave"><span class="thumb"></span></button>
               </div>
             </div>
-
             <div class="setting-item" id="setting-bar-viz-pos">
               <div class="setting-item-top" style="align-items: center;">
                 <div style="display: flex; flex-direction: column; gap: 2px;">
@@ -896,7 +965,6 @@
                 <button type="button" class="effect-switch-btn" id="btn-viz-connected"><span class="thumb"></span></button>
               </div>
             </div>
-
             <div class="setting-item">
               <div class="setting-item-top" style="align-items: center;">
                 <div style="display: flex; flex-direction: column; gap: 2px;">
@@ -906,7 +974,9 @@
                 <button class="effect-switch-btn active" id="toggle-m3-cover"><span class="thumb"></span></button>
               </div>
             </div>
-
+                </div>
+                <div class="settings-group-title" data-i18n>Visualizer</div>
+                <div class="m3-group" data-group="visualizer">
             <div class="setting-item">
               <div class="setting-item-top" style="align-items: center;">
                 <div style="display: flex; flex-direction: column; gap: 2px;">
@@ -916,7 +986,6 @@
                 <button class="effect-switch-btn active" id="btn-tvk-visualizer-setting"><span class="thumb"></span></button>
               </div>
             </div>
-
             <div class="setting-item">
               <div class="setting-item-top" style="align-items: center;">
                 <div style="display: flex; flex-direction: column; gap: 2px;">
@@ -926,7 +995,6 @@
                 <button class="effect-switch-btn" id="btn-tvk-visualizer-lyrics-setting"><span class="thumb"></span></button>
               </div>
             </div>
-
             <div class="setting-item">
               <div class="setting-item-top" style="align-items: center;">
                 <div style="display: flex; flex-direction: column; gap: 2px;">
@@ -937,7 +1005,6 @@
               </div>
               <input type="range" class="pill-range" id="slider-tvk-vis-opacity-setting" min="10" max="100" step="5" value="85" style="width: 100%; margin-top: 8px;">
             </div>
-
             <div class="setting-item">
               <div class="setting-item-top" style="align-items: center;">
                 <div style="display: flex; flex-direction: column; gap: 2px;">
@@ -948,7 +1015,6 @@
               </div>
               <input type="range" class="pill-range" id="slider-viz-smooth" min="0" max="95" step="1" value="70" style="width: 100%; margin-top: 8px;">
             </div>
-
             <div class="setting-item">
               <div class="setting-item-top" style="align-items: center;">
                 <div style="display: flex; flex-direction: column; gap: 2px;">
@@ -959,7 +1025,9 @@
               </div>
               <input type="range" class="pill-range" id="slider-viz-sens" min="30" max="300" step="5" value="100" style="width: 100%; margin-top: 8px;">
             </div>
-
+                </div>
+                <div class="settings-group-title" data-i18n>Performance</div>
+                <div class="m3-group" data-group="performance">
             <div class="setting-item">
               <div class="setting-item-top" style="align-items: center;">
                 <div style="display: flex; flex-direction: column; gap: 2px;">
@@ -969,7 +1037,6 @@
                 <button class="effect-switch-btn" id="btn-perf-mode"><span class="thumb"></span></button>
               </div>
             </div>
-
             <div class="setting-item" id="setting-battery-saver">
               <div class="setting-item-top" style="align-items: center;">
                 <div style="display: flex; flex-direction: column; gap: 2px;">
@@ -979,17 +1046,15 @@
                 <button class="effect-switch-btn" id="btn-battery-saver"><span class="thumb"></span></button>
               </div>
             </div>
-
             <div class="setting-item">
-              <div class="setting-item-top" style="align-items: center;">
-                <div style="display: flex; flex-direction: column; gap: 2px;">
-                  <span class="setting-name">Lightweight thumbnails</span>
-                  <span style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">Load small cover images in lists instead of full HD frames. Biggest RAM saver for long lists</span>
-                </div>
-                <button class="effect-switch-btn active" data-adv="light_thumbs"><span class="thumb"></span></button>
-              </div>
-            </div>
-
+                    <div class="setting-item-top" style="align-items: center;">
+                      <div style="display: flex; flex-direction: column; gap: 2px;">
+                        <span class="setting-name">Reduce motion</span>
+                        <span style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">Replace spring animations with simple fades</span>
+                      </div>
+                      <button class="effect-switch-btn" data-adv="reduce_motion"><span class="thumb"></span></button>
+                    </div>
+                  </div>
             <div class="setting-item">
               <div class="setting-item-top" style="align-items: center;">
                 <div style="display: flex; flex-direction: column; gap: 2px;">
@@ -997,40 +1062,6 @@
                   <span style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">Frosted glass and blurred artwork. Off saves GPU memory</span>
                 </div>
                 <button class="effect-switch-btn active" data-adv="blur_fx"><span class="thumb"></span></button>
-              </div>
-            </div>
-
-            <div class="setting-item">
-              <div class="setting-item-top" style="align-items: center;">
-                <div style="display: flex; flex-direction: column; gap: 2px;">
-                  <span class="setting-name">Free memory in background</span>
-                  <span style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">Drops cached images 10 seconds after Muriel is minimized or hidden</span>
-                </div>
-                <button class="effect-switch-btn active" data-adv="trim_bg"><span class="thumb"></span></button>
-              </div>
-            </div>
-
-            <div class="setting-item">
-              <div class="setting-item-top" style="align-items: center; justify-content: space-between;">
-                <div style="display: flex; flex-direction: column; gap: 2px;">
-                  <span class="setting-name">Visualizer frame rate</span>
-                  <span style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">Caps the visualizer and progress animation. Lower uses less CPU and GPU</span>
-                </div>
-                <div class="theme-mode-toggle">
-                  <button class="fps-cap-btn" data-fps-cap="0">Native</button>
-                  <button class="fps-cap-btn" data-fps-cap="60">60</button>
-                  <button class="fps-cap-btn" data-fps-cap="30">30</button>
-                </div>
-              </div>
-            </div>
-
-            <div class="setting-item">
-              <div class="setting-item-top" style="align-items: center;">
-                <div style="display: flex; flex-direction: column; gap: 2px;">
-                  <span class="setting-name">Hardware acceleration</span>
-                  <span style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">Uses the GPU for drawing. Off frees GPU memory but uses more CPU. Applies after restart</span>
-                </div>
-                <button class="effect-switch-btn active" id="btn-hw-accel"><span class="thumb"></span></button>
               </div>
             </div>
                 </div>
@@ -1042,7 +1073,8 @@
               </div>
 
               <div class="settings-section" data-cat="theme">
-                <div class="m3-group">
+                <div class="settings-group-title" data-i18n>Colors</div>
+                <div class="m3-group" data-group="colors">
             <div class="setting-item">
               <div class="setting-item-top">
                 <span class="setting-name">Theme mode</span>
@@ -1053,7 +1085,6 @@
                 <button class="theme-mode-btn" data-theme-mode="auto">Auto (album)</button>
               </div>
             </div>
-
             <div class="setting-item" id="setting-palette-style">
               <div class="setting-item-top">
                 <span class="setting-name">Palette style</span>
@@ -1079,7 +1110,6 @@
                 <span class="palette-dot dot-surface" title="Surface"></span>
               </div>
             </div>
-
             <div class="setting-item theme-palette-setting">
               <div class="setting-item-top">
                 <span class="setting-name">Accent color</span>
@@ -1099,7 +1129,6 @@
                 </label>
               </div>
             </div>
-
             <div class="setting-item">
               <div class="setting-item-top">
                 <span class="setting-name">Hue</span>
@@ -1107,7 +1136,6 @@
               </div>
               <div class="sl hue-seg" id="hue-seg"><div class="hue-seg-track"></div><input type="range" class="theme-hue-slider" id="slider-theme-hue" min="0" max="360" step="1" value="270"></div>
             </div>
-
             <div class="setting-item">
               <div class="setting-item-top">
                 <span class="setting-name">Intensity</span>
@@ -1116,7 +1144,6 @@
               <input type="range" class="pill-range" id="slider-theme-intensity" min="0" max="100" step="1" value="0">
               <div class="setting-hints"><span>Gray</span><span>Soft</span><span>Vivid</span></div>
             </div>
-
             <div class="setting-item" id="setting-intensity-bg-row">
               <div class="setting-item-top" style="align-items: center;">
                 <div style="display: flex; flex-direction: column; gap: 2px;">
@@ -1126,7 +1153,6 @@
                 <button class="effect-switch-btn" id="btn-intensity-bg"><span class="thumb"></span></button>
               </div>
             </div>
-
             <div class="setting-item">
               <div class="setting-item-top">
                 <span class="setting-name">Brightness</span>
@@ -1135,8 +1161,6 @@
               <input type="range" class="theme-brightness-slider" id="slider-theme-brightness" min="0" max="100" step="1" value="50">
               <div class="setting-hints"><span>Dark</span><span>Default</span><span>Bright</span></div>
             </div>
-
-
             <div class="setting-item">
               <div class="setting-item-top" style="align-items: center;">
                 <div style="display: flex; flex-direction: column; gap: 2px;">
@@ -1147,8 +1171,50 @@
               </div>
             </div>
                 </div>
-                              <div class="settings-group-title" style="margin: 20px 4px 8px; font-weight: 600;">Background</div>
-                <div class="m3-group">
+                <div class="settings-group-title" data-i18n>Transparency</div>
+                <div class="m3-group" data-group="transparency">
+            <div class="setting-item">
+              <div class="setting-item-top" style="align-items: center; justify-content: space-between;">
+                <span class="setting-name">Interface opacity</span>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <span class="setting-value" id="val-ui-alpha">100%</span>
+                  <button class="btn-outline-pill" id="btn-reset-ui-alpha" style="padding: 2px 10px; font-size: calc(12px * var(--font-scale, 1));">Reset</button>
+                </div>
+              </div>
+              <input type="range" class="pill-range" id="slider-ui-alpha" min="20" max="100" step="1" value="20">
+              <div class="setting-hints"><span>20%</span><span>Default</span><span>100%</span></div>
+            </div>
+            <div class="setting-item">
+              <div class="setting-item-top" style="align-items: center; justify-content: space-between;">
+                <span class="setting-name">Text opacity</span>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <span class="setting-value" id="val-text-alpha">100%</span>
+                  <button class="btn-outline-pill" id="btn-reset-text-alpha" style="padding: 2px 10px; font-size: calc(12px * var(--font-scale, 1));">Reset</button>
+                </div>
+              </div>
+              <input type="range" class="pill-range" id="slider-text-alpha" min="1" max="100" step="1" value="100">
+              <div class="setting-hints"><span>1%</span><span>Default</span><span>100%</span></div>
+            </div>
+            <div class="setting-item">
+              <div class="setting-item-top" style="align-items: center;">
+                <div style="display: flex; flex-direction: column; gap: 2px;">
+                  <span class="setting-name">Glass blur</span>
+                  <span style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">Frosts see-through panels so your background shows through softly. Lower the interface opacity to see it. Uses extra GPU</span>
+                </div>
+                <button class="effect-switch-btn" data-adv="glass_blur"><span class="thumb"></span></button>
+              </div>
+            </div>
+            <div class="setting-item" id="setting-glass-strength">
+              <div class="setting-item-top">
+                <span class="setting-name">Glass blur strength</span>
+                <span class="setting-value" id="val-glass-blur">16px</span>
+              </div>
+              <input type="range" class="pill-range" id="slider-glass-blur" min="4" max="40" step="1" value="16">
+              <div class="setting-hints"><span>4px</span><span>Default</span><span>40px</span></div>
+            </div>
+                </div>
+                <div class="settings-group-title" data-i18n>Background</div>
+                <div class="m3-group" data-group="background">
             <div class="setting-item">
               <div class="setting-item-top" style="align-items: center; justify-content: space-between;">
                 <div style="display: flex; flex-direction: column; gap: 2px;">
@@ -1161,7 +1227,6 @@
                 </div>
               </div>
             </div>
-
             <div class="setting-item">
               <div class="setting-item-top">
                 <span class="setting-name">Opacity</span>
@@ -1170,7 +1235,6 @@
               <input type="range" class="pill-range" id="slider-bg-opacity" min="5" max="100" step="5" value="100">
               <div class="setting-hints"><span>5%</span><span>50%</span><span>100%</span></div>
             </div>
-
             <div class="setting-item">
               <div class="setting-item-top">
                 <span class="setting-name">Blur</span>
@@ -1179,7 +1243,6 @@
               <input type="range" class="pill-range" id="slider-bg-blur" min="0" max="40" step="1" value="0">
               <div class="setting-hints"><span>0px</span><span>20px</span><span>40px</span></div>
             </div>
-
             <div class="setting-item">
               <div class="setting-item-top" style="align-items: center;">
                 <div style="display: flex; flex-direction: column; gap: 2px;">
@@ -1189,7 +1252,6 @@
                 <button class="effect-switch-btn active" data-adv="cover_bg"><span class="thumb"></span></button>
               </div>
             </div>
-
             <div class="setting-item">
               <div class="setting-item-top">
                 <span class="setting-name">Cover background brightness</span>
@@ -1198,10 +1260,37 @@
               <input type="range" class="pill-range" id="slider-cover-bg-brightness" min="5" max="100" step="5" value="45">
               <div class="setting-hints"><span>5%</span><span>50%</span><span>100%</span></div>
             </div>
+            <div class="setting-item">
+                    <div class="setting-item-top" style="align-items: center;">
+                      <div style="display: flex; flex-direction: column; gap: 2px;">
+                        <span class="setting-name">Mesh follows theme intensity</span>
+                        <span style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">Low intensity makes the gradient colors grayer</span>
+                      </div>
+                      <button class="effect-switch-btn active" data-adv="mesh_follow_intensity"><span class="thumb"></span></button>
+                    </div>
+                  </div>
+            <div class="setting-item">
+                    <div class="setting-item-top" style="align-items: center;">
+                      <div style="display: flex; flex-direction: column; gap: 2px;">
+                        <span class="setting-name">Mesh color from current cover</span>
+                        <span style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">Off: uses the accent color of the theme</span>
+                      </div>
+                      <button class="effect-switch-btn" data-adv="mesh_cover_color"><span class="thumb"></span></button>
+                    </div>
+                  </div>
+            <div class="setting-item">
+                    <div class="setting-item-top" style="align-items: center;">
+                      <div style="display: flex; flex-direction: column; gap: 2px;">
+                        <span class="setting-name">Lower interface opacity for backgrounds</span>
+                        <span style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">Sets interface opacity to 50% when you add a background. You can change it afterwards.</span>
+                      </div>
+                      <button class="effect-switch-btn active" data-adv="ui_alpha_auto"><span class="thumb"></span></button>
+                    </div>
+                  </div>
                 </div>
-                <div class="settings-group-title" style="margin: 20px 4px 8px; font-weight: 600;" data-i18n>Home button icon</div>
-                <div class="m3-group">
-                  <div class="setting-item" id="setting-home-icon-row">
+                <div class="settings-group-title" data-i18n>Home button icon</div>
+                <div class="m3-group" data-group="home-icon">
+            <div class="setting-item" id="setting-home-icon-row">
                     <div style="display: flex; flex-direction: column; gap: 12px; width: 100%;">
                       <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
                         <div style="display: flex; flex-direction: column; gap: 2px;">
@@ -1218,58 +1307,22 @@
 
 
               <div class="settings-section" data-cat="tracks">
-                <div class="m3-group">
+                <div class="settings-group-title" data-i18n>Playback</div>
+                <div class="m3-group" data-group="playback">
             <div class="setting-item">
-              <div class="setting-item-top" style="align-items: center;">
-                <span class="setting-name">Show artists in search</span>
-                <button class="effect-switch-btn active" id="btn-search-artists"><span class="thumb"></span></button>
+              <div class="setting-item-top">
+                <span class="setting-name">Crossfade</span>
+                <span class="setting-value" id="val-crossfade" data-i18n>Off</span>
               </div>
+              <input type="range" class="pill-range" id="slider-crossfade" min="0" max="12" step="1" value="0">
+              <div class="setting-hints"><span>Off</span><span>6s</span><span>12s</span></div>
             </div>
-
-            <div class="setting-item">
-              <div class="setting-item-top" style="align-items: center;">
-                <span class="setting-name">Show My files tab</span>
-                <button class="effect-switch-btn active" id="btn-show-local"><span class="thumb"></span></button>
-              </div>
-            </div>
-
-            <div class="setting-item">
-              <div class="setting-item-top" style="align-items: center;">
-                <div style="display: flex; flex-direction: column; gap: 2px;">
-                  <span class="setting-name">Show Albums tab</span>
-                  <span style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">Save albums from the album page and find them in their own tab</span>
-                </div>
-                <button type="button" class="effect-switch-btn" id="btn-show-albums"><span class="thumb"></span></button>
-              </div>
-            </div>
-
-            <div class="setting-item">
-              <div class="setting-item-top" style="align-items: center;">
-                <div style="display: flex; flex-direction: column; gap: 2px;">
-                  <span class="setting-name">Show Artists tab</span>
-                  <span style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">The artists you follow, in their own tab</span>
-                </div>
-                <button type="button" class="effect-switch-btn" id="btn-show-artists"><span class="thumb"></span></button>
-              </div>
-            </div>
-
-            <div class="setting-item">
-              <div class="setting-item-top" style="align-items: center;">
-                <div style="display: flex; flex-direction: column; gap: 2px;">
-                  <span class="setting-name">Show explicit tag [E] on songs</span>
-                  <span style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">An [E] next to songs with explicit lyrics</span>
-                </div>
-                <button type="button" class="effect-switch-btn active" id="toggle-explicit-tag"><span class="thumb"></span></button>
-              </div>
-            </div>
-
             <div class="setting-item">
               <div class="setting-item-top" style="align-items: center;">
                 <span class="setting-name">Smooth preset transitions</span>
                 <button class="effect-switch-btn active" id="btn-smooth-presets"><span class="thumb"></span></button>
               </div>
             </div>
-
             <div class="setting-item">
               <div class="setting-item-top" style="align-items: center;">
                 <div style="display: flex; flex-direction: column; gap: 2px;">
@@ -1279,59 +1332,70 @@
                 <button class="effect-switch-btn" id="btn-persist-sound-settings"><span class="thumb"></span></button>
               </div>
             </div>
-
-            <div class="setting-item">
-              <div class="setting-item-top" style="align-items: center;">
-                <span class="setting-name">Wavy progress bar</span>
-                <button class="effect-switch-btn active" id="btn-wavy-progress"><span class="thumb"></span></button>
-              </div>
-            </div>
-
-            <div class="setting-item">
-              <div class="setting-item-top" style="align-items: center;">
-                <span class="setting-name">Progress bar knob</span>
-                <button class="effect-switch-btn active" id="btn-progress-knob"><span class="thumb"></span></button>
-              </div>
-            </div>
-
             <div class="setting-item">
               <div class="setting-item-top" style="align-items: center;">
                 <div style="display: flex; flex-direction: column; gap: 2px;">
-                  <span class="setting-name">Progress bar background</span>
-                  <span style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">Show the uncompleted track rail in the playbar</span>
+                  <span class="setting-name">Show explicit tag [E] on songs</span>
+                  <span style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">An [E] next to songs with explicit lyrics</span>
                 </div>
-                <button class="effect-switch-btn active" id="btn-progress-bg"><span class="thumb"></span></button>
+                <button type="button" class="effect-switch-btn active" id="toggle-explicit-tag"><span class="thumb"></span></button>
               </div>
             </div>
-
-            <div class="setting-item">
-              <div class="setting-item-top">
-                <span class="setting-name">Crossfade</span>
-                <span class="setting-value" id="val-crossfade" data-i18n>Off</span>
-              </div>
-              <input type="range" class="pill-range" id="slider-crossfade" min="0" max="12" step="1" value="0">
-              <div class="setting-hints"><span>Off</span><span>6s</span><span>12s</span></div>
-            </div>
-
-            <div class="setting-item" id="setting-stream-timeout-row">
+                </div>
+                <div class="settings-group-title" data-i18n>Lyrics</div>
+                <div class="m3-group" data-group="lyrics">
+            <div class="setting-item" id="setting-lyrics-source-row">
               <div class="setting-item-top">
                 <div style="display: flex; flex-direction: column; gap: 2px;">
-                  <span class="setting-name">Stream timeout</span>
-                  <span style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">How long a song may sit without loading anything before Muriel gives up on it</span>
+                  <span class="setting-name">Lyrics source</span>
+                  <span style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">Preferred lyrics provider with automatic fallback</span>
                 </div>
-                <span class="setting-value" id="val-stream-timeout">12s</span>
               </div>
-              <input type="range" class="pill-range" id="slider-stream-timeout" min="5" max="30" step="1" value="12">
-              <div class="setting-hints"><span>5s</span><span>17s</span><span>30s</span></div>
+              <div class="m3-dropdown" id="lyrics-source-dropdown">
+                <button class="m3-dropdown-trigger" id="lyrics-source-trigger" type="button">
+                  <span id="lyrics-source-label">LRCLIB</span>
+                  <svg class="m3-dropdown-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                </button>
+                <div class="m3-dropdown-menu" id="lyrics-source-menu">
+                  <button class="m3-dropdown-option selected" data-value="lrclib" type="button">LRCLIB</button>
+                  <button class="m3-dropdown-option" data-value="genius" type="button">Genius</button>
+                </div>
+              </div>
             </div>
-
+            <div class="setting-item" id="setting-word-source-row">
+              <div class="setting-item-top">
+                <div style="display: flex; flex-direction: column; gap: 2px;">
+                  <span class="setting-name">Word-by-word source</span>
+                  <span style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">Source for karaoke word timings</span>
+                </div>
+              </div>
+              <div class="m3-dropdown" id="word-source-dropdown">
+                <button class="m3-dropdown-trigger" id="word-source-trigger" type="button">
+                  <span id="word-source-label">Auto</span>
+                  <svg class="m3-dropdown-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                </button>
+                <div class="m3-dropdown-menu" id="word-source-menu">
+                  <button class="m3-dropdown-option selected" data-value="auto" type="button">Auto</button>
+                  <button class="m3-dropdown-option" data-value="netease" type="button">NetEase</button>
+                  <button class="m3-dropdown-option" data-value="estimate" type="button">Estimate only</button>
+                </div>
+              </div>
+            </div>
+            <div class="setting-item">
+                    <div class="setting-item-top" style="align-items: center;">
+                      <div style="display: flex; flex-direction: column; gap: 2px;">
+                        <span class="setting-name">Online lyrics lookup</span>
+                        <span style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">Fetch synced and plain lyrics from network providers</span>
+                      </div>
+                      <button class="effect-switch-btn active" data-adv="online_lyrics"><span class="thumb"></span></button>
+                    </div>
+                  </div>
             <div class="setting-item">
               <div class="setting-item-top" style="align-items: center;">
                 <span class="setting-name">Lyrics translation</span>
                 <button class="effect-switch-btn" id="btn-tr-enabled"><span class="thumb"></span></button>
               </div>
             </div>
-
             <div class="setting-item" id="setting-tr-lang-row">
               <div class="setting-item-top">
                 <span class="setting-name">Translation language</span>
@@ -1360,14 +1424,15 @@
                 </div>
               </div>
             </div>
-
             <div class="setting-item" id="setting-tr-auto-row">
               <div class="setting-item-top" style="align-items: center;">
                 <span class="setting-name">Auto-translate</span>
                 <button class="effect-switch-btn" id="btn-tr-auto"><span class="thumb"></span></button>
               </div>
             </div>
-
+                </div>
+                <div class="settings-group-title" data-i18n>Lyrics display</div>
+                <div class="m3-group" data-group="lyrics-display">
             <div class="setting-item" id="setting-lyrics-ease-row">
               <div class="setting-item-top">
                 <div style="display: flex; flex-direction: column; gap: 2px;">
@@ -1391,7 +1456,6 @@
                 </div>
               </div>
             </div>
-
             <div class="setting-item" id="setting-lyrics-speed-row">
               <div class="setting-item-top">
                 <span class="setting-name">Lyrics animation speed</span>
@@ -1400,46 +1464,15 @@
               <input type="range" class="pill-range" id="slider-lyrics-speed" min="5" max="25" step="1" value="10">
               <div class="setting-hints"><span>0.5x (Slow)</span><span>1.0x (Normal)</span><span>2.5x (Fast)</span></div>
             </div>
-
-            <div class="setting-item" id="setting-lyrics-source-row">
-              <div class="setting-item-top">
-                <div style="display: flex; flex-direction: column; gap: 2px;">
-                  <span class="setting-name">Lyrics source</span>
-                  <span style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">Preferred lyrics provider with automatic fallback</span>
-                </div>
-              </div>
-              <div class="m3-dropdown" id="lyrics-source-dropdown">
-                <button class="m3-dropdown-trigger" id="lyrics-source-trigger" type="button">
-                  <span id="lyrics-source-label">LRCLIB</span>
-                  <svg class="m3-dropdown-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
-                </button>
-                <div class="m3-dropdown-menu" id="lyrics-source-menu">
-                  <button class="m3-dropdown-option selected" data-value="lrclib" type="button">LRCLIB</button>
-                  <button class="m3-dropdown-option" data-value="genius" type="button">Genius</button>
-                </div>
-              </div>
-            </div>
-
-            <div class="setting-item" id="setting-word-source-row">
-              <div class="setting-item-top">
-                <div style="display: flex; flex-direction: column; gap: 2px;">
-                  <span class="setting-name">Word-by-word source</span>
-                  <span style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">Source for karaoke word timings</span>
-                </div>
-              </div>
-              <div class="m3-dropdown" id="word-source-dropdown">
-                <button class="m3-dropdown-trigger" id="word-source-trigger" type="button">
-                  <span id="word-source-label">Auto</span>
-                  <svg class="m3-dropdown-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
-                </button>
-                <div class="m3-dropdown-menu" id="word-source-menu">
-                  <button class="m3-dropdown-option selected" data-value="auto" type="button">Auto</button>
-                  <button class="m3-dropdown-option" data-value="netease" type="button">NetEase</button>
-                  <button class="m3-dropdown-option" data-value="estimate" type="button">Estimate only</button>
-                </div>
-              </div>
-            </div>
-
+            <div class="setting-item">
+                    <div class="setting-item-top" style="align-items: center;">
+                      <div style="display: flex; flex-direction: column; gap: 2px;">
+                        <span class="setting-name">Karaoke word highlighting</span>
+                        <span style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">Highlight individual words in synchronized lyrics</span>
+                      </div>
+                      <button class="effect-switch-btn active" data-adv="karaoke_words"><span class="thumb"></span></button>
+                    </div>
+                  </div>
             <div class="setting-item" id="setting-lyrics-wordstyle-row">
               <div class="setting-item-top">
                 <div style="display: flex; flex-direction: column; gap: 2px;">
@@ -1458,7 +1491,6 @@
                 </div>
               </div>
             </div>
-
             <div class="setting-item" id="setting-lyrics-tightness-row">
               <div class="setting-item-top">
                 <span class="setting-name">Gradient tightness</span>
@@ -1467,23 +1499,21 @@
               <input type="range" class="pill-range" id="slider-lyrics-tightness" min="2" max="24" step="2" value="2">
               <div class="setting-hints"><span>2% (Sharp)</span><span>Default</span><span>24% (Soft)</span></div>
             </div>
+            <div class="setting-item">
+                    <div class="setting-item-top" style="align-items: center;">
+                      <div style="display: flex; flex-direction: column; gap: 2px;">
+                        <span class="setting-name">Auto-scroll synced lyrics</span>
+                        <span style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">Smoothly follow the active lyric line during playback</span>
+                      </div>
+                      <button class="effect-switch-btn active" data-adv="lyrics_autoscroll"><span class="thumb"></span></button>
+                    </div>
+                  </div>
                 </div>
               </div>
 
           <div class="settings-section" data-cat="integrations">
-            <span class="settings-section-title">Integrations</span>
-
-            <div class="m3-group">
-
-            <div class="setting-item" id="setting-discord-row" style="display: none;">
-              <div class="setting-item-top" style="align-items: center;">
-                <div style="display: flex; flex-direction: column; gap: 2px;">
-                  <span class="setting-name" data-i18n>Show on Discord</span>
-                  <span style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);" data-i18n>Your profile shows the song you're listening to while Discord is open on this computer.</span>
-                </div>
-                <button class="effect-switch-btn" id="btn-discord-presence" type="button"><span class="thumb"></span></button>
-              </div>
-            </div>
+                <div class="settings-group-title" data-i18n>Listening activity</div>
+                <div class="m3-group" data-group="activity">
             <div class="setting-item" id="card-lastfm">
               <div class="setting-item-top" style="align-items: center; justify-content: space-between;">
                 <div style="display: flex; align-items: center; gap: 10px; min-width: 0;">
@@ -1503,7 +1533,18 @@
                 </div>
               </div>
             </div>
-
+            <div class="setting-item" id="setting-discord-row" style="display: none;">
+              <div class="setting-item-top" style="align-items: center;">
+                <div style="display: flex; flex-direction: column; gap: 2px;">
+                  <span class="setting-name" data-i18n>Show on Discord</span>
+                  <span style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);" data-i18n>Your profile shows the song you're listening to while Discord is open on this computer.</span>
+                </div>
+                <button class="effect-switch-btn" id="btn-discord-presence" type="button"><span class="thumb"></span></button>
+              </div>
+            </div>
+                </div>
+                <div class="settings-group-title" data-i18n>Import playlists from</div>
+                <div class="m3-group" data-group="import">
             <div class="setting-item" id="card-spotify-import">
               <div class="setting-item-top" style="align-items: center; justify-content: space-between;">
                 <div style="display: flex; align-items: center; gap: 10px;">
@@ -1515,7 +1556,6 @@
                 <button class="btn-pill-primary" id="btn-open-spotify-import" type="button">Import</button>
               </div>
             </div>
-
             <div class="setting-item" id="card-yt-import">
               <div class="setting-item-top" style="align-items: center; justify-content: space-between;">
                 <div style="display: flex; align-items: center; gap: 10px;">
@@ -1529,7 +1569,6 @@
                 <button class="btn-pill-primary btn-open-link-import" id="btn-open-link-import" data-platform="youtube" type="button">Import</button>
               </div>
             </div>
-
             <div class="setting-item" id="card-ytm-import">
               <div class="setting-item-top" style="align-items: center; justify-content: space-between;">
                 <div style="display: flex; align-items: center; gap: 10px;">
@@ -1543,7 +1582,6 @@
                 <button class="btn-pill-primary btn-open-link-import" id="btn-open-ytm-import" data-platform="ytmusic" type="button">Import</button>
               </div>
             </div>
-
             <div class="setting-item" id="card-sc-import">
               <div class="setting-item-top" style="align-items: center; justify-content: space-between;">
                 <div style="display: flex; align-items: center; gap: 10px;">
@@ -1557,7 +1595,6 @@
                 <button class="btn-pill-primary btn-open-link-import" id="btn-open-sc-import" data-platform="soundcloud" type="button">Import</button>
               </div>
             </div>
-
             <div class="setting-item" id="card-apple-import">
               <div class="setting-item-top" style="align-items: center; justify-content: space-between;">
                 <div style="display: flex; align-items: center; gap: 10px;">
@@ -1571,7 +1608,6 @@
                 <button class="btn-pill-primary" id="btn-open-apple-import" type="button">Import</button>
               </div>
             </div>
-
             <div class="setting-item" id="card-yandex-import">
               <div class="setting-item-top" style="align-items: center; justify-content: space-between;">
                 <div style="display: flex; align-items: center; gap: 10px;">
@@ -1583,7 +1619,6 @@
                 <button class="btn-pill-primary btn-open-link-import" id="btn-open-yandex-import" data-platform="yandex" type="button">Import</button>
               </div>
             </div>
-
             <div class="setting-item" id="card-json-import">
               <div class="setting-item-top" style="align-items: center; justify-content: space-between;">
                 <div style="display: flex; align-items: center; gap: 10px;">
@@ -1600,14 +1635,27 @@
                 <button class="btn-pill-primary" id="btn-open-json-import" type="button">Import</button>
               </div>
             </div>
-            </div>
-          </div>
+                </div>
+              </div>
 
 
           <div class="settings-section" data-cat="storage">
-            <span class="settings-section-title">Storage</span>
-
-            <div class="m3-group">
+                <div class="settings-group-title" data-i18n>Offline songs</div>
+                <div class="m3-group" data-group="offline">
+            <div class="setting-item" id="offline-storage-item">
+              <div class="setting-item-top" style="align-items: center; justify-content: space-between;">
+                <div style="display: flex; align-items: center; gap: 12px;">
+                  <div style="width: 32px; height: 32px; border-radius: 50%; background: var(--md-sys-color-surface-container-high); display: flex; align-items: center; justify-content: center; color: var(--md-sys-color-primary);">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                  </div>
+                  <div style="display: flex; flex-direction: column;">
+                    <span class="setting-name">Offline library</span>
+                    <span id="offline-library-size" data-i18n style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">Calculating...</span>
+                  </div>
+                </div>
+                <button class="btn-outline-pill" id="btn-clear-offline" style="padding: 6px 14px; font-size: calc(12px * var(--font-scale, 1));">Clear</button>
+              </div>
+            </div>
             <div class="setting-item clickable clear-cache-row" id="btn-open-clear-cache">
               <div class="setting-item-top" style="cursor: pointer; align-items: center;">
                 <div style="display: flex; align-items: center; gap: 12px;">
@@ -1623,38 +1671,9 @@
                 </div>
               </div>
             </div>
-
-            <div class="setting-item" id="tools-row">
-              <div class="setting-item-top" style="align-items: center; justify-content: space-between;">
-                <div style="display: flex; align-items: center; gap: 12px;">
-                  <div style="width: 32px; height: 32px; border-radius: 50%; background: var(--md-sys-color-surface-container-high); display: flex; align-items: center; justify-content: center; color: var(--md-sys-color-primary);">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
-                  </div>
-                  <div style="display: flex; flex-direction: column;">
-                    <span class="setting-name">Required tools</span>
-                    <span style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">yt-dlp and ffmpeg</span>
-                    <span id="tools-status-text" data-i18n style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);"></span>
-                  </div>
                 </div>
-                <button class="btn-pill-primary" id="btn-install-tools" style="padding: 6px 14px; font-size: calc(12px * var(--font-scale, 1));">Download</button>
-              </div>
-            </div>
-
-            <div class="setting-item" id="offline-storage-item">
-              <div class="setting-item-top" style="align-items: center; justify-content: space-between;">
-                <div style="display: flex; align-items: center; gap: 12px;">
-                  <div style="width: 32px; height: 32px; border-radius: 50%; background: var(--md-sys-color-surface-container-high); display: flex; align-items: center; justify-content: center; color: var(--md-sys-color-primary);">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                  </div>
-                  <div style="display: flex; flex-direction: column;">
-                    <span class="setting-name">Offline library</span>
-                    <span id="offline-library-size" data-i18n style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">Calculating...</span>
-                  </div>
-                </div>
-                <button class="btn-outline-pill" id="btn-clear-offline" style="padding: 6px 14px; font-size: calc(12px * var(--font-scale, 1));">Clear</button>
-              </div>
-            </div>
-
+                <div class="settings-group-title" data-i18n>Folders</div>
+                <div class="m3-group" data-group="folders">
             <div class="setting-item" id="music-folder-item">
               <div class="setting-item-top" style="align-items: center; justify-content: space-between;">
                 <div style="display: flex; align-items: center; gap: 12px;">
@@ -1669,7 +1688,6 @@
                 <button class="btn-outline-pill" id="btn-change-music-folder" data-i18n style="padding: 6px 14px; font-size: calc(12px * var(--font-scale, 1)); flex-shrink: 0;">Change</button>
               </div>
             </div>
-
             <div class="setting-item" id="download-folder-item">
               <div class="setting-item-top" style="align-items: center; justify-content: space-between;">
                 <div style="display: flex; align-items: center; gap: 12px;">
@@ -1687,37 +1705,9 @@
                 </div>
               </div>
             </div>
-
-            <div class="setting-item" id="export-all-playlists-item">
-              <div class="setting-item-top" style="align-items: center; justify-content: space-between;">
-                <div style="display: flex; align-items: center; gap: 12px; min-width: 0;">
-                  <div style="width: 32px; height: 32px; border-radius: 50%; background: var(--md-sys-color-surface-container-high); display: flex; align-items: center; justify-content: center; color: var(--md-sys-color-primary); flex-shrink: 0;">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-                  </div>
-                  <div style="display: flex; flex-direction: column; min-width: 0;">
-                    <span class="setting-name" data-i18n>Export all playlists</span>
-                    <span style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);" data-i18n>Every playlist in one JSON file, readable by Muriel and Riff</span>
-                  </div>
                 </div>
-                <button class="btn-outline-pill" id="btn-export-all-playlists" style="padding: 6px 14px; font-size: calc(12px * var(--font-scale, 1)); flex-shrink: 0;" data-i18n>Export</button>
-              </div>
-            </div>
-
-            <div class="setting-item" id="import-json-playlists-item">
-              <div class="setting-item-top" style="align-items: center; justify-content: space-between;">
-                <div style="display: flex; align-items: center; gap: 12px; min-width: 0;">
-                  <div style="width: 32px; height: 32px; border-radius: 50%; background: var(--md-sys-color-surface-container-high); display: flex; align-items: center; justify-content: center; color: var(--md-sys-color-primary); flex-shrink: 0;">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                  </div>
-                  <div style="display: flex; flex-direction: column; min-width: 0;">
-                    <span class="setting-name" data-i18n>Import playlists</span>
-                    <span style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);" data-i18n>From a JSON file exported by Muriel or Riff</span>
-                  </div>
-                </div>
-                <button class="btn-outline-pill" id="btn-import-json-playlists" style="padding: 6px 14px; font-size: calc(12px * var(--font-scale, 1)); flex-shrink: 0;" data-i18n>Import</button>
-              </div>
-            </div>
-
+                <div class="settings-group-title" data-i18n>Backups</div>
+                <div class="m3-group" data-group="backups">
             <div class="setting-item" id="export-account-item">
               <div class="setting-item-top" style="align-items: center; justify-content: space-between;">
                 <div style="display: flex; align-items: center; gap: 12px; min-width: 0;">
@@ -1732,7 +1722,6 @@
                 <button class="btn-outline-pill" id="btn-export-account" style="padding: 6px 14px; font-size: calc(12px * var(--font-scale, 1)); flex-shrink: 0;" data-i18n>Export</button>
               </div>
             </div>
-
             <div class="setting-item" id="import-account-item">
               <div class="setting-item-top" style="align-items: center; justify-content: space-between;">
                 <div style="display: flex; align-items: center; gap: 12px; min-width: 0;">
@@ -1747,23 +1736,85 @@
                 <button class="btn-outline-pill" id="btn-import-account" style="padding: 6px 14px; font-size: calc(12px * var(--font-scale, 1)); flex-shrink: 0;" data-i18n>Import</button>
               </div>
             </div>
+            <div class="setting-item" id="export-all-playlists-item">
+              <div class="setting-item-top" style="align-items: center; justify-content: space-between;">
+                <div style="display: flex; align-items: center; gap: 12px; min-width: 0;">
+                  <div style="width: 32px; height: 32px; border-radius: 50%; background: var(--md-sys-color-surface-container-high); display: flex; align-items: center; justify-content: center; color: var(--md-sys-color-primary); flex-shrink: 0;">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                  </div>
+                  <div style="display: flex; flex-direction: column; min-width: 0;">
+                    <span class="setting-name" data-i18n>Export all playlists</span>
+                    <span style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);" data-i18n>Every playlist in one JSON file, readable by Muriel and Riff</span>
+                  </div>
+                </div>
+                <button class="btn-outline-pill" id="btn-export-all-playlists" style="padding: 6px 14px; font-size: calc(12px * var(--font-scale, 1)); flex-shrink: 0;" data-i18n>Export</button>
+              </div>
             </div>
-          </div>
+            <div class="setting-item" id="import-json-playlists-item">
+              <div class="setting-item-top" style="align-items: center; justify-content: space-between;">
+                <div style="display: flex; align-items: center; gap: 12px; min-width: 0;">
+                  <div style="width: 32px; height: 32px; border-radius: 50%; background: var(--md-sys-color-surface-container-high); display: flex; align-items: center; justify-content: center; color: var(--md-sys-color-primary); flex-shrink: 0;">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                  </div>
+                  <div style="display: flex; flex-direction: column; min-width: 0;">
+                    <span class="setting-name" data-i18n>Import playlists</span>
+                    <span style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);" data-i18n>From a JSON file exported by Muriel or Riff</span>
+                  </div>
+                </div>
+                <button class="btn-outline-pill" id="btn-import-json-playlists" style="padding: 6px 14px; font-size: calc(12px * var(--font-scale, 1)); flex-shrink: 0;" data-i18n>Import</button>
+              </div>
+            </div>
+                </div>
+              </div>
 
 
           <div class="settings-section" id="settings-section-advanced" data-cat="advanced">
-            <button class="adv-section-header" id="btn-toggle-adv-section" type="button">
-              <span class="settings-section-title" style="margin-bottom: 0;">Advanced</span>
-              <svg class="adv-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <polyline points="6 9 12 15 18 9"></polyline>
-              </svg>
-            </button>
-
-            <div class="adv-collapsible-wrapper" id="adv-collapsible-wrapper">
-              <div class="adv-collapsible-inner">
-                <div class="adv-items-list">
-                  <div class="m3-group">
-                  <div class="setting-item">
+                <div class="settings-group-title" data-i18n>Performance tuning</div>
+                <div class="m3-group" data-group="perf-tuning">
+            <div class="setting-item">
+              <div class="setting-item-top" style="align-items: center;">
+                <div style="display: flex; flex-direction: column; gap: 2px;">
+                  <span class="setting-name">Lightweight thumbnails</span>
+                  <span style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">Load small cover images in lists instead of full HD frames. Biggest RAM saver for long lists</span>
+                </div>
+                <button class="effect-switch-btn active" data-adv="light_thumbs"><span class="thumb"></span></button>
+              </div>
+            </div>
+            <div class="setting-item">
+              <div class="setting-item-top" style="align-items: center;">
+                <div style="display: flex; flex-direction: column; gap: 2px;">
+                  <span class="setting-name">Free memory in background</span>
+                  <span style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">Drops cached images 10 seconds after Muriel is minimized or hidden</span>
+                </div>
+                <button class="effect-switch-btn active" data-adv="trim_bg"><span class="thumb"></span></button>
+              </div>
+            </div>
+            <div class="setting-item">
+              <div class="setting-item-top" style="align-items: center; justify-content: space-between;">
+                <div style="display: flex; flex-direction: column; gap: 2px;">
+                  <span class="setting-name">Visualizer frame rate</span>
+                  <span style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">Caps the visualizer and progress animation. Lower uses less CPU and GPU</span>
+                </div>
+                <div class="theme-mode-toggle">
+                  <button class="fps-cap-btn" data-fps-cap="0">Native</button>
+                  <button class="fps-cap-btn" data-fps-cap="60">60</button>
+                  <button class="fps-cap-btn" data-fps-cap="30">30</button>
+                </div>
+              </div>
+            </div>
+            <div class="setting-item">
+              <div class="setting-item-top" style="align-items: center;">
+                <div style="display: flex; flex-direction: column; gap: 2px;">
+                  <span class="setting-name">Hardware acceleration</span>
+                  <span style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">Uses the GPU for drawing. Off frees GPU memory but uses more CPU. Applies after restart</span>
+                </div>
+                <button class="effect-switch-btn active" id="btn-hw-accel"><span class="thumb"></span></button>
+              </div>
+            </div>
+                </div>
+                <div class="settings-group-title" data-i18n>System</div>
+                <div class="m3-group" data-group="system">
+            <div class="setting-item">
                     <div class="setting-item-top" style="align-items: center;">
                       <div style="display: flex; flex-direction: column; gap: 2px;">
                         <span class="setting-name">Minimize to tray on close</span>
@@ -1772,8 +1823,7 @@
                       <button class="effect-switch-btn active" id="btn-tray-on-close"><span class="thumb"></span></button>
                     </div>
                   </div>
-
-                  <div class="setting-item" id="setting-win-media-keys" style="display: none;">
+            <div class="setting-item" id="setting-win-media-keys" style="display: none;">
                     <div class="setting-item-top" style="align-items: center;">
                       <div style="display: flex; flex-direction: column; gap: 2px;">
                         <span class="setting-name">Capture media keys (Windows)</span>
@@ -1782,74 +1832,33 @@
                       <button class="effect-switch-btn active" id="btn-win-media-keys"><span class="thumb"></span></button>
                     </div>
                   </div>
-
-                  <div class="setting-item">
+            <div class="setting-item" id="tools-row">
+              <div class="setting-item-top" style="align-items: center; justify-content: space-between;">
+                <div style="display: flex; align-items: center; gap: 12px;">
+                  <div style="width: 32px; height: 32px; border-radius: 50%; background: var(--md-sys-color-surface-container-high); display: flex; align-items: center; justify-content: center; color: var(--md-sys-color-primary);">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
                   </div>
-
-                  <div class="setting-item">
-                    <div class="setting-item-top" style="align-items: center;">
-                      <div style="display: flex; flex-direction: column; gap: 2px;">
-                        <span class="setting-name">Online lyrics lookup</span>
-                        <span style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">Fetch synced and plain lyrics from network providers</span>
-                      </div>
-                      <button class="effect-switch-btn active" data-adv="online_lyrics"><span class="thumb"></span></button>
-                    </div>
+                  <div style="display: flex; flex-direction: column;">
+                    <span class="setting-name">Required tools</span>
+                    <span style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">yt-dlp and ffmpeg</span>
+                    <span id="tools-status-text" data-i18n style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);"></span>
                   </div>
-
-                  <div class="setting-item">
-                    <div class="setting-item-top" style="align-items: center;">
-                      <div style="display: flex; flex-direction: column; gap: 2px;">
-                        <span class="setting-name">Karaoke word highlighting</span>
-                        <span style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">Highlight individual words in synchronized lyrics</span>
-                      </div>
-                      <button class="effect-switch-btn active" data-adv="karaoke_words"><span class="thumb"></span></button>
-                    </div>
-                  </div>
-
-                  <div class="setting-item">
-                    <div class="setting-item-top" style="align-items: center;">
-                      <div style="display: flex; flex-direction: column; gap: 2px;">
-                        <span class="setting-name">Auto-scroll synced lyrics</span>
-                        <span style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">Smoothly follow the active lyric line during playback</span>
-                      </div>
-                      <button class="effect-switch-btn active" data-adv="lyrics_autoscroll"><span class="thumb"></span></button>
-                    </div>
-                  </div>
-
-                  <div class="setting-item">
-                  </div>
-
-                  <div class="setting-item">
-                    <div class="setting-item-top" style="align-items: center;">
-                      <div style="display: flex; flex-direction: column; gap: 2px;">
-                        <span class="setting-name">Mesh follows theme intensity</span>
-                        <span style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">Low intensity makes the gradient colors grayer</span>
-                      </div>
-                      <button class="effect-switch-btn active" data-adv="mesh_follow_intensity"><span class="thumb"></span></button>
-                    </div>
-                  </div>
-
-                  <div class="setting-item">
-                    <div class="setting-item-top" style="align-items: center;">
-                      <div style="display: flex; flex-direction: column; gap: 2px;">
-                        <span class="setting-name">Mesh color from current cover</span>
-                        <span style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">Off: uses the accent color of the theme</span>
-                      </div>
-                      <button class="effect-switch-btn" data-adv="mesh_cover_color"><span class="thumb"></span></button>
-                    </div>
-                  </div>
-
-                  <div class="setting-item">
-                    <div class="setting-item-top" style="align-items: center;">
-                      <div style="display: flex; flex-direction: column; gap: 2px;">
-                        <span class="setting-name">Lower interface opacity for backgrounds</span>
-                        <span style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">Sets interface opacity to 50% when you add a background. You can change it afterwards.</span>
-                      </div>
-                      <button class="effect-switch-btn active" data-adv="ui_alpha_auto"><span class="thumb"></span></button>
-                    </div>
-                  </div>
-
-                  <div class="setting-item">
+                </div>
+                <button class="btn-pill-primary" id="btn-install-tools" style="padding: 6px 14px; font-size: calc(12px * var(--font-scale, 1));">Download</button>
+              </div>
+            </div>
+            <div class="setting-item" id="setting-stream-timeout-row">
+              <div class="setting-item-top">
+                <div style="display: flex; flex-direction: column; gap: 2px;">
+                  <span class="setting-name">Stream timeout</span>
+                  <span style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">How long a song may sit without loading anything before Muriel gives up on it</span>
+                </div>
+                <span class="setting-value" id="val-stream-timeout">12s</span>
+              </div>
+              <input type="range" class="pill-range" id="slider-stream-timeout" min="5" max="30" step="1" value="12">
+              <div class="setting-hints"><span>5s</span><span>17s</span><span>30s</span></div>
+            </div>
+            <div class="setting-item">
                     <div class="setting-item-top" style="align-items: center;">
                       <div style="display: flex; flex-direction: column; gap: 2px;">
                         <span class="setting-name">Clip effects to panels</span>
@@ -1858,91 +1867,8 @@
                       <button class="effect-switch-btn" data-adv="clip_fx"><span class="thumb"></span></button>
                     </div>
                   </div>
-
-                  <div class="setting-item">
-                    <div class="setting-item-top" style="align-items: center;">
-                      <div style="display: flex; flex-direction: column; gap: 2px;">
-                        <span class="setting-name">Albums</span>
-                        <span style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">Shows albums in search results</span>
-                      </div>
-                      <button class="effect-switch-btn active" data-adv="albums"><span class="thumb"></span></button>
-                    </div>
-                  </div>
-
-                  <div class="setting-item">
-                    <div class="setting-item-top" style="align-items: center;">
-                      <div style="display: flex; flex-direction: column; gap: 2px;">
-                        <span class="setting-name">Ambient light on home page</span>
-                        <span style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">Display colored glow behind the recommendation card</span>
-                      </div>
-                      <button class="effect-switch-btn active" data-adv="my_wave_ambient"><span class="thumb"></span></button>
-                    </div>
-                  </div>
-
-                  <div class="setting-item">
-                    <div class="setting-item-top" style="align-items: center;">
-                      <div style="display: flex; flex-direction: column; gap: 2px;">
-                        <span class="setting-name">My Wave recommendations</span>
-                        <span style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">Show personal recommendations on the home page</span>
-                      </div>
-                      <button class="effect-switch-btn active" data-adv="my_wave"><span class="thumb"></span></button>
-                    </div>
-                  </div>
-
-                  <div class="setting-item">
-                    <div class="setting-item-top" style="align-items: center;">
-                      <div style="display: flex; flex-direction: column; gap: 2px;">
-                        <span class="setting-name">Jump back in</span>
-                        <span style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">Recently played tracks on the home page</span>
-                      </div>
-                      <button class="effect-switch-btn active" data-adv="jump_back"><span class="thumb"></span></button>
-                    </div>
-                  </div>
-
-                  <div class="setting-item">
-                    <div class="setting-item-top" style="align-items: center;">
-                      <div style="display: flex; flex-direction: column; gap: 2px;">
-                        <span class="setting-name">Your artists</span>
-                        <span style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">The artists you follow on the home page</span>
-                      </div>
-                      <button class="effect-switch-btn active" data-adv="fav_artists"><span class="thumb"></span></button>
-                    </div>
-                  </div>
-
-                  <div class="setting-item" id="setting-home-layout">
-                    <div class="setting-item-top">
-                      <span class="setting-name">Home layout</span>
-                    </div>
-                    <div class="theme-mode-toggle" id="home-layout-toggle">
-                      <button type="button" class="theme-mode-btn" id="home-layout-riff" data-layout="muriel" style="display: inline-flex; align-items: center; justify-content: center; gap: 6px;">
-                        <img src="assets/icon.png" width="16" height="16" style="border-radius: 4px; object-fit: contain;" alt="">
-                        <span>Muriel</span>
-                      </button>
-                      <button type="button" class="theme-mode-btn active" id="home-layout-spotify" data-layout="spotify" style="display: inline-flex; align-items: center; justify-content: center; gap: 6px;">
-                        <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2zm4.586 14.424c-.18.295-.563.387-.857.207-2.35-1.434-5.308-1.758-8.793-.963-.335.077-.67-.133-.746-.469-.077-.334.132-.67.467-.747 3.812-.871 7.085-.506 9.721 1.107.294.18.387.564.208.865zm1.224-2.72c-.226.367-.706.482-1.072.257-2.687-1.652-6.785-2.131-9.965-1.166-.413.127-.848-.106-.973-.517-.125-.413.108-.848.52-.973 3.632-1.102 8.147-.568 11.233 1.328.366.226.481.707.257 1.071zm.105-2.835C14.692 8.95 8.085 8.731 4.708 9.756c-.494.15-1.018-.129-1.168-.623-.15-.495.13-1.018.624-1.168 3.943-1.197 11.23-.944 15.045 1.32.444.264.59.84.327 1.284-.264.444-.84.59-1.284.327z"/></svg>
-                        <span>Spotify</span>
-                      </button>
-                    </div>
-                    <div style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline); margin-top: 6px;">Muriel: the big carousel. Spotify: quick picks, Daily Mixes and what's trending, in rows.</div>
-                  </div>
-
-                  <div class="setting-item">
-                    <div class="setting-item-top" style="align-items: center;">
-                      <div style="display: flex; flex-direction: column; gap: 2px;">
-                        <span class="setting-name">Reduce motion</span>
-                        <span style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">Replace spring animations with simple fades</span>
-                      </div>
-                      <button class="effect-switch-btn" data-adv="reduce_motion"><span class="thumb"></span></button>
-                    </div>
-                  </div>
-
-                  <div class="setting-item">
-                  </div>
-                </div>
                 </div>
               </div>
-            </div>
-          </div>
 
           <div class="settings-section" id="settings-section-about" data-cat="about">
             <span class="settings-section-title">About</span>
