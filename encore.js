@@ -5,7 +5,6 @@
 (() => {
   const KEY = 'muriel_listens_v1';
   const COUNT_AFTER = 30;
-  const STAR = 'M512 32Q570 454 992 512Q570 570 512 992Q454 570 32 512Q454 454 512 32Z';
   const PERIODS = { week: 'This week', month: 'This month', year: 'This year', all: 'All time' };
 
   // ---------- storage ----------
@@ -210,7 +209,7 @@
         <div class="onrepeat-head">
           <h3 class="section-title">${Th('On repeat')}</h3>
           <div class="onrepeat-chips">${chips}</div>
-          <button type="button" class="onrepeat-encore"><svg viewBox="0 0 1024 1024"><path d="${STAR}"/></svg>Encore</button>
+          <button type="button" class="onrepeat-encore"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 20V11M12 20V4M18 20v-6"/></svg>Encore</button>
         </div>
         ${top.length ? `<div class="onrepeat-list">${top.map((s, i) => `
           <button type="button" class="onrepeat-row" data-i="${i}">
@@ -250,7 +249,7 @@
   function build(st) {
     const label = I18n.T(PERIODS[st.period]);
     if (!st.songs.length) {
-      return [`<div class="enc-slide enc-center"><svg class="enc-star" viewBox="0 0 1024 1024"><path d="${STAR}"/></svg><h1 class="enc-big">${Th('Not much yet')}</h1><p class="enc-sub">${Th('Play some songs and come back: Encore fills up as you listen.')}</p>${pickers(st.period)}</div>`];
+      return [`<div class="enc-slide enc-center"><h1 class="enc-big">${Th('Not much yet')}</h1><p class="enc-sub">${Th('Play some songs and come back: Encore fills up as you listen.')}</p>${pickers(st.period)}</div>`];
     }
     const s1 = st.songs[0];
     const a1 = st.artists[0];
@@ -258,14 +257,14 @@
     const maxH = Math.max(1, ...st.hours);
     const list = (items, fn) => `<ol class="enc-list">${items.map(fn).join('')}</ol>`;
     return [
-      `<div class="enc-slide enc-center"><svg class="enc-star enc-spin" viewBox="0 0 1024 1024"><path d="${STAR}"/></svg><p class="enc-kicker">Muriel Encore</p><h1 class="enc-big">${Th('{0}, played back.', esc(label)).replace(`${esc(label)},`, `${esc(label)},<br>`)}</h1>${pickers(st.period)}<button type="button" class="enc-go" data-next>${Th('Start')}</button></div>`,
+      `<div class="enc-slide enc-center"><p class="enc-kicker">Muriel Encore</p><h1 class="enc-big">${Th('{0}, played back.', esc(label)).replace(`${esc(label)},`, `${esc(label)},<br>`)}</h1>${pickers(st.period)}<button type="button" class="enc-go" data-next>${Th('Start')}</button></div>`,
       `<div class="enc-slide enc-center"><p class="enc-kicker">${Th('You listened for')}</p><h1 class="enc-num" data-count="${st.minutes}">0</h1><p class="enc-big enc-sm">${unit(st.minutes, 'minute', 'minutes')}</p><p class="enc-sub">${Th('{0} plays of {1} different songs', st.plays.toLocaleString(), st.songs.length.toLocaleString())}</p></div>`,
       `<div class="enc-slide enc-center"><p class="enc-kicker">${Th('Your #1 song')}</p><img class="enc-cover" src="${thumb(s1)}" alt=""><h1 class="enc-big enc-title">${esc(s1.title)}</h1><p class="enc-sub">${esc(s1.artist)}</p><p class="enc-pill">${Th(s1.plays === 1 ? '{0} play' : '{0} plays', s1.plays)}</p></div>`,
       `<div class="enc-slide"><p class="enc-kicker">${Th('Your top songs')}</p>${list(st.songs.slice(0, 5), (s, i) => `<li style="--i:${i}"><span class="enc-rank">${i + 1}</span><img src="${thumb(s)}" alt=""><span><b>${esc(s.title)}</b><small>${esc(s.artist)}</small></span><em>${s.plays}</em></li>`)}</div>`,
       a1 ? `<div class="enc-slide enc-center"><p class="enc-kicker">${Th('Your top artist')}</p><img class="enc-cover enc-round" src="${esc(a1.thumb)}" alt=""><h1 class="enc-big enc-title">${esc(a1.name)}</h1><p class="enc-sub">${Th('{0} plays · {1} min', a1.plays, Math.max(1, Math.round(a1.secs / 60)))}</p>${st.artists.length > 1 ? `<p class="enc-also">${Th('Also: {0}', st.artists.slice(1, 4).map((a) => esc(a.name)).join(', '))}</p>` : ''}</div>` : '',
       `<div class="enc-slide enc-center"><p class="enc-kicker">${Th("You're a")}</p><h1 class="enc-big">${esc(pName)}</h1><p class="enc-sub">${esc(pText)}</p><div class="enc-hours">${st.hours.map((n, i) => `<i style="--h:${(n / maxH).toFixed(3)};--i:${i}" title="${i}:00"></i>`).join('')}</div><div class="enc-hours-axis"><span>0</span><span>6</span><span>12</span><span>18</span><span>24</span></div></div>`,
       `<div class="enc-slide enc-center"><p class="enc-kicker">${Th('You listened on')}</p><h1 class="enc-num" data-count="${st.days}">0</h1><p class="enc-big enc-sm">${unit(st.days, 'day', 'days')}</p><p class="enc-sub">${Th(st.streak === 1 ? 'Longest streak: {0} day in a row' : 'Longest streak: {0} days in a row', st.streak)}</p></div>`,
-      `<div class="enc-slide enc-summary"><div class="enc-card"><div class="enc-card-head"><svg viewBox="0 0 1024 1024"><path d="${STAR}"/></svg><b>Muriel Encore</b><span>${esc(label)}</span></div>
+      `<div class="enc-slide enc-summary"><div class="enc-card"><div class="enc-card-head"><b>Muriel Encore</b><span>${esc(label)}</span></div>
         <div class="enc-card-cols"><div><small>${Th('Top songs')}</small>${st.songs.slice(0, 5).map((s, i) => `<p>${i + 1}. ${esc(s.title)}</p>`).join('')}</div><div><small>${Th('Top artists')}</small>${st.artists.slice(0, 5).map((a, i) => `<p>${i + 1}. ${esc(a.name)}</p>`).join('')}</div></div>
         <div class="enc-card-foot"><div><small>${Th('Minutes')}</small><b>${st.minutes.toLocaleString()}</b></div><div><small>${Th("You're a")}</small><b>${esc(pName)}</b></div></div></div>
         <div class="enc-actions"><button type="button" class="enc-go" data-play>${Th('Play my top songs')}</button><button type="button" class="enc-ghost" data-share>${Th('Share')}</button></div></div>`,

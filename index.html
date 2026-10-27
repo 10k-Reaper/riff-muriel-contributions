@@ -801,7 +801,7 @@
                   <button class="btn-outline-pill" id="btn-reset-ui-alpha" style="padding: 2px 10px; font-size: calc(12px * var(--font-scale, 1));">Reset</button>
                 </div>
               </div>
-              <input type="range" class="pill-range" id="slider-ui-alpha" min="20" max="100" step="1" value="100">
+              <input type="range" class="pill-range" id="slider-ui-alpha" min="20" max="100" step="1" value="20">
               <div class="setting-hints"><span>20%</span><span>Default</span><span>100%</span></div>
             </div>
 
@@ -1831,7 +1831,7 @@
                         <span class="setting-name">Clip effects to panels</span>
                         <span style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">Off: blur and gradients can spread outside their panel</span>
                       </div>
-                      <button class="effect-switch-btn active" data-adv="clip_fx"><span class="thumb"></span></button>
+                      <button class="effect-switch-btn" data-adv="clip_fx"><span class="thumb"></span></button>
                     </div>
                   </div>
 
@@ -1890,11 +1890,11 @@
                       <span class="setting-name">Home layout</span>
                     </div>
                     <div class="theme-mode-toggle" id="home-layout-toggle">
-                      <button type="button" class="theme-mode-btn active" id="home-layout-riff" data-layout="muriel" style="display: inline-flex; align-items: center; justify-content: center; gap: 6px;">
+                      <button type="button" class="theme-mode-btn" id="home-layout-riff" data-layout="muriel" style="display: inline-flex; align-items: center; justify-content: center; gap: 6px;">
                         <img src="assets/icon.png" width="16" height="16" style="border-radius: 4px; object-fit: contain;" alt="">
                         <span>Muriel</span>
                       </button>
-                      <button type="button" class="theme-mode-btn" id="home-layout-spotify" data-layout="spotify" style="display: inline-flex; align-items: center; justify-content: center; gap: 6px;">
+                      <button type="button" class="theme-mode-btn active" id="home-layout-spotify" data-layout="spotify" style="display: inline-flex; align-items: center; justify-content: center; gap: 6px;">
                         <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2zm4.586 14.424c-.18.295-.563.387-.857.207-2.35-1.434-5.308-1.758-8.793-.963-.335.077-.67-.133-.746-.469-.077-.334.132-.67.467-.747 3.812-.871 7.085-.506 9.721 1.107.294.18.387.564.208.865zm1.224-2.72c-.226.367-.706.482-1.072.257-2.687-1.652-6.785-2.131-9.965-1.166-.413.127-.848-.106-.973-.517-.125-.413.108-.848.52-.973 3.632-1.102 8.147-.568 11.233 1.328.366.226.481.707.257 1.071zm.105-2.835C14.692 8.95 8.085 8.731 4.708 9.756c-.494.15-1.018-.129-1.168-.623-.15-.495.13-1.018.624-1.168 3.943-1.197 11.23-.944 15.045 1.32.444.264.59.84.327 1.284-.264.444-.84.59-1.284.327z"/></svg>
                         <span>Spotify</span>
                       </button>
