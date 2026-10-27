@@ -6557,8 +6557,8 @@ body.mini.mini-lyrics-on #btn-mini-lyrics {
   .settings-nav { position: static; flex: none; width: 100%; max-height: none; overflow: visible; gap: 2px; }
   .settings-nav-btn { height: calc(52px * var(--font-scale, 1)); gap: calc(16px * var(--font-scale, 1)); font-size: calc(15px * var(--font-scale, 1)); color: var(--md-sys-color-on-surface); }
   .settings-nav-btn svg { color: var(--md-sys-color-on-surface-variant); }
-  .settings-nav-btn span { flex: 1; min-width: 0; display: flex; align-items: center; gap: 12px; overflow: hidden; white-space: nowrap; }
-  .settings-nav-btn span::after { content: ''; margin-left: auto; width: 7px; height: 7px; flex-shrink: 0; margin-right: 6px; border-top: 2px solid currentColor; border-right: 2px solid currentColor; transform: rotate(45deg); opacity: .5; }
+  .settings-nav-btn > span:not(.ripple-host) { flex: 1; min-width: 0; display: flex; align-items: center; gap: 12px; overflow: hidden; white-space: nowrap; }
+  .settings-nav-btn > span:not(.ripple-host)::after { content: ''; margin-left: auto; width: 7px; height: 7px; flex-shrink: 0; margin-right: 6px; border-top: 2px solid currentColor; border-right: 2px solid currentColor; transform: rotate(45deg); opacity: .5; }
   .settings-nav-btn.active { background: transparent; color: var(--md-sys-color-on-surface); }
   .settings-nav-btn.active svg { color: var(--md-sys-color-primary); }
   #view-settings:not(.settings-at-list) .settings-nav, .settings-searching .settings-nav { display: none; }
