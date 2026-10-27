@@ -1,4 +1,4 @@
-## Muriel 1.3.5
+## Muriel 1.3.6
 
 **Downloads**
 - **iPhone:** [ios-latest](https://github.com/cloverscripts/riff-muriel/releases/tag/ios-latest) (`Muriel.ipa`, install with SideStore, AltStore or Sideloadly). Needs iOS 16.2 or newer
@@ -10,6 +10,14 @@
 Or get it from the website: https://cloverscripts.github.io/riff-muriel/
 
 **New**
+- **TV Karaoke controls:** favorite, shuffle, repeat and volume right in the karaoke screen, in sync with the player bar. Thanks to 10k-Reaper!
+- **Settings, sorted:** every category has headings, and 30 settings moved to where you'd look for them. Settings that used to hide behind a fold-out in Advanced now show up in search too.
+
+**Fixed**
+- **High CPU on computers:** Muriel ran many YouTube lookups at once (each can start a deno process), even when you just moved the mouse over songs. Now at most 2 run at a time at lower priority, nothing runs on hover, and only the next song is prepared near the end of the current one.
+- **Settings on phones:** tapping a category no longer adds a second arrow.
+
+**New in 1.3.5**
 - **Looks and moves like Riff again:** see-through panels with your album's colours behind them, Riff's sidebar and player buttons, the Spotify-style home, and calmer motion without the glows and pink gradients. You can switch back to solid panels and My Wave in Settings.
 - **Encore** uses your theme colours and Riff's style.
 - **Smoother:** song changes, opening Now Playing and opening Settings do less work; on phones, Now Playing follows your finger when you swipe it down.
