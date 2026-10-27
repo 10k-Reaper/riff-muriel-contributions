@@ -1441,6 +1441,39 @@ document.addEventListener('DOMContentLoaded', async () => {
     root.setProperty('--btn-primary-hover', c.hover);
   }
 
+  // see-through panels (UI opacity below 100%) read badly on a light theme: go solid while it is light, then back
+  let lastEffectiveMode = null;
+  function onEffectiveModeChanged(mode) {
+    if (lastEffectiveMode === null || !document.getElementById('slider-ui-alpha')) {
+      // first paint on a light theme with the default opacity: start solid
+      if (mode === 'light' && localStorage.getItem('muriel_ui_alpha') === null && document.getElementById('slider-ui-alpha')) {
+        localStorage.setItem('muriel_ui_alpha', '100');
+        document.documentElement.style.setProperty('--ui-alpha', '100%');
+        document.getElementById('slider-ui-alpha').value = 100;
+        localStorage.setItem('muriel_ui_alpha_light_prev', '20');
+        localStorage.setItem('muriel_ui_alpha_light_auto', '100');
+      }
+      lastEffectiveMode = mode;
+      return;
+    }
+    if (lastEffectiveMode !== mode) {
+      if (mode === 'light') {
+        const now = currentUiAlpha();
+        if (now < 100) {
+          localStorage.setItem('muriel_ui_alpha_light_prev', String(now));
+          localStorage.setItem('muriel_ui_alpha_light_auto', '100');
+          setUiAlphaViaSlider(100);
+        }
+      } else if (lastEffectiveMode === 'light') {
+        const auto = localStorage.getItem('muriel_ui_alpha_light_auto'), prev = localStorage.getItem('muriel_ui_alpha_light_prev');
+        if (auto !== null && prev !== null && currentUiAlpha() === Number(auto)) setUiAlphaViaSlider(Number(prev));
+        localStorage.removeItem('muriel_ui_alpha_light_auto');
+        localStorage.removeItem('muriel_ui_alpha_light_prev');
+      }
+      lastEffectiveMode = mode;
+    }
+  }
+
   function applyTheme(hexColor, mode, intensity = state.themeIntensity, brightness = state.themeBrightness, accent2 = null, isAuto = false) {
     currentEffectiveMode = mode;
     generateM3Palette(hexColor, mode, intensity, brightness);
@@ -1449,6 +1482,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.body.classList.toggle('theme-light', mode === 'light');
     document.body.classList.toggle('theme-dark', mode === 'dark');
     document.body.classList.toggle('intensity-zero', state.themeIntensity < 8);
+    onEffectiveModeChanged(mode);
     if (el.themeSwatches) {
       el.themeSwatches.forEach(sw => sw.classList.toggle('active', !!(state.themeAccent && sw.dataset.color && sw.dataset.color.toLowerCase() === state.themeAccent.toLowerCase())));
     }
@@ -1839,7 +1873,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   applyBannerFit(savedBannerFit);
 
   function applyUiOpacity() {
-    const rawUi = parseInt(localStorage.getItem('muriel_ui_alpha') || '100', 10);
+    const rawUi = parseInt(localStorage.getItem('muriel_ui_alpha') || '20', 10);
     const rawText = parseInt(localStorage.getItem('muriel_text_alpha') || '100', 10);
     const uiAlpha = Math.max(20, Math.min(100, isNaN(rawUi) ? 100 : rawUi));
     const textAlpha = Math.max(1, Math.min(100, isNaN(rawText) ? 100 : rawText));
@@ -8009,7 +8043,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   function updateFavoritesBadge() {
-    if (el.favoritesCount) el.favoritesCount.textContent = state.favorites.length;
+    if (el.favoritesCount) { el.favoritesCount.textContent = state.favorites.length; el.favoritesCount.hidden = !state.favorites.length; }
   }
 
   const TRACK_SORT_KEYS = { favorites: 'muriel_favorites_sort', playlist: 'muriel_playlist_sort' };
@@ -8133,7 +8167,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   function updateLocalBadge() {
-    if (el.localCount) el.localCount.textContent = (state.localTracks && state.localTracks.length) || 0;
+    if (el.localCount) { const n = (state.localTracks && state.localTracks.length) || 0; el.localCount.textContent = n; el.localCount.hidden = !n; }
   }
 
   // The server looks up missing covers in the background; pick them up while the library is open.
@@ -10976,7 +11010,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   registerFx(document.getElementById('playlist-hero-fx'), 'hero', document.getElementById('view-playlist-detail'));
   registerFx(document.getElementById('album-hero-fx'), 'hero', document.getElementById('view-album'));
   registerFx(document.getElementById('artist-hero-backdrop'), 'hero', document.getElementById('view-artist'));
-  document.body.classList.toggle('no-clip-fx', !getAdv('clip_fx', true));
+  document.body.classList.toggle('no-clip-fx', !getAdv('clip_fx', false));
   applyFxClip();
 
   const sliderMeshBrightness = document.getElementById('slider-mesh-brightness');
@@ -11279,7 +11313,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   const advButtons = document.querySelectorAll('.effect-switch-btn[data-adv]');
   advButtons.forEach(btn => {
     const key = btn.dataset.adv;
-    const defaultVal = (key === 'reduce_motion' || key === 'mesh_gradient' || key === 'glass_blur' || key === 'mesh_cover_color') ? false : true;
+    const defaultVal = (key === 'reduce_motion' || key === 'mesh_gradient' || key === 'glass_blur' || key === 'mesh_cover_color' || key === 'clip_fx') ? false : true;
     const currentVal = getAdv(key, defaultVal);
     btn.classList.toggle('active', currentVal);
 
@@ -11293,7 +11327,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       } else if (key === 'glass_blur') {
         applyGlass();
         // glass over a fully opaque UI does nothing, so make it see-through the first time
-        if (newVal && parseInt(localStorage.getItem('muriel_ui_alpha') || '100', 10) >= 100) {
+        if (newVal && parseInt(localStorage.getItem('muriel_ui_alpha') || '20', 10) >= 100) {
           localStorage.setItem('muriel_ui_alpha', '60');
           applyUiOpacity();
           showToast(Tm('Interface opacity set to 60% so the glass shows'), 'info');
@@ -16418,7 +16452,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   // (var: switchView can render Home before this block has run)
   var spHomeReady = false;
   function isSpotifyHome() {
-    try { return localStorage.getItem('muriel_home_layout') === 'spotify'; } catch (e) { return false; }
+    try { return (localStorage.getItem('muriel_home_layout') || 'spotify') === 'spotify'; } catch (e) { return false; }
   }
   const DAILY_MIXES_KEY = 'muriel_daily_mixes';
   const TRENDING_CACHE_KEY = 'muriel_trending_cache';
