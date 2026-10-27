@@ -2583,13 +2583,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     const { smooth, sens } = barBgSettings;
     const half = 26;
     const minH = 3;
+    // a quiet backdrop: the bars stay in the lower part of the bar, under the time labels and seek bar
+    const capH = Math.round(h * 0.42);
     if (!barBgSmoothed) barBgSmoothed = new Float32Array(half).fill(minH);
     let any = false;
     for (let i = 0; i < half; i++) {
       let target = minH;
       if (state.isPlaying) {
         const raw = (((data[i * 2] || 0) + (data[Math.min(data.length - 1, i * 2 + 1)] || 0)) * 0.5) * sens;
-        target = minH + Math.pow(Math.min(1, Math.max(0, raw / 255)), 1.25) * (h - 6);
+        target = minH + Math.pow(Math.min(1, Math.max(0, raw / 255)), 1.25) * (capH - minH);
       }
       barBgSmoothed[i] = barBgSmoothed[i] * smooth + target * (1 - smooth);
       if (barBgSmoothed[i] > minH + 0.5) any = true;
@@ -2600,14 +2602,18 @@ document.addEventListener('DOMContentLoaded', async () => {
     const sym = new Float32Array(count);
     for (let i = 0; i < half; i++) { sym[half - 1 - i] = barBgSmoothed[i]; sym[half + i] = barBgSmoothed[i]; }
     if (!cachedPrimaryColor) refreshCachedThemeColors();
-    const color = cachedPrimaryColor || '#ffffff';
+    const base = cachedPrimaryColor || '#ffffff';
+    // fade out toward the top so the tallest bars melt away before they reach the controls
+    const color = ctx.createLinearGradient(0, h, 0, h - capH);
+    color.addColorStop(0, base);
+    color.addColorStop(1, 'transparent');
     if (vizConnected) { drawConnectedLiquidWave(ctx, w, h, sym, color); return; }
     const gap = 2;
     const barW = Math.max(2, (w - gap * (count - 1)) / count);
     const startX = Math.max(0, (w - (count * barW + gap * (count - 1))) / 2);
     ctx.fillStyle = color;
     for (let i = 0; i < count; i++) {
-      const barH = Math.max(2, Math.min(h - 2, sym[i]));
+      const barH = Math.max(2, Math.min(capH, sym[i]));
       ctx.beginPath();
       ctx.roundRect(startX + i * (barW + gap), h - barH, barW, barH, 3);
       ctx.fill();
