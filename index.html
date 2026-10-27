@@ -2909,6 +2909,17 @@
           </div>
         </div>
 
+        <div class="setting-item track-art-picker" style="display: flex; flex-direction: column; gap: 10px;">
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+            <div style="display: flex; flex-direction: column; min-width: 0;">
+              <span class="setting-name" style="font-weight: 500;">Wrong or missing cover?</span>
+              <span class="setting-hint" id="track-art-picker-status" style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-on-surface-variant);">Pick one from YouTube and Apple Music</span>
+            </div>
+            <button class="btn-outline-pill" id="btn-find-track-cover" style="flex-shrink: 0;">Find covers</button>
+          </div>
+          <div id="track-art-picker-grid" class="track-art-picker-grid" hidden></div>
+        </div>
+
         <div class="setting-item" style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
           <div style="display: flex; align-items: center; gap: 12px; min-width: 0;">
             <div id="track-art-banner-preview" style="width: 80px; height: 48px; border-radius: 8px; overflow: hidden; background: var(--md-sys-color-surface-container-high); flex-shrink: 0; display: flex; align-items: center; justify-content: center; position: relative;">

@@ -119,7 +119,7 @@
 document.addEventListener('DOMContentLoaded', async () => {
   try { localStorage.removeItem('muriel_stats'); } catch (e) {}
 
-  const THUMB_FALLBACK = "if(this.dataset.full&&this.src!==this.dataset.full){this.src=this.dataset.full}else{this.style.visibility='hidden'}";
+  const THUMB_FALLBACK = "if(window.murielArtNext){window.murielArtNext(this)}else if(this.dataset.full&&this.src!==this.dataset.full){this.src=this.dataset.full}else{this.style.visibility='hidden'}";
 
   function escapeHtml(value) {
     return String(value == null ? '' : value)
@@ -3260,6 +3260,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (thumb) {
       if (el.playbarArtwork) {
         el.playbarArtwork.onload = () => {
+          // a fallback that loaded replaces the song's dead cover for good
+          const shown = el.playbarArtwork.getAttribute('src') || '';
+          if (el.playbarArtwork.__artTrack === track && shown !== thumb) rememberTrackArt(getTrackCanonicalId(track), shown);
           if (state.currentTrack && 'mediaSession' in navigator && navigator.mediaSession.metadata) {
             const curThumb = (typeof getTrackThumbUrl === 'function' ? getTrackThumbUrl(state.currentTrack) : '') || state.currentTrack.thumbnail || '';
             const art = getMediaArtwork(curThumb);
@@ -3271,13 +3274,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         swapArtwork(el.playbarArtwork, thumb);
         if (typeof m3cSetImage === 'function') m3cSetImage(thumb);
         el.playbarArtwork.onerror = () => {
-          if (state.currentTrack && getTrackArt(state.currentTrack).cover) {
-            setTrackArt(state.currentTrack, { cover: undefined });
-            const defThumb = state.currentTrack.thumbnail || '';
-            el.playbarArtwork.src = defThumb;
-            if (typeof m3cSetImage === 'function') m3cSetImage(defThumb);
-            if (el.rightPanelCover) el.rightPanelCover.src = defThumb;
-            updateRightPanelBanner(defThumb);
+          // a dead cover: try the song's other covers (the right panel follows) before showing the placeholder
+          const next = nextPlayerArt(track, el.playbarArtwork);
+          if (next) {
+            if (typeof m3cSetImage === 'function') m3cSetImage(next);
+            if (el.rightPanelCover) el.rightPanelCover.src = next;
+            updateRightPanelBanner(next);
             updateThemeFromState();
             return;
           }
@@ -3289,18 +3291,8 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (el.rightPanelCover) {
         swapArtwork(el.rightPanelCover, thumb);
         el.rightPanelCover.onerror = () => {
-          if (state.currentTrack && getTrackArt(state.currentTrack).cover) {
-            setTrackArt(state.currentTrack, { cover: undefined });
-            const defThumb = state.currentTrack.thumbnail || '';
-            el.rightPanelCover.src = defThumb;
-            if (el.playbarArtwork) {
-              el.playbarArtwork.src = defThumb;
-              if (typeof m3cSetImage === 'function') m3cSetImage(defThumb);
-            }
-            updateRightPanelBanner(defThumb);
-            updateThemeFromState();
-            return;
-          }
+          const next = nextPlayerArt(track, el.rightPanelCover);
+          if (next) { updateRightPanelBanner(next); return; }
           el.rightPanelCover.style.display = 'none';
           if (el.rightPanelFallback) el.rightPanelFallback.style.display = 'flex';
         };
@@ -3704,6 +3696,7 @@ document.addEventListener('DOMContentLoaded', async () => {
               resolvedId = sData.tracks[0].id;
               state.currentTrack.id = resolvedId;
               state.currentTrack.url = resolvedUrl;
+              if (!state.currentTrack.thumbnail && sData.tracks[0].thumbnail) state.currentTrack.thumbnail = sData.tracks[0].thumbnail;
             }
           } catch (e) {}
         }
@@ -7302,7 +7295,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
       row.innerHTML = `
       <span class="track-row-index">${(isAlbum && track.no) ? track.no : (idx + 1)}</span>
-      ${!isAlbum ? `<img class="track-row-thumb" src="${escapeHtml(listThumb(rowThumb) || '')}" data-full="${escapeHtml(rowThumb || '')}" alt="" loading="lazy" decoding="async" onerror="${THUMB_FALLBACK}">` : ''}
+      ${!isAlbum ? `<img class="track-row-thumb" src="${escapeHtml(listThumb(rowThumb) || '')}" data-full="${escapeHtml(rowThumb || '')}" data-saved="${escapeHtml(track.thumbnail || '')}" data-art="${escapeHtml(JSON.stringify(trackArtCandidates(track)))}" alt="" loading="lazy" decoding="async" onerror="${THUMB_FALLBACK}">` : ''}
       <div class="track-row-info">
       <span class="track-row-title">${escapeHtml(track.title || 'untitled')}</span>
       ${explicitTag ? `<span class="track-row-artist-wrap">${explicitTag}${artistSpan}</span>` : artistSpan}
@@ -8360,16 +8353,129 @@ document.addEventListener('DOMContentLoaded', async () => {
     return url;
   }
 
+  // Cover art (#18). Many saved songs (synced, restored, imported, matched on play) carry no thumbnail or a
+  // dead one, and the row just hid its picture. A YouTube song's cover can always be derived from its id, and a
+  // failed picture walks down a list of candidates instead of giving up.
+  const YT_THUMB = /^https?:\/\/i\d?\.ytimg\.com\/vi(?:_webp)?\/([\w-]{11})\//;
+  function trackYoutubeId(track) {
+    if (!track) return '';
+    const p = String(track.platform || '').toLowerCase();
+    if (p === 'local' || p === 'soundcloud' || p === 'sc') return '';
+    const m = String(track.url || track.videoId || '').match(/(?:youtube\.com\/(?:watch\?(?:.*&)?v=|shorts\/)|youtu\.be\/)([\w-]{11})/);
+    if (m) return m[1];
+    if (/^[\w-]{11}$/.test(String(track.videoId || ''))) return track.videoId;
+    if ((p === 'youtube' || p === 'ytmusic' || p === 'yt' || (!p && !track.url)) && /^[\w-]{11}$/.test(String(track.id || ''))) return String(track.id);
+    return '';
+  }
+  // other sizes of a cover we already have (YouTube frames, SoundCloud artwork)
+  function artVariants(url) {
+    if (!url || typeof url !== 'string') return [];
+    const yt = url.match(YT_THUMB);
+    if (yt) return ['hqdefault', 'mqdefault', 'default'].map((s) => `https://i.ytimg.com/vi/${yt[1]}/${s}.jpg`);
+    if (/sndcdn\.com\/.*-(t500x500|original|large|crop|t300x300)\./.test(url)) return ['t500x500', 'large', 't300x300'].map((s) => url.replace(/-(t500x500|original|large|crop|t300x300)\./, `-${s}.`));
+    return [];
+  }
+  function derivedTrackArt(track) {
+    const id = trackYoutubeId(track);
+    return id ? artVariants(`https://i.ytimg.com/vi/${id}/hqdefault.jpg`) : [];
+  }
+  // every picture worth trying for a song, best first
+  function trackArtCandidates(track) {
+    if (!track) return [];
+    const out = [];
+    const add = (u) => { if (u && typeof u === 'string' && !out.includes(u)) out.push(u); };
+    [getTrackArt(track).cover, track.localThumbnail, track.thumbnail, track.cover, track.image, track.artworkUrl].forEach((u) => { add(u); artVariants(u).forEach(add); });
+    derivedTrackArt(track).forEach(add);
+    return out;
+  }
+
+  // next cover to try in a player <img> whose current one failed ('' when none is left)
+  function nextPlayerArt(track, img) {
+    if (!img || !track) return '';
+    if (img.__artTrack !== track) { img.__artTrack = track; img.__artTried = new Set(); }
+    const cur = img.getAttribute('src') || '';
+    img.__artTried.add(cur);
+    const next = trackArtCandidates(track).concat(artVariants(cur)).find((u) => !img.__artTried.has(u));
+    if (!next) return '';
+    img.__artTried.add(next);
+    img.style.display = 'block';
+    img.src = next;
+    return next;
+  }
+
   function getTrackThumbUrl(track) {
     if (!track) return '';
     const o = getTrackArt(track).cover;
     if (o) return o;
     if (track.localThumbnail) return track.localThumbnail;
-    if (track.id && state.serverPort) {
-      const cleanId = String(track.id).replace(/[^a-zA-Z0-9_-]/g, '_');
-    }
-    return track.thumbnail || track.cover || track.image || track.artworkUrl || '';
+    return track.thumbnail || track.cover || track.image || track.artworkUrl || derivedTrackArt(track)[0] || '';
   }
+
+  // A song's cover that loaded in place of its saved (missing or dead) one is saved with the song.
+  function rememberTrackArt(canonicalId, url) {
+    if (!canonicalId || !/^https:\/\//.test(url || '')) return;
+    const fix = (arr) => {
+      let changed = false;
+      (arr || []).forEach((t) => {
+        if (t && t.thumbnail !== url && getTrackCanonicalId(t) === canonicalId && !getTrackArt(t).cover) { t.thumbnail = url; changed = true; }
+      });
+      return changed;
+    };
+    try {
+      if (fix(state.favorites)) localStorage.setItem('devsize_favorites', JSON.stringify(state.favorites));
+      if (fix(state.history)) localStorage.setItem('devsize_history', JSON.stringify(state.history));
+      let pl = false;
+      (state.playlists || []).forEach((p) => { if (p && fix(p.tracks)) pl = true; });
+      if (pl) localStorage.setItem('devsize_playlists', JSON.stringify(state.playlists));
+      if (state.currentTrack && getTrackCanonicalId(state.currentTrack) === canonicalId && !getTrackArt(state.currentTrack).cover) state.currentTrack.thumbnail = url;
+    } catch (e) {}
+  }
+
+  // onerror of a cover <img>: next candidate (data-full, then data-art, then other sizes), hidden when none is left
+  function nextTrackArt(img) {
+    if (!img) return false;
+    const tried = img.__artTried || (img.__artTried = new Set());
+    const cur = img.getAttribute('src') || '';
+    tried.add(cur);
+    let list = [];
+    try { list = JSON.parse(img.dataset.art || '[]'); } catch (e) {}
+    if (img.dataset.full) list.unshift(img.dataset.full);
+    list = list.concat(artVariants(cur));
+    const next = list.find((u) => u && !tried.has(u));
+    if (!next) { img.style.visibility = 'hidden'; return false; }
+    tried.add(next);
+    const row = img.closest && img.closest('[data-canonical-id]');
+    if (row && !img.__artRemember) {
+      img.__artRemember = true;
+      img.addEventListener('load', () => {
+        const ok = img.getAttribute('src');
+        if (img.naturalWidth > 0 && ok && ok !== img.dataset.saved) rememberTrackArt(row.dataset.canonicalId, ok);
+      });
+    }
+    img.style.visibility = '';
+    img.src = next;
+    return true;
+  }
+  window.murielArtNext = nextTrackArt;
+
+  // Old saves: give YouTube songs without a cover the one derived from their id (no network), once, when idle.
+  function backfillTrackArt() {
+    const fill = (arr) => {
+      let changed = false;
+      (arr || []).forEach((t) => {
+        if (t && !t.thumbnail && !t.localThumbnail) { const d = derivedTrackArt(t)[0]; if (d) { t.thumbnail = d; changed = true; } }
+      });
+      return changed;
+    };
+    try {
+      if (fill(state.favorites)) localStorage.setItem('devsize_favorites', JSON.stringify(state.favorites));
+      if (fill(state.history)) localStorage.setItem('devsize_history', JSON.stringify(state.history));
+      let pl = false;
+      (state.playlists || []).forEach((p) => { if (p && fill(p.tracks)) pl = true; });
+      if (pl) localStorage.setItem('devsize_playlists', JSON.stringify(state.playlists));
+    } catch (e) {}
+  }
+  (window.requestIdleCallback || ((f) => setTimeout(f, 3000)))(backfillTrackArt);
 
   function renderPlaylistCover(container, playlist, size = 64) {
     if (!container) return;
@@ -8381,10 +8487,12 @@ document.addEventListener('DOMContentLoaded', async () => {
       container.classList.remove('cover-single', 'cover-empty');
       const tracks = (playlist && playlist.tracks) ? playlist.tracks : [];
       let firstThumb = null;
+      let firstTrack = null;
       for (const t of tracks) {
         const src = getTrackThumbUrl(t);
         if (src) {
           firstThumb = src;
+          firstTrack = t;
           break;
         }
       }
@@ -8397,7 +8505,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         img.alt = '';
         img.loading = 'lazy';
         img.style.objectFit = 'cover';
+        img.dataset.art = JSON.stringify(trackArtCandidates(firstTrack));
         img.onerror = () => {
+          if (nextTrackArt(img)) return;
           container.classList.remove('cover-single');
           container.classList.add('cover-empty');
           container.innerHTML = `<svg width="${Math.round(size * 0.45)}" height="${Math.round(size * 0.45)}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18V5l12-2v13"></path><circle cx="6" cy="18" r="3"></circle><circle cx="18" cy="16" r="3"></circle></svg>`;
@@ -16639,7 +16749,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         sec.tracks.forEach((t, i) => {
           const b = document.createElement('button');
           b.className = 'fy-card';
-          b.innerHTML = `<img src="${escapeHtml(listThumb(t.thumbnail) || '')}" alt="" loading="lazy" decoding="async"><span class="fy-title">${escapeHtml(t.title)}</span><span class="fy-artist-name">${escapeHtml(t.artist)}</span>`;
+          b.innerHTML = `<img src="${escapeHtml(listThumb(getTrackThumbUrl(t)) || '')}" data-art="${escapeHtml(JSON.stringify(trackArtCandidates(t)))}" alt="" loading="lazy" decoding="async" onerror="${THUMB_FALLBACK}"><span class="fy-title">${escapeHtml(t.title)}</span><span class="fy-artist-name">${escapeHtml(t.artist)}</span>`;
           b.addEventListener('click', () => playTrack(t, sec.tracks, i));
           row.appendChild(b);
         });
@@ -18064,7 +18174,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     const coverImg = document.getElementById('track-art-cover-img');
     const coverPh = document.getElementById('track-art-cover-placeholder');
     const coverStatus = document.getElementById('track-art-cover-status');
-    const activeCover = art.cover || t.thumbnail || '';
+    const activeCover = getTrackThumbUrl(t);
+    if (coverImg) {
+      coverImg.dataset.art = JSON.stringify(trackArtCandidates(t));
+      coverImg.__artTried = null;
+      coverImg.onerror = () => { if (!nextTrackArt(coverImg)) { coverImg.style.display = 'none'; if (coverPh) coverPh.style.display = 'block'; } };
+    }
     if (activeCover) {
       if (coverImg) {
         coverImg.src = activeCover;
@@ -18113,6 +18228,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     trackArtCurrentTrack = track;
     const modal = document.getElementById('track-art-modal');
     if (!modal) return;
+    resetCoverPicker();
     renderTrackArtModal();
     const card = modal.querySelector('.dialog-card') || modal;
     modal.classList.remove('hidden');
@@ -18192,6 +18308,90 @@ document.addEventListener('DOMContentLoaded', async () => {
       setTrackArt(trackArtCurrentTrack, { cover: undefined });
       onTrackArtUpdated(trackArtCurrentTrack);
       renderTrackArtModal();
+    });
+  }
+
+  // Cover picker (#18): the song's own covers in several sizes, the first YouTube results for artist + title,
+  // and Apple Music (iTunes) album covers through the app's existing album search. Picking one saves it as the
+  // song's custom cover; Reset goes back to the default.
+  const coverPickerGrid = document.getElementById('track-art-picker-grid');
+  const coverPickerStatus = document.getElementById('track-art-picker-status');
+  const btnFindTrackCover = document.getElementById('btn-find-track-cover');
+  let coverPickerRun = 0;
+
+  function resetCoverPicker() {
+    coverPickerRun++;
+    if (coverPickerGrid) { coverPickerGrid.innerHTML = ''; coverPickerGrid.hidden = true; }
+    if (coverPickerStatus) I18N.text(coverPickerStatus, 'Pick one from YouTube and Apple Music');
+    if (btnFindTrackCover) btnFindTrackCover.disabled = false;
+  }
+
+  async function coverCandidatesFor(track) {
+    const out = [];
+    const seen = new Set();
+    const add = (url, source) => {
+      if (!url || typeof url !== 'string' || !/^https?:\/\//.test(url)) return;
+      const key = url.replace(YT_THUMB, 'yt:$1/').replace(/\?.*$/, '');
+      if (seen.has(url) || seen.has(key)) return;
+      seen.add(url); seen.add(key);
+      out.push({ url, source });
+    };
+    // the same frame in smaller sizes isn't a choice
+    const own = trackArtCandidates(track).filter((u) => /^https?:\/\//.test(u) && !u.startsWith('http://127.0.0.1') && !/ytimg\.com\/vi\/[^/]+\/(mq)?default\.jpg/.test(u));
+    const ytId = trackYoutubeId(track);
+    own.forEach((u) => add(u, YT_THUMB.test(u) ? 'YouTube' : T('Current')));
+    if (ytId) ['maxresdefault', 'sddefault'].forEach((s) => add(`https://i.ytimg.com/vi/${ytId}/${s}.jpg`, 'YouTube'));
+    const q = [track.artist, track.title].filter(Boolean).join(' ').trim();
+    if (!q || !state.serverPort) return out;
+    const base = `http://127.0.0.1:${state.serverPort}`;
+    const [yt, albums] = await Promise.all([
+      fetch(`${base}/api/search?q=${encodeURIComponent(q)}&platform=youtube&limit=6`).then((r) => r.json()).catch(() => null),
+      fetch(`${base}/api/albums/search?q=${encodeURIComponent(q)}`).then((r) => r.json()).catch(() => null),
+    ]);
+    ((albums && albums.albums) || []).slice(0, 8).forEach((a) => add(a.cover, a.title ? `Apple Music · ${a.title}` : 'Apple Music'));
+    ((yt && yt.tracks) || []).slice(0, 6).forEach((t) => add(t.thumbnail || (t.id ? `https://i.ytimg.com/vi/${t.id}/hqdefault.jpg` : ''), t.title ? `YouTube · ${t.title}` : 'YouTube'));
+    return out;
+  }
+
+  if (btnFindTrackCover && coverPickerGrid) {
+    btnFindTrackCover.addEventListener('click', async () => {
+      const track = trackArtCurrentTrack;
+      if (!track) return;
+      const run = ++coverPickerRun;
+      btnFindTrackCover.disabled = true;
+      if (coverPickerStatus) I18N.text(coverPickerStatus, 'Looking for covers…');
+      const list = await coverCandidatesFor(track);
+      if (run !== coverPickerRun) return;
+      btnFindTrackCover.disabled = false;
+      const current = getTrackThumbUrl(track);
+      coverPickerGrid.innerHTML = '';
+      list.forEach(({ url, source }) => {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'track-art-choice' + (url === current ? ' selected' : '');
+        b.title = source;
+        const img = document.createElement('img');
+        img.alt = '';
+        img.loading = 'lazy';
+        img.decoding = 'async';
+        // a size YouTube doesn't have comes back as an error (or a 120px grey frame): leave it out
+        img.onerror = () => b.remove();
+        img.onload = () => { if (img.naturalWidth <= 120 && /ytimg\.com\/vi\/[^/]+\/(maxres|sd)default/.test(url)) b.remove(); };
+        img.src = url;
+        const tag = document.createElement('span');
+        tag.className = 'track-art-choice-src';
+        tag.textContent = source;
+        b.append(img, tag);
+        b.addEventListener('click', () => {
+          setTrackArt(track, { cover: url });
+          onTrackArtUpdated(track);
+          renderTrackArtModal();
+          coverPickerGrid.querySelectorAll('.track-art-choice').forEach((x) => x.classList.toggle('selected', x === b));
+        });
+        coverPickerGrid.appendChild(b);
+      });
+      coverPickerGrid.hidden = !list.length;
+      if (coverPickerStatus) I18N.text(coverPickerStatus, list.length ? 'Tap a cover to use it for this song' : 'No covers found');
     });
   }
 
