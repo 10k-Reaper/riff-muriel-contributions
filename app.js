@@ -674,7 +674,48 @@ document.addEventListener('DOMContentLoaded', async () => {
     } catch (_) {}
   }
 
+  let discordPresenceClearTimer = null;
+  function updateDiscordPresence() {
+    const api = window.electronAPI;
+    if (!api) return;
+    if (!state.currentTrack) {
+      if (discordPresenceClearTimer) clearTimeout(discordPresenceClearTimer);
+      discordPresenceClearTimer = setTimeout(() => {
+        discordPresenceClearTimer = null;
+        if (!state.currentTrack && api.discordPresenceClear) api.discordPresenceClear();
+      }, 1500);
+      return;
+    }
+    if (discordPresenceClearTimer) {
+      clearTimeout(discordPresenceClearTimer);
+      discordPresenceClearTimer = null;
+    }
+    if (!api.discordPresenceUpdate) return;
+
+    const track = state.currentTrack;
+    const audio = (state.secondaryAudio && !state.secondaryAudio.paused) ? state.secondaryAudio : el.nativeAudio;
+    const duration = Number(track.duration) > 0
+      ? Number(track.duration)
+      : (audio && Number.isFinite(audio.duration) && audio.duration > 0 ? audio.duration : 0);
+    const position = audio && Number.isFinite(audio.currentTime) && audio.currentTime >= 0
+      ? audio.currentTime
+      : 0;
+    const thumb = (typeof getTrackThumbUrl === 'function' ? getTrackThumbUrl(track) : '') || track.thumbnail || '';
+    const isRemoteUrl = (value) => typeof value === 'string' && /^https?:\/\//i.test(value) && !value.includes('127.0.0.1');
+    const link = typeof track.url === 'string' && /^https:\/\//i.test(track.url) ? track.url : '';
+    api.discordPresenceUpdate({
+      title: track.title || 'Unknown Track',
+      artist: track.artist || 'Unknown Artist',
+      duration,
+      position,
+      isPlaying: !!state.isPlaying,
+      thumbnail: isRemoteUrl(thumb) ? thumb : '',
+      url: link
+    });
+  }
+
   function updateMediaSession() {
+    updateDiscordPresence();
     if (!('mediaSession' in navigator)) return;
     if (state.currentTrack) {
       const rawTitle = (typeof state.currentTrack.title === 'string' ? state.currentTrack.title.trim() : '');
@@ -732,6 +773,7 @@ document.addEventListener('DOMContentLoaded', async () => {
           updateSyncedLyricsHighlight(details.seekTime);
         }
         updateMediaPositionState();
+        updateDiscordPresence();
       }
     },
     // skip buttons take the place of previous / next on the iPhone lock screen
@@ -6174,6 +6216,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     el.nativeAudio.addEventListener('seeked', () => {
       updateMediaPositionState();
+      updateDiscordPresence();
       state.forceLyricsScroll = true;
       state.forceSnapLyrics = true;
       state.lastActiveLyricIdx = -1;
