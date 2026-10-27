@@ -675,9 +675,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   let discordPresenceClearTimer = null;
+  // off unless turned on in Settings (it tells everyone on Discord what you're listening to)
+  const discordPresenceOn = () => localStorage.getItem('muriel_discord_presence') === 'true';
   function updateDiscordPresence() {
     const api = window.electronAPI;
     if (!api) return;
+    if (!discordPresenceOn()) return;
     if (!state.currentTrack) {
       if (discordPresenceClearTimer) clearTimeout(discordPresenceClearTimer);
       discordPresenceClearTimer = setTimeout(() => {
@@ -11591,6 +11594,20 @@ document.addEventListener('DOMContentLoaded', async () => {
     watchSliderValue(input, sync);
     sync();
   })();
+
+  // Settings: Show on Discord (desktop only, where the presence bridge exists)
+  const btnDiscordPresence = document.getElementById('btn-discord-presence');
+  if (btnDiscordPresence && window.electronAPI && typeof window.electronAPI.discordPresenceUpdate === 'function') {
+    document.getElementById('setting-discord-row').style.display = '';
+    btnDiscordPresence.classList.toggle('active', discordPresenceOn());
+    btnDiscordPresence.addEventListener('click', () => {
+      const on = !discordPresenceOn();
+      localStorage.setItem('muriel_discord_presence', on ? 'true' : 'false');
+      btnDiscordPresence.classList.toggle('active', on);
+      if (on) updateDiscordPresence();
+      else if (window.electronAPI.discordPresenceClear) window.electronAPI.discordPresenceClear();
+    });
+  }
 
   const btnWavyProgress = document.getElementById('btn-wavy-progress');
   function updateWavyProgressUI() {
