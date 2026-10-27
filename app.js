@@ -1727,6 +1727,11 @@ document.addEventListener('DOMContentLoaded', async () => {
                           tvKaraokeClose: document.getElementById('btn-close-tv-karaoke'),
                           tvKaraokeTitle: document.getElementById('tv-karaoke-title'),
                           tvKaraokeArtist: document.getElementById('tv-karaoke-artist'),
+                          btnTvkFav: document.getElementById('btn-tvk-fav'),
+                          tvkFavIcon: document.getElementById('tvk-fav-icon'),
+                          btnTvkShuffle: document.getElementById('btn-tvk-shuffle'),
+                          btnTvkRepeat: document.getElementById('btn-tvk-repeat'),
+                          tvkVolumeSlider: document.getElementById('tvk-volume-slider'),
 
                           playbar: document.getElementById('playbar'),
                           playbarArtwork: document.getElementById('playbar-artwork'),
@@ -5071,6 +5076,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (btnTvkPrev) btnTvkPrev.addEventListener('click', () => playPrev());
   if (btnTvkNext) btnTvkNext.addEventListener('click', () => playNext());
   if (btnTvkPlay) btnTvkPlay.addEventListener('click', () => togglePlayPause());
+  if (el.btnTvkFav) el.btnTvkFav.addEventListener('click', () => {
+    if (state.currentTrack) toggleFavoriteTrack(state.currentTrack);
+  });
 
   if (navigator.mediaDevices && typeof navigator.mediaDevices.addEventListener === 'function') {
     navigator.mediaDevices.addEventListener('devicechange', () => {
@@ -8079,13 +8087,14 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   function updateFavoriteIcon() {
-    if (!el.favIcon) return;
-    if (!state.currentTrack) {
-      el.favIcon.setAttribute('fill', 'none');
-      return;
+    const isFav = !!(state.currentTrack && state.favorites.some(f => isSameSong(f, state.currentTrack)));
+    if (el.favIcon) el.favIcon.setAttribute('fill', isFav ? 'currentColor' : 'none');
+    if (el.tvkFavIcon) el.tvkFavIcon.setAttribute('fill', isFav ? 'currentColor' : 'none');
+    if (el.btnTvkFav) {
+      el.btnTvkFav.classList.toggle('active', isFav);
+      el.btnTvkFav.setAttribute('aria-pressed', String(isFav));
+      el.btnTvkFav.disabled = !state.currentTrack;
     }
-    const isFav = state.favorites.some(f => isSameSong(f, state.currentTrack));
-    el.favIcon.setAttribute('fill', isFav ? 'currentColor' : 'none');
   }
 
   function updateFavoritesBadge() {
@@ -9957,11 +9966,20 @@ document.addEventListener('DOMContentLoaded', async () => {
     state.isShuffle = !!on;
     localStorage.setItem('muriel_shuffle', state.isShuffle ? '1' : '0');
     if (el.btnShuffle) el.btnShuffle.classList.toggle('active', state.isShuffle);
+    if (el.btnTvkShuffle) {
+      el.btnTvkShuffle.classList.toggle('active', state.isShuffle);
+      el.btnTvkShuffle.setAttribute('aria-pressed', String(state.isShuffle));
+    }
     window.dispatchEvent(new Event('muriel:modes')); // the phone's lock-screen / Dynamic Island buttons follow
   }
   if (el.btnShuffle) {
     el.btnShuffle.classList.toggle('active', state.isShuffle);
     el.btnShuffle.addEventListener('click', () => setShuffle(!state.isShuffle));
+  }
+  if (el.btnTvkShuffle) {
+    el.btnTvkShuffle.classList.toggle('active', state.isShuffle);
+    el.btnTvkShuffle.setAttribute('aria-pressed', String(state.isShuffle));
+    el.btnTvkShuffle.addEventListener('click', () => setShuffle(!state.isShuffle));
   }
 
   // one tap repeats the playlist, the next one the song (the icon gets a 1), the third turns repeat off
@@ -9976,11 +9994,21 @@ document.addEventListener('DOMContentLoaded', async () => {
       el.btnRepeat.title = T(REPEAT_TITLES[state.repeatMode]);
       el.btnRepeat.setAttribute('aria-label', T(REPEAT_TITLES[state.repeatMode]));
     }
+    if (el.btnTvkRepeat) {
+      el.btnTvkRepeat.classList.toggle('active', state.repeatMode !== 'off');
+      el.btnTvkRepeat.classList.toggle('repeat-one', state.isRepeat);
+      el.btnTvkRepeat.title = T(REPEAT_TITLES[state.repeatMode]);
+      el.btnTvkRepeat.setAttribute('aria-label', T(REPEAT_TITLES[state.repeatMode]));
+      el.btnTvkRepeat.setAttribute('aria-pressed', String(state.repeatMode !== 'off'));
+    }
     window.dispatchEvent(new Event('muriel:modes'));
   }
+  setRepeatMode(state.repeatMode);
   if (el.btnRepeat) {
-    setRepeatMode(state.repeatMode);
     el.btnRepeat.addEventListener('click', () => setRepeatMode(({ off: 'all', all: 'one', one: 'off' })[state.repeatMode]));
+  }
+  if (el.btnTvkRepeat) {
+    el.btnTvkRepeat.addEventListener('click', () => setRepeatMode(({ off: 'all', all: 'one', one: 'off' })[state.repeatMode]));
   }
 
   window.toggleShuffle = () => el.btnShuffle && el.btnShuffle.click();
@@ -9993,32 +10021,35 @@ document.addEventListener('DOMContentLoaded', async () => {
     } catch (e) {}
   }
 
+  function syncVolumeControls() {
+    if (el.volumeSlider) el.volumeSlider.value = String(state.volume);
+    if (el.tvkVolumeSlider) el.tvkVolumeSlider.value = String(state.volume);
+    if (el.volumeIcon) el.volumeIcon.classList.toggle('hidden', state.isMuted);
+    if (el.volumeMutedIcon) el.volumeMutedIcon.classList.toggle('hidden', !state.isMuted);
+  }
+
+  function setVolumeFromSlider(slider) {
+    const value = Number(slider && slider.value);
+    if (!Number.isFinite(value)) return;
+    state.volume = Math.max(0, Math.min(1, value));
+    state.isMuted = false;
+    syncVolumeControls();
+    persistVolumeState();
+    applyAudioSettings();
+  }
+
+  syncVolumeControls();
   if (el.volumeSlider) {
-    el.volumeSlider.value = String(state.volume);
-    if (state.isMuted) {
-      if (el.volumeIcon) el.volumeIcon.classList.add('hidden');
-      if (el.volumeMutedIcon) el.volumeMutedIcon.classList.remove('hidden');
-    }
-    el.volumeSlider.addEventListener('input', (e) => {
-      state.volume = parseFloat(e.target.value);
-      state.isMuted = false;
-      if (el.volumeIcon) el.volumeIcon.classList.remove('hidden');
-      if (el.volumeMutedIcon) el.volumeMutedIcon.classList.add('hidden');
-      persistVolumeState();
-      applyAudioSettings();
-    });
+    el.volumeSlider.addEventListener('input', (e) => setVolumeFromSlider(e.currentTarget));
+  }
+  if (el.tvkVolumeSlider) {
+    el.tvkVolumeSlider.addEventListener('input', (e) => setVolumeFromSlider(e.currentTarget));
   }
 
   if (el.btnVolumeMute) {
     el.btnVolumeMute.addEventListener('click', () => {
       state.isMuted = !state.isMuted;
-      if (state.isMuted) {
-        if (el.volumeIcon) el.volumeIcon.classList.add('hidden');
-        if (el.volumeMutedIcon) el.volumeMutedIcon.classList.remove('hidden');
-      } else {
-        if (el.volumeIcon) el.volumeIcon.classList.remove('hidden');
-        if (el.volumeMutedIcon) el.volumeMutedIcon.classList.add('hidden');
-      }
+      syncVolumeControls();
       persistVolumeState();
       applyAudioSettings();
     });
@@ -12965,9 +12996,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   function adjustVolume(delta) {
     state.volume = Math.max(0, Math.min(1, Math.round((state.volume + delta) * 100) / 100));
     state.isMuted = false;
-    if (el.volumeSlider) el.volumeSlider.value = state.volume;
-    if (el.volumeIcon) el.volumeIcon.classList.remove('hidden');
-    if (el.volumeMutedIcon) el.volumeMutedIcon.classList.add('hidden');
+    syncVolumeControls();
     persistVolumeState();
     applyAudioSettings();
   }
