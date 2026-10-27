@@ -1,4 +1,4 @@
-## Muriel 1.3.6
+## Muriel 1.3.7
 
 **Downloads**
 - **iPhone:** [ios-latest](https://github.com/cloverscripts/riff-muriel/releases/tag/ios-latest) (`Muriel.ipa`, install with SideStore, AltStore or Sideloadly). Needs iOS 16.2 or newer
@@ -10,10 +10,20 @@
 Or get it from the website: https://cloverscripts.github.io/riff-muriel/
 
 **New**
+- **Cover picker:** in a song's track art dialog, "Find covers" shows YouTube images and Apple Music album covers to choose from.
+
+**Fixed**
+- **First play is faster on computers:** a song you click no longer waits behind background work, SoundCloud search no longer starts a process per search, and caching a song reuses the stream it already has. Far fewer background processes.
+- **YouTube Music on computers:** songs from YouTube Music no longer fail with "HTTP Error 403", and a song that failed once is looked up again instead of staying broken.
+- **Playlist imports pick the right songs:** the artist has to match now, not just the title; covers, karaoke, sped-up and live versions are skipped unless the original is one.
+- **Missing covers on phones:** songs saved without a working cover get one from YouTube, and covers that fail to load fall back to the next one.
+- **Lighter:** capped memory caches and less work per second while the app is open.
+
+**New in 1.3.6**
 - **TV Karaoke controls:** favorite, shuffle, repeat and volume right in the karaoke screen, in sync with the player bar. Thanks to 10k-Reaper!
 - **Settings, sorted:** every category has headings, and 30 settings moved to where you'd look for them. Settings that used to hide behind a fold-out in Advanced now show up in search too.
 
-**Fixed**
+**Fixed in 1.3.6**
 - **High CPU on computers:** Muriel ran many YouTube lookups at once (each can start a deno process), even when you just moved the mouse over songs. Now at most 2 run at a time at lower priority, nothing runs on hover, and only the next song is prepared near the end of the current one.
 - **Settings on phones:** tapping a category no longer adds a second arrow.
 
