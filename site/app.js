@@ -186,7 +186,8 @@
     if (newest) $('build-info').textContent = `Free · open source · newest build ${ago(newest)}`;
 
     // desktop installers come from the newest versioned release (v1.2.3), not the rolling ones
-    const rel = releases.find((r) => !r.draft && !r.prerelease && /^v\d/.test(r.tag_name));
+    // the newest one that has its installers already (a release being built has none yet)
+    const rel = releases.find((r) => !r.draft && !r.prerelease && /^v\d/.test(r.tag_name) && r.assets.some((x) => /\.dmg$/i.test(x.name)));
     if (!rel) return;
     const pick = (re) => rel.assets.find((a) => re.test(a.name));
     const set = (id, a) => { if (a && $(id)) $(id).href = a.browser_download_url; };
@@ -210,9 +211,17 @@
   async function refresh() {
     lastFetch = Date.now();
     try {
-      const res = await fetch(`${API}/releases?per_page=100`, { headers: { Accept: 'application/vnd.github+json' } });
-      if (!res.ok) throw new Error(String(res.status));
-      const releases = await res.json();
+      // the numbers the site publishes every 10 minutes (no per-visitor limit); GitHub's API only if that's missing
+      let releases = null;
+      try {
+        const s = await fetch(`stats.json?t=${Math.floor(Date.now() / 60000)}`, { cache: 'no-store' });
+        if (s.ok) { const j = await s.json(); if (j && Array.isArray(j.releases)) { releases = j.releases; if (Number.isFinite(j.stars)) { showStars(j.stars); store.set('muriel_site_stars', j.stars); } } }
+      } catch (e) {}
+      if (!releases) {
+        const res = await fetch(`${API}/releases?per_page=100`, { headers: { Accept: 'application/vnd.github+json' } });
+        if (!res.ok) throw new Error(String(res.status));
+        releases = await res.json();
+      }
       const per = countDownloads(releases);
       render(per);
       details(releases);
@@ -240,7 +249,7 @@
   const showStars = (n) => document.querySelectorAll('.stars-n').forEach((el) => { el.textContent = fmt(n); });
   const cachedStars = store.get('muriel_site_stars');
   if (cachedStars) showStars(cachedStars);
-  fetch(API, { headers: { Accept: 'application/vnd.github+json' } })
+  if (!cachedStars) fetch(API, { headers: { Accept: 'application/vnd.github+json' } })
     .then((r) => (r.ok ? r.json() : null))
     .then((j) => { if (j && Number.isFinite(j.stargazers_count)) { showStars(j.stargazers_count); store.set('muriel_site_stars', j.stargazers_count); } })
     .catch(() => {});
