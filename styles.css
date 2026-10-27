@@ -6040,6 +6040,91 @@ body.intensity-zero .lyric-word.active-word { opacity: 1; color: var(--md-sys-co
   height: 26px;
 }
 
+.tvk-secondary-controls {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: min(360px, 34vw);
+  min-width: 280px;
+  z-index: 5;
+}
+
+.tvk-secondary-controls .control-btn {
+  width: 38px;
+  height: 38px;
+  flex: 0 0 38px;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.tvk-secondary-controls .control-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.28);
+  color: #fff;
+}
+
+.tvk-secondary-controls .control-btn.active {
+  color: var(--md-sys-color-primary);
+  background: rgba(255, 255, 255, 0.88);
+}
+
+.tvk-secondary-controls .control-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.tvk-secondary-controls #btn-tvk-repeat:not(.repeat-one) .repeat-one-mark {
+  display: none;
+}
+
+.tvk-volume-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1 1 160px;
+  min-width: 100px;
+  max-width: 180px;
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.tvk-volume-control svg {
+  flex: 0 0 auto;
+}
+
+.tvk-volume-range {
+  flex: 1;
+  min-width: 0;
+}
+
+.tvk-volume-range::-webkit-slider-runnable-track {
+  background: rgba(255, 255, 255, 0.35);
+}
+
+.tvk-volume-range::-webkit-slider-thumb {
+  background: #fff;
+}
+
+.tvk-volume-range::-moz-range-track {
+  background: rgba(255, 255, 255, 0.35);
+}
+
+.tvk-volume-range::-moz-range-thumb {
+  background: #fff;
+}
+
+@media (max-width: 700px) {
+  .tvk-secondary-controls {
+    width: min(360px, calc(100vw - 32px));
+    min-width: 0;
+    gap: 8px;
+  }
+
+  .tvk-volume-control {
+    min-width: 72px;
+    gap: 5px;
+  }
+}
+
 .tvk-output {
   display: flex;
   align-items: center;
