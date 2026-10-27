@@ -8785,7 +8785,7 @@ body[data-icon-pack="solar"] :is(.sidebar, .playbar) svg[stroke="currentColor"] 
 /* playbar visualizer drawn wide behind the bar (the compact one sits on the right of the bar) */
 /* "Behind bar": the bars fill the player bar itself (under its controls) and are clipped to its rounded shape,
    so they never spill over the page above it, whatever the panel opacity */
-.playbar-bg-visualizer { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: -1; opacity: var(--bar-viz-opacity, 0.22); border-radius: inherit; overflow: hidden; display: none;
+.playbar-bg-visualizer { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: -1; opacity: min(1, calc(var(--bar-viz-opacity, 0.22) * 1.8)); border-radius: inherit; overflow: hidden; display: none;
   /* keep the cover/title side and the right-hand buttons clear: strongest in the middle, faint at the edges */
   -webkit-mask-image: linear-gradient(90deg, transparent 0, rgba(0,0,0,.25) 14%, #000 32%, #000 68%, rgba(0,0,0,.25) 86%, transparent 100%);
   mask-image: linear-gradient(90deg, transparent 0, rgba(0,0,0,.25) 14%, #000 32%, #000 68%, rgba(0,0,0,.25) 86%, transparent 100%); }
