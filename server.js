@@ -18,6 +18,8 @@ const { getSystemAudioOutputInfo } = require('./audio-output');
 const ytmArtist = require('./ytm-artist');
 const libraryPages = require('./library-pages');
 const { createTaskQueue, lowerPriority } = require('./ytdlp-queue');
+const { searchSoundcloudApi } = require('./soundcloud-search');
+const { copyStreamToCache } = require('./cache-copy');
 // MURIEL_DEBUG_YTDLP=1 logs every yt-dlp run with its reason and arguments
 const YTDLP_DEBUG = !!process.env.MURIEL_DEBUG_YTDLP;
 
@@ -540,6 +542,23 @@ async function soundcloudPlayableIds(ids) {
   }
 }
 
+// SoundCloud search without a yt-dlp process (#17): SoundCloud's api first, yt-dlp's scsearch only when that
+// fails. Resolves to the flat-search JSON yt-dlp would print ({ entries }).
+async function soundcloudFlatSearch(query, limit, priority, reason) {
+  try {
+    const entries = await searchSoundcloudApi(query, limit, {
+      fetch: (u) => fetchWithTimeout(u, { headers: { 'User-Agent': 'Mozilla/5.0' } }, 8000),
+      clientId: () => soundcloudClientId(),
+      resetClientId: () => { scClientIdCache = { id: '', at: 0 }; },
+    });
+    return { entries };
+  } catch (e) {
+    try { logger.log('warn', `SoundCloud api search failed, using yt-dlp: ${String(e && e.message || e).slice(0, 200)}`); } catch (_) {}
+  }
+  const raw = await executeYtDlp([`scsearch${limit}:${query}`, '--dump-single-json', '--flat-playlist', '--skip-download', '--no-warnings'], 18000, { priority, reason });
+  return JSON.parse(raw);
+}
+
 async function searchSoundcloud(query, limit = 14, priority = 'normal') {
   const cacheKey = `sc:${limit}:${String(query || '').trim().toLowerCase()}`;
   if (searchCache.has(cacheKey)) {
@@ -547,16 +566,8 @@ async function searchSoundcloud(query, limit = 14, priority = 'normal') {
   }
 
   const searchPromise = (async () => {
-    const args = [
-      `scsearch${limit}:${query}`,
-      '--dump-single-json',
-      '--flat-playlist',
-      '--skip-download',
-      '--no-warnings',
-    ];
     try {
-      const raw = await executeYtDlp(args, 18000, { priority, reason: 'soundcloud-search' });
-      const data = JSON.parse(raw);
+      const data = await soundcloudFlatSearch(query, limit, priority, 'soundcloud-search');
       let entries = (data.entries || []).map((item) => {
         let thumbnail = '';
         if (item.thumbnails && item.thumbnails.length > 0) {
@@ -1527,7 +1538,26 @@ async function downloadTrackToDisk(trackUrl, trackId, platform, meta = {}, prior
   let forbidden = false;
   const placeholder = { kill() { cancelled = true; } };
   downloadProcs.set(cleanId, placeholder);
-  const job = ytdlpQueue.run(() => new Promise((resolve, reject) => {
+  // the computer already has the URL the song plays from: ffmpeg copies that instead of a second yt-dlp
+  // extraction (#17); only when it fails (expired, 403) does yt-dlp run
+  const copyFromStream = async () => {
+    if (STREAM_VIA_CACHE || cancelled || !meta.streamUrl || !isSafeMediaUrl(meta.streamUrl)) return false;
+    const started = Date.now();
+    const done = await copyStreamToCache(resolveBinary('ffmpeg'), meta.streamUrl, tempPath, {
+      onChild: (proc) => { if (priority !== 'play') lowerPriority(proc.pid); downloadProcs.set(cleanId, proc); },
+    }).catch(() => false);
+    if (downloadProcs.get(cleanId) !== placeholder) downloadProcs.set(cleanId, placeholder);
+    if (YTDLP_DEBUG) { try { logger.log('info', `cache-copy ${cleanId} ${done ? 'ok' : 'failed'} in ${Date.now() - started}ms`); } catch (_) {} }
+    if (!done) return false;
+    try {
+      const stat = await fs.promises.stat(tempPath);
+      await fs.promises.rename(tempPath, path.join(CACHE_DIR, `${cleanId}.opus`));
+      saveTrackMetadata(cleanId, { id: trackId, title: meta.title || '', artist: meta.artist || '', duration: meta.duration || 0, thumbnail: meta.thumbnail || '', platform: platform || 'youtube', fileSize: stat.size });
+    } catch (e) { return false; }
+    if (downloadProcs.get(cleanId) === placeholder) downloadProcs.delete(cleanId);
+    return true;
+  };
+  const job = ytdlpQueue.run(() => copyFromStream().then((copied) => (copied ? undefined : new Promise((resolve, reject) => {
     if (cancelled) { if (downloadProcs.get(cleanId) === placeholder) downloadProcs.delete(cleanId); return resolve(); }
     const proc = spawnYtDlp(cmd, priority, 'cache-download');
     downloadProcs.set(cleanId, proc);
@@ -1571,7 +1601,7 @@ async function downloadTrackToDisk(trackUrl, trackId, platform, meta = {}, prior
       try { logger.error('Download spawn error: ' + (meta.title || trackId), err); } catch (_) {}
       reject(err);
     });
-  }), { key: `dl:${cleanId}`, priority }).catch(() => {}).finally(() => { downloadingSet.delete(cleanId); downloadingPromises.delete(cleanId); })
+  }))), { key: `dl:${cleanId}`, priority }).catch(() => {}).finally(() => { downloadingSet.delete(cleanId); downloadingPromises.delete(cleanId); })
     // YouTube refused the media of these clients: one more go with a different set before giving up
     .then(() => (forbidden && target.youtube && clients !== YT_RETRY_CLIENTS
       ? downloadTrackToDisk(trackUrl, trackId, platform, meta, priority, YT_RETRY_CLIENTS) : undefined));
@@ -1994,8 +2024,9 @@ async function handleSearch(req, res, query, platform = 'youtube', limit = 20) {
   }
 
   try {
-    const raw = await executeYtDlp(args, 25000, { priority: 'play', reason: 'search' });
-    const data = JSON.parse(raw);
+    const data = platform === 'soundcloud'
+      ? await soundcloudFlatSearch(query, limit, 'play', 'search')
+      : JSON.parse(await executeYtDlp(args, 25000, { priority: 'play', reason: 'search' }));
     let found = data.entries || [];
     if (platform === 'soundcloud') {
       // songs SoundCloud only streams encrypted (DRM) can never play here: leave them out (#13).
@@ -2159,7 +2190,7 @@ async function handleStreamInfo(req, res, trackUrl, trackId, platform = 'youtube
     }
     if (cached && (Date.now() - cached.timestamp < 1800000)) {
       res.writeHead(200, { 'Content-Type': 'application/json' });
-      if (cleanId) setTimeout(() => downloadTrackToDisk(trackUrl, cleanId, platform, meta), 10000);
+      if (cleanId) setTimeout(() => downloadTrackToDisk(trackUrl, cleanId, platform, { ...meta, streamUrl: cached.data && cached.data.streamUrl }), 10000);
       return res.end(JSON.stringify(cached.data));
     }
   }
@@ -2272,7 +2303,7 @@ async function handleStreamInfo(req, res, trackUrl, trackId, platform = 'youtube
   if (cacheKey) streamUrlCache.set(cacheKey, { timestamp: Date.now(), data });
   if (cleanId && cleanId !== cacheKey) streamUrlCache.set(cleanId, { timestamp: Date.now(), data });
   trimCache(streamUrlCache, 300);
-  if (cleanId) setTimeout(() => downloadTrackToDisk(trackUrl, cleanId, platform, meta), 10000);
+  if (cleanId) setTimeout(() => downloadTrackToDisk(trackUrl, cleanId, platform, { ...meta, streamUrl }), 10000);
 
   res.writeHead(200, { 'Content-Type': 'application/json' });
   res.end(JSON.stringify(data));
