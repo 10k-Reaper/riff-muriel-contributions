@@ -1100,6 +1100,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   const coverAnalysisCache = new Map();
+  // drop the oldest entries of an in-memory cache past n, so long sessions don't grow without end
+  function capMap(m, n) { while (m.size > n) m.delete(m.keys().next().value); }
 
   function analyzeCover(imgSrc) {
     return new Promise((resolve) => {
@@ -4204,6 +4206,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       const data = await res.json();
       if (data && data.success && Array.isArray(data.translations)) {
         lyricsTranslationCache.set(cacheKey, data.translations);
+        capMap(lyricsTranslationCache, 30);
         const curKey = `${(state.currentTrack && state.currentTrack.title) || ''}|${(state.currentTrack && state.currentTrack.artist) || ''}|${state.trLang || 'en'}`.toLowerCase();
         if (curKey === cacheKey && state.trActive) {
           state.currentTranslations = data.translations;
@@ -7982,6 +7985,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (!bioFromCache) {
         const cleanBio = String(artist.bio || '').replace(/<[^>]*>/g, '').trim();
         artistBioCache.set(artist.id || cleanName.toLowerCase(), cleanBio);
+        capMap(artistBioCache, 100);
         setArtistBio(cleanBio);
       }
 
@@ -11691,7 +11695,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
   enhanceSliders();
   let sliderRaf = 0;
-  new MutationObserver(() => { if (sliderRaf) return; sliderRaf = requestAnimationFrame(() => { sliderRaf = 0; enhanceSliders(); }); }).observe(document.body, { childList: true, subtree: true });
+  // text-only changes (the playbar clock, counters) can't add a slider or a switch: skip the document scan for them
+  const addsElements = (muts) => muts.some((m) => Array.prototype.some.call(m.addedNodes, (n) => n.nodeType === 1));
+  new MutationObserver((muts) => { if (sliderRaf || !addsElements(muts)) return; sliderRaf = requestAnimationFrame(() => { sliderRaf = 0; enhanceSliders(); }); }).observe(document.body, { childList: true, subtree: true });
 
   (function initHueSegments() {
     const input = document.getElementById('slider-theme-hue');
@@ -11853,7 +11859,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     const audio = el.nativeAudio;
     const dur = audio && isFinite(audio.duration) && audio.duration > 0 ? audio.duration : 0;
     const p = dur ? Math.min(1, Math.max(0, audio.currentTime / dur)) : 0;
-    const primary = (getComputedStyle(document.documentElement).getPropertyValue('--md-sys-color-primary') || '#d0bcff').trim();
+    // the theme color is cached and refreshed on theme changes, like the scrubber's: no style read per frame
+    if (!cachedPrimaryColor) refreshCachedThemeColors();
+    const primary = cachedPrimaryColor || '#d0bcff';
     const STEPS = 240;
     const ringPoint = (phi, wave) => {
       const r = radiusAt(phi - rot) + RING_GAP + RING_W / 2 + wave;
@@ -12634,7 +12642,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   }
   let swRaf = 0;
-  new MutationObserver(() => { if (swRaf) return; swRaf = requestAnimationFrame(() => { swRaf = 0; decorateSwitches(); }); }).observe(document.body, { childList: true, subtree: true });
+  new MutationObserver((muts) => { if (swRaf || !addsElements(muts)) return; swRaf = requestAnimationFrame(() => { swRaf = 0; decorateSwitches(); }); }).observe(document.body, { childList: true, subtree: true });
   decorateSwitches();
 
   const settingWinMediaKeys = document.getElementById('setting-win-media-keys');
@@ -15708,6 +15716,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (stored) {
         const parsed = JSON.parse(stored);
         analysisCache.set(cleanId, parsed);
+        capMap(analysisCache, 300);
         return parsed;
       }
     } catch (e) {}
@@ -15718,6 +15727,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (!trackId || !analysis) return;
     const cleanId = String(trackId).replace(/[^a-zA-Z0-9_-]/g, '_');
     analysisCache.set(cleanId, analysis);
+    capMap(analysisCache, 300);
     try {
       localStorage.setItem(`muriel_audio_analysis_${cleanId}`, JSON.stringify(analysis));
       fetch(`http://127.0.0.1:${state.serverPort}/api/track-analysis`, {
@@ -16019,6 +16029,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
           const result = [c1, c2];
           dominantColorsCache.set(url, result);
+          capMap(dominantColorsCache, 300);
           canvas.width = 0;
           canvas.height = 0;
           img.onload = null;
