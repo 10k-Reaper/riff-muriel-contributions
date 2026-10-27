@@ -2528,7 +2528,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   function isVizConnectedMode() { return vizConnected; }
   let barBgSmoothed = null;
   let barBgW = 0;
-  const BAR_BG_H = 36;
+  let BAR_BG_H = 88;
   let barBgSettings = null;
   let barBgSettingsAt = 0;
   function drawConnectedLiquidWave(ctx, w, h, heights, color) {
@@ -2663,7 +2663,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     const barBgCanvas = document.getElementById('playbar-bg-visualizer');
     if (barBgCanvas && el.playbar && !isPhoneApp) {
-      barBgW = Math.max(200, el.playbar.clientWidth - 32);
+      // the canvas covers the whole player bar (see .playbar-bg-visualizer)
+      barBgW = Math.max(200, el.playbar.clientWidth);
+      BAR_BG_H = Math.max(40, el.playbar.clientHeight || 88);
       barBgCanvas.width = Math.round(barBgW * dpr);
       barBgCanvas.height = Math.round(BAR_BG_H * dpr);
       const bctx = barBgCanvas.getContext('2d');

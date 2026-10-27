@@ -8783,7 +8783,9 @@ body[data-icon-pack="solar"] svg[stroke="currentColor"] { stroke-width: 1.9px !i
 body[data-icon-pack="solar"] :is(.sidebar, .playbar) svg[stroke="currentColor"] { fill: color-mix(in srgb, currentColor 22%, transparent) !important; }
 
 /* playbar visualizer drawn wide behind the bar (the compact one sits on the right of the bar) */
-.playbar-bg-visualizer { position: absolute; left: 16px; right: 16px; width: calc(100% - 32px); height: 36px; bottom: calc(100% - 4px); pointer-events: none; z-index: -1; opacity: var(--bar-viz-opacity, 0.22); border-radius: 10px 10px 0 0; display: none; }
+/* "Behind bar": the bars fill the player bar itself (under its controls) and are clipped to its rounded shape,
+   so they never spill over the page above it, whatever the panel opacity */
+.playbar-bg-visualizer { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: -1; opacity: var(--bar-viz-opacity, 0.22); border-radius: inherit; overflow: hidden; display: none; }
 body.bar-viz-behind:not(.mini):not(.perf):not(.bar-wave-off) .playbar-bg-visualizer { display: block; }
 body.bar-viz-behind #visualizer-container { display: none !important; }
 
