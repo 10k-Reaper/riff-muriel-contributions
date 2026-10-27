@@ -17,6 +17,9 @@ const logger = require('./logger');
 const { getSystemAudioOutputInfo } = require('./audio-output');
 const ytmArtist = require('./ytm-artist');
 const libraryPages = require('./library-pages');
+const { createTaskQueue, lowerPriority } = require('./ytdlp-queue');
+// MURIEL_DEBUG_YTDLP=1 logs every yt-dlp run with its reason and arguments
+const YTDLP_DEBUG = !!process.env.MURIEL_DEBUG_YTDLP;
 
 const MAX_BODY_BYTES = 2 * 1024 * 1024;
 const SAFE_MEDIA_URL = /^https?:\/\//i;
@@ -513,7 +516,7 @@ async function soundcloudPlayableIds(ids) {
   }
 }
 
-async function searchSoundcloud(query, limit = 14) {
+async function searchSoundcloud(query, limit = 14, priority = 'normal') {
   const cacheKey = `sc:${limit}:${String(query || '').trim().toLowerCase()}`;
   if (searchCache.has(cacheKey)) {
     return searchCache.get(cacheKey);
@@ -528,7 +531,7 @@ async function searchSoundcloud(query, limit = 14) {
       '--no-warnings',
     ];
     try {
-      const raw = await executeYtDlp(args, 18000);
+      const raw = await executeYtDlp(args, 18000, { priority, reason: 'soundcloud-search' });
       const data = JSON.parse(raw);
       let entries = (data.entries || []).map((item) => {
         let thumbnail = '';
@@ -803,7 +806,7 @@ async function ytMixTracks(seed) {
         'youtube:player_client=android',
         `https://www.youtube.com/watch?v=${id}&list=RD${id}`
       ];
-      const raw = await executeYtDlp(args, 25000);
+      const raw = await executeYtDlp(args, 25000, { reason: 'recommend-mix' });
       const data = JSON.parse(raw);
       const entries = Array.isArray(data?.entries) ? data.entries : [];
       const results = [];
@@ -1350,10 +1353,32 @@ function directYoutubeSearch(query, filterSpam = false) {
   });
 }
 
+// Every yt-dlp run goes through one queue (#16): each can start a JavaScript runtime at full CPU, so at
+// most two run at once (one for background work), a song the listener started goes first, identical
+// requests share one run, and background work that failed waits before it is tried again.
+// opts.priority: 'play' (someone is waiting on it), 'normal' or 'background'; opts.key dedupes,
+// opts.cacheMs remembers the output, opts.reason names the caller in the log.
+const ytdlpQueue = createTaskQueue({ limit: 2, backgroundLimit: 1 });
+
+function spawnYtDlp(cmd, priority, reason) {
+  const proc = spawn(cmd.bin, cmd.args, { windowsHide: true, env: cmd.env });
+  // background runs (and the JS runtime they start, which inherits it) yield to the app and the desktop
+  if (priority !== 'play') lowerPriority(proc.pid);
+  if (YTDLP_DEBUG) {
+    try { logger.log('info', `yt-dlp spawn [${reason || 'unknown'}/${priority}] ${cmd.args.filter((a) => !/^--(no-config|no-warnings|no-playlist)$/.test(a)).join(' ').slice(0, 300)} ${JSON.stringify(ytdlpQueue.stats())}`); } catch (_) {}
+  }
+  return proc;
+}
+
 function executeYtDlp(args, timeoutMs = 25000, opts = {}) {
+  const priority = opts.priority || 'normal';
+  return ytdlpQueue.run(() => runYtDlpNow(args, timeoutMs, opts, priority), { key: opts.key, priority, cacheMs: opts.cacheMs });
+}
+
+function runYtDlpNow(args, timeoutMs, opts, priority) {
   return new Promise((resolve, reject) => {
     const cmd = ytDlpCommand(args);
-    const proc = spawn(cmd.bin, cmd.args, { windowsHide: true, env: cmd.env });
+    const proc = spawnYtDlp(cmd, priority, opts.reason);
     if (opts && typeof opts.onChild === 'function') {
       try { opts.onChild(proc); } catch (_) {}
     }
@@ -1362,11 +1387,13 @@ function executeYtDlp(args, timeoutMs = 25000, opts = {}) {
     const outDecoder = new StringDecoder('utf8');
     const errDecoder = new StringDecoder('utf8');
     let timer = null;
+    let timedOut = false;
 
     if (timeoutMs > 0) {
+      // the queue slot is given back once the process has really gone ('close'), not when it is told to
       timer = setTimeout(() => {
+        timedOut = true;
         try { proc.kill('SIGKILL'); } catch (e) {}
-        reject(new Error(`yt-dlp timed out after ${timeoutMs}ms`));
       }, timeoutMs);
     }
 
@@ -1375,7 +1402,9 @@ function executeYtDlp(args, timeoutMs = 25000, opts = {}) {
 
     proc.on('close', (code) => {
       if (timer) clearTimeout(timer);
-      if (code === 0) {
+      if (timedOut) {
+        reject(new Error(`yt-dlp timed out after ${timeoutMs}ms`));
+      } else if (code === 0) {
         resolve(stdout);
       } else {
         const firstArgs = (args || []).slice(0, 3).join(' ');
@@ -1414,8 +1443,12 @@ async function cacheThumbnailToDisk(cleanId, thumbnailUrl) {
   return null;
 }
 
-async function downloadTrackToDisk(trackUrl, trackId, platform, meta = {}) {
+// priority: 'play' when the listener is waiting for this song (phones play from the cache), otherwise
+// 'background' (caching a song that already plays, or the next one); a background download that failed
+// isn't tried again until its backoff has passed
+async function downloadTrackToDisk(trackUrl, trackId, platform, meta = {}, priority = 'background') {
   const cleanId = cleanTrackId(trackId);
+  if (priority === 'background' && ytdlpQueue.backingOff(`dl:${cleanId}`)) return;
   // a prefetch may already be fetching this song: wait for it instead of reporting it missing
   if (downloadingSet.has(cleanId)) return downloadingPromises.get(cleanId);
   if (await findCachedFile(cleanId)) return;
@@ -1458,8 +1491,13 @@ async function downloadTrackToDisk(trackUrl, trackId, platform, meta = {}) {
     } catch (e) { return null; }
   };
 
-  const job = new Promise((resolve) => {
-    const proc = spawn(cmd.bin, cmd.args, { windowsHide: true, env: cmd.env });
+  // until it gets a slot, a skip (phones) cancels the queued download instead of a process
+  let cancelled = false;
+  const placeholder = { kill() { cancelled = true; } };
+  downloadProcs.set(cleanId, placeholder);
+  const job = ytdlpQueue.run(() => new Promise((resolve, reject) => {
+    if (cancelled) { if (downloadProcs.get(cleanId) === placeholder) downloadProcs.delete(cleanId); return resolve(); }
+    const proc = spawnYtDlp(cmd, priority, 'cache-download');
     downloadProcs.set(cleanId, proc);
     // yt-dlp's reason ("ERROR: ...") goes into the log, so a shared error log says why a song failed
     let errText = '';
@@ -1490,20 +1528,24 @@ async function downloadTrackToDisk(trackUrl, trackId, platform, meta = {}) {
         const reason = (errText.match(/ERROR:[^\n]*/g) || []).pop();
         try { logger.error('Download failure: ' + (meta.title || trackId) + ' (exit code ' + code + ')' + (reason ? ': ' + reason.slice(0, 300) : '')); } catch (_) {}
         if (found) try { await fs.promises.unlink(found); } catch (e) {}
+        // a killed (skipped) download isn't a failure of the song
+        if (code !== null) return reject(new Error('download failed'));
       }
       resolve();
     });
 
     proc.on('error', (err) => {
       try { logger.error('Download spawn error: ' + (meta.title || trackId), err); } catch (_) {}
-      resolve();
+      reject(err);
     });
-  }).finally(() => { downloadingSet.delete(cleanId); downloadingPromises.delete(cleanId); });
+  }), { key: `dl:${cleanId}`, priority }).catch(() => {}).finally(() => { downloadingSet.delete(cleanId); downloadingPromises.delete(cleanId); });
   downloadingPromises.set(cleanId, job);
   return job;
 }
 
-async function prefetchTrack(trackUrl, trackId, platform, meta = null) {
+// priority 'normal' for the song that plays next (the app asks near the end of the current one, and it
+// should be ready in time), 'background' for guesses such as the top search result
+async function prefetchTrack(trackUrl, trackId, platform, meta = null, priority = 'background') {
   let cleanId = cleanTrackId(trackId);
   if (!cleanId && trackUrl && trackUrl.includes('v=')) {
     cleanId = cleanTrackId(trackUrl.split('v=')[1].split('&')[0]);
@@ -1518,7 +1560,7 @@ async function prefetchTrack(trackUrl, trackId, platform, meta = null) {
     if (!cleanId || !meta || !meta.title) return;
     if (platform === 'youtube' && (!trackUrl || !trackUrl.startsWith('http'))) trackUrl = `https://www.youtube.com/watch?v=${cleanId}`;
     prefetchingSet.add(cacheKey);
-    try { await downloadTrackToDisk(trackUrl, cleanId, platform, meta); } finally { prefetchingSet.delete(cacheKey); }
+    try { await downloadTrackToDisk(trackUrl, cleanId, platform, meta, priority); } finally { prefetchingSet.delete(cacheKey); }
     return;
   }
   prefetchingSet.add(cacheKey);
@@ -1542,7 +1584,8 @@ async function prefetchTrack(trackUrl, trackId, platform, meta = null) {
     }
     args.push('--', trackUrl);
 
-    const raw = await executeYtDlp(args, 18000);
+    // the same lookup as /api/stream-info: if the song is started meanwhile, it waits for this run
+    const raw = await executeYtDlp(args, 18000, { key: `g:${trackUrl}`, priority, reason: 'prefetch' });
     const lines = raw.trim().split('\n').filter(l => l.startsWith('http'));
     const streamUrl = lines[0];
 
@@ -1804,7 +1847,7 @@ async function handleSearch(req, res, query, platform = 'youtube', limit = 20) {
 
     try {
       const args = ['--flat-playlist', '--playlist-end', String(limit), '-J', `https://music.youtube.com/search?q=${encodeURIComponent(query)}#songs`];
-      const raw = await executeYtDlp(args, 25000);
+      const raw = await executeYtDlp(args, 25000, { priority: 'play', reason: 'search-ytmusic' });
       const data = JSON.parse(raw);
       const rawEntries = (data.entries || []).filter((item) => item && /^[\w-]{11}$/.test(String(item.id || '')) && item.live_status !== 'is_live' && !(item.duration && (item.duration < 30 || item.duration > 1200)) && !/\b(advert(isement)?|sponsored|ad)\b|реклама/i.test(item.title || '')).slice(0, limit);
 
@@ -1837,13 +1880,17 @@ async function handleSearch(req, res, query, platform = 'youtube', limit = 20) {
           while (fIdx < toFetch.length) {
             const item = toFetch[fIdx++];
             try {
+              // only the metadata is needed: skipping the player JS keeps the JS runtime from starting
               const out = await executeYtDlp([
                 '--skip-download',
                 '--no-playlist',
+                '--ignore-no-formats-error',
+                '--extractor-args',
+                'youtube:player_skip=js',
                 '--print',
                 '%(artist,artists.0,channel,uploader)s',
                 `https://www.youtube.com/watch?v=${item.id}`
-              ], 10000);
+              ], 10000, { priority: 'play', reason: 'search-artist' });
               const lines = (out || '').split('\n').map(s => s.trim()).filter(s => s && s !== 'NA');
               if (lines.length > 0) {
                 const val = lines[0].replace(/\s*-\s*Topic$/i, '').trim();
@@ -1913,7 +1960,7 @@ async function handleSearch(req, res, query, platform = 'youtube', limit = 20) {
   }
 
   try {
-    const raw = await executeYtDlp(args, 25000);
+    const raw = await executeYtDlp(args, 25000, { priority: 'play', reason: 'search' });
     const data = JSON.parse(raw);
     let found = data.entries || [];
     if (platform === 'soundcloud') {
@@ -2014,7 +2061,7 @@ async function soundcloudFallback(title, artist, duration) {
   if (!query) return null;
   const want = Number(duration) || 0;
   const wantsVersion = VERSION_WORDS.test(title || '');
-  const found = await searchSoundcloud(query, 8).catch(() => []);
+  const found = await searchSoundcloud(query, 8, 'play').catch(() => []);
   const pick = (found || []).find((t) => t && t.url
     && t.duration > 31 // previews are exactly 30 s
     && (!want || Math.abs(t.duration - want) <= Math.max(12, want * 0.08))
@@ -2102,20 +2149,20 @@ async function handleStreamInfo(req, res, trackUrl, trackId, platform = 'youtube
       const proc = downloadProcs.get(cleanId);
       if (proc) { try { proc.kill(); } catch (e) {} }
     });
-    await downloadTrackToDisk(trackUrl, cleanId, platform, meta);
+    await downloadTrackToDisk(trackUrl, cleanId, platform, meta, 'play');
     if (gone) { resolveLookup({ success: false, error: 'cancelled' }); if (cacheKey && streamUrlCache.get(cacheKey) === inFlightEntry) streamUrlCache.delete(cacheKey); return; }
     // any song that won't play (SoundCloud and YouTube Music included) tries other YouTube uploads of it
     if (!await findCachedFile(cleanId) && platform !== 'local' && (title || artist)) {
       for (const alt of await alternativeUploads(cleanId, title, artist, duration)) {
         try { logger.log('warn', `stream: ${cleanId} unavailable, trying another upload ${alt}`); } catch (_) {}
-        await downloadTrackToDisk(alt, cleanId, 'youtube', meta);
+        await downloadTrackToDisk(alt, cleanId, 'youtube', meta, 'play');
         if (await findCachedFile(cleanId)) break;
       }
     }
     if (!await findCachedFile(cleanId) && (title || artist)) {
       // same SoundCloud fallback as the streaming path below
       const sc = await soundcloudFallback(title, artist, duration);
-      if (sc) await downloadTrackToDisk(sc, cleanId, 'soundcloud', meta);
+      if (sc) await downloadTrackToDisk(sc, cleanId, 'soundcloud', meta, 'play');
     }
     // settle the in-flight entry so concurrent lookups for this track don't wait forever,
     // and drop it so later prefetches don't mistake it for a cached stream URL
@@ -2137,7 +2184,7 @@ async function handleStreamInfo(req, res, trackUrl, trackId, platform = 'youtube
         args.push('--extractor-args', 'youtube:player_client=default,android');
       }
       args.push('--', trackUrl);
-      const raw = await executeYtDlp(args, 18000);
+      const raw = await executeYtDlp(args, 18000, { key: `g:${trackUrl}`, priority: 'play', reason: 'stream' });
       const lines = raw.trim().split('\n').map(l => l.trim()).filter(l => l.startsWith('http'));
       if (lines.length > 0) streamUrl = lines[0];
     } catch (e) {
@@ -2148,7 +2195,7 @@ async function handleStreamInfo(req, res, trackUrl, trackId, platform = 'youtube
   if (!streamUrl && platform !== 'local' && (title || artist)) {
     for (const alt of await alternativeUploads(cleanId, title, artist, duration)) {
       try {
-        const raw = await executeYtDlp(['--no-config', '-g', '--no-warnings', '--no-playlist', '--prefer-free-formats', '-f', 'bestaudio/best', '--extractor-args', 'youtube:player_client=default,android', '--', alt], 18000);
+        const raw = await executeYtDlp(['--no-config', '-g', '--no-warnings', '--no-playlist', '--prefer-free-formats', '-f', 'bestaudio/best', '--extractor-args', 'youtube:player_client=default,android', '--', alt], 18000, { key: `g:${alt}`, priority: 'play', reason: 'stream-alternative' });
         streamUrl = raw.trim().split('\n').map(l => l.trim()).find(l => l.startsWith('http')) || null;
         if (streamUrl) break;
       } catch (e) {
@@ -2162,7 +2209,7 @@ async function handleStreamInfo(req, res, trackUrl, trackId, platform = 'youtube
       const sc = await soundcloudFallback(title, artist, duration);
       if (!sc) throw new Error('no full-length SoundCloud upload');
       const scArgs = ['--no-config', '-g', '--no-warnings', '--no-playlist', '--prefer-free-formats', '-f', 'bestaudio/best', '--', sc];
-      const scRaw = await executeYtDlp(scArgs, 15000);
+      const scRaw = await executeYtDlp(scArgs, 15000, { key: `g:${sc}`, priority: 'play', reason: 'stream-soundcloud' });
       const scLines = scRaw.trim().split('\n').map(l => l.trim()).filter(l => l.startsWith('http'));
       if (scLines.length > 0) streamUrl = scLines[0];
     } catch (e) {
@@ -2927,7 +2974,7 @@ async function handleDownload(req, res, trackUrl, title, artist, format = 'mp3',
   args.push('--', targetUrl);
 
   try {
-    await executeYtDlp(args, 60000, { onChild: c => { child = c; } });
+    await executeYtDlp(args, 60000, { onChild: c => { child = c; }, reason: 'download' });
     if (!isRaw) {
       await cleanupDownloadArtifacts(downloadsDir, beforeFiles, baseName, videoId, ext, true);
       downloadsIndex = null;
@@ -2964,7 +3011,7 @@ async function handleDownload(req, res, trackUrl, title, artist, format = 'mp3',
       }
       fallbackArgs.push('--', targetUrl);
 
-      await executeYtDlp(fallbackArgs, 60000, { onChild: c => { child = c; } });
+      await executeYtDlp(fallbackArgs, 60000, { onChild: c => { child = c; }, reason: 'download-fallback' });
       if (!isRaw) {
         await cleanupDownloadArtifacts(downloadsDir, beforeFiles, baseName, videoId, ext, true);
         downloadsIndex = null;
@@ -4080,13 +4127,13 @@ async function handlePlaylistImport(req, res, inputUrl) {
   args.push(inputUrl);
 
   try {
-    let raw = await executeYtDlp(args, 60000);
+    let raw = await executeYtDlp(args, 60000, { reason: 'import' });
     let data = JSON.parse(raw);
     let entries = Array.isArray(data.entries) ? data.entries : [data];
 
     if (entries.length > 0 && !entries[0].title && args.includes('--flat-playlist')) {
       const deepArgs = args.filter(a => a !== '--flat-playlist');
-      const deepRaw = await executeYtDlp(deepArgs, 60000);
+      const deepRaw = await executeYtDlp(deepArgs, 60000, { reason: 'import-deep' });
       data = JSON.parse(deepRaw);
       entries = Array.isArray(data.entries) ? data.entries : [data];
     }
@@ -6057,7 +6104,7 @@ const server = http.createServer(guardHandler(async (req, res) => {
     const trackId = parsedUrl.query.id || '';
     const platform = parsedUrl.query.platform || 'youtube';
     const q = parsedUrl.query;
-    prefetchTrack(trackUrl, trackId, platform, q.title ? { title: q.title, artist: q.artist || '', duration: Number(q.duration) || 0, thumbnail: q.thumbnail || '' } : null);
+    prefetchTrack(trackUrl, trackId, platform, q.title ? { title: q.title, artist: q.artist || '', duration: Number(q.duration) || 0, thumbnail: q.thumbnail || '' } : null, q.next === '1' ? 'normal' : 'background');
     res.writeHead(200, { 'Content-Type': 'application/json' });
     return res.end(JSON.stringify({ success: true }));
   }

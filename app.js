@@ -2246,6 +2246,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   function resetLevelWatcher() { levelAvgDb = -120; if (audioEngine && audioEngine.setNormalizeGainDb) audioEngine.setNormalizeGainDb(0); }
   // the phone app has no Web Audio graph (see mobile-ui.js), so nothing to measure there
   const isPhoneApp = document.documentElement.classList.contains('is-mobile');
+  // when to look up the next song: phones download it whole, so halfway through; the computer only needs
+  // a stream URL (a few seconds of yt-dlp), so in the last 45 seconds (#16)
+  function nextPrefetchDue(cur, dur) {
+    if (!(dur > 0) || !(cur >= 0)) return false;
+    return isPhoneApp ? cur / dur > 0.5 : dur - cur <= 45;
+  }
   window.addEventListener('muriel:storage-full', () => showToast(Tm('Storage is full: some changes could not be saved'), 'error'));
   // <audio>/<img> can't send the token header the fetch wrapper adds, so local-server media URLs carry it
   const tokenUrl = (u) => {
@@ -2911,7 +2917,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             const d = formatDuration(dur);
             if (el.timeDuration.textContent !== d) el.timeDuration.textContent = d;
           }
-          if (dur > 0 && cur / dur > 0.5 && !state.nextTrackPrefetched) {
+          if (nextPrefetchDue(cur, dur) && !state.nextTrackPrefetched) {
             state.nextTrackPrefetched = true;
             prefetchNextQueueTrack();
           }
@@ -3052,6 +3058,8 @@ document.addEventListener('DOMContentLoaded', async () => {
       document.body.classList.remove('app-paused');
       document.body.classList.remove('hidden-window');
       resizeCanvases();
+      // the daily mixes wait while the window is hidden (#16): make them now if they're still missing
+      try { if (spHomeReady && isSpotifyHome() && !readDailyMixes()) renderMadeForYou(); } catch (e) {}
       hasDrawnPausedFrame = false;
       if (state.isPlaying || isDraggingScrubber) startVisualizers();
       if (typeof cacheModal !== 'undefined' && cacheModal && cacheModal.classList.contains('visible') && typeof cacheRafId !== 'undefined' && !cacheRafId) {
@@ -6063,17 +6071,14 @@ document.addEventListener('DOMContentLoaded', async () => {
       updatePlayPauseButton(state.isPlaying, true);
     });
 
+    // Each look-up starts yt-dlp, which can run a JavaScript runtime at full CPU (#16), so the computer
+    // only looks up the one song that plays next, and only near the end of this one. Phones download
+    // whole songs to play them, so they start on that halfway through.
     function prefetchNextQueueTrack() {
-      const nextIdx = state.queueIndex + 1;
-      if (state.queue && nextIdx < state.queue.length) {
-        const nextTrack = state.queue[nextIdx];
-        if (nextTrack && nextTrack.platform !== 'local') {
-          const qUrl = nextTrack.url || '';
-          const qId = nextTrack.id || '';
-          const qInfoUrl = `http://127.0.0.1:${state.serverPort}/api/stream-info?url=${encodeURIComponent(qUrl)}&id=${encodeURIComponent(qId)}&platform=${nextTrack.platform || state.platform}&title=${encodeURIComponent(nextTrack.title || '')}&artist=${encodeURIComponent(nextTrack.artist || '')}&duration=${encodeURIComponent(nextTrack.duration || 0)}&thumbnail=${encodeURIComponent(nextTrack.thumbnail || '')}`;
-          fetch(qInfoUrl).catch(() => {});
-        }
-      }
+      const nextTrack = state.isShuffle ? planShuffleNext() : (state.queue && state.queue[state.queueIndex + 1]);
+      if (!nextTrack || nextTrack.platform === 'local' || !(nextTrack.url || nextTrack.id)) return;
+      const q = `url=${encodeURIComponent(nextTrack.url || '')}&id=${encodeURIComponent(nextTrack.id || '')}&platform=${nextTrack.platform || state.platform}&title=${encodeURIComponent(nextTrack.title || '')}&artist=${encodeURIComponent(nextTrack.artist || '')}&duration=${encodeURIComponent(nextTrack.duration || 0)}&thumbnail=${encodeURIComponent(nextTrack.thumbnail || '')}`;
+      fetch(`http://127.0.0.1:${state.serverPort}/api/${isPhoneApp ? 'stream-info' : 'prefetch'}?${q}&next=1`).catch(() => {});
     }
 
     el.nativeAudio.addEventListener('playing', () => {
@@ -6083,8 +6088,9 @@ document.addEventListener('DOMContentLoaded', async () => {
       registerMediaActions();
       document.body.classList.add('is-playing');
       updatePlayPauseButton(true, false);
-      // warm up the next two songs (staggered) so skipping or a slow network never leaves a gap
-      const upcoming = state.isShuffle ? [planShuffleNext()] : [1, 2].map(ahead => state.queue && state.queue[state.queueIndex + ahead]);
+      // phones warm up the next two songs (staggered) so skipping or a slow network never leaves a gap;
+      // the computer looks up only the next one, near the end of this one (prefetchNextQueueTrack, #16)
+      const upcoming = !isPhoneApp ? [] : state.isShuffle ? [planShuffleNext()] : [1, 2].map(ahead => state.queue && state.queue[state.queueIndex + ahead]);
       upcoming.forEach((nextTrack, k) => {
         if (nextTrack && nextTrack.url && nextTrack.platform !== 'local') {
           setTimeout(() => {
@@ -6253,7 +6259,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
       }
 
-      if (state.isPlaying && dur > 0 && cur / dur > 0.5 && !state.nextTrackPrefetched) {
+      if (state.isPlaying && nextPrefetchDue(cur, dur) && !state.nextTrackPrefetched) {
         state.nextTrackPrefetched = true;
         prefetchNextQueueTrack();
       }
@@ -7326,21 +7332,6 @@ document.addEventListener('DOMContentLoaded', async () => {
           row.classList.add('selectable');
           if (multiSel.tracks.has(canonicalId)) row.classList.add('selected');
         }
-
-        let prefetchTimer = null;
-        row.addEventListener('mouseenter', () => {
-          if (track.url && track.platform !== 'local') {
-            prefetchTimer = setTimeout(() => {
-              fetch(`http://127.0.0.1:${state.serverPort}/api/prefetch?url=${encodeURIComponent(track.url)}&id=${encodeURIComponent(track.id)}&platform=${track.platform || state.platform}`).catch(() => {});
-            }, 300);
-          }
-        });
-        row.addEventListener('mouseleave', () => {
-          if (prefetchTimer) {
-            clearTimeout(prefetchTimer);
-            prefetchTimer = null;
-          }
-        });
 
         row.addEventListener('click', (e) => {
           if (e.target.closest('.track-row-actions')) return;
@@ -16801,8 +16792,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     const cached = readDailyMixes();
     const mixes = cached ? cached.mixes : [];
     if (!cached && !mixesBusy && !mixesTimer) {
-      // not straight away: the home page's own recommendations go first
-      mixesTimer = setTimeout(() => { mixesTimer = 0; generateDailyMixes(false); }, 3000);
+      // not straight away: the home page's own recommendations go first; and not while nobody sees the
+      // window (each mix runs yt-dlp several times, #16): the home page asks again when it's shown
+      mixesTimer = setTimeout(() => { mixesTimer = 0; if (!document.hidden && state.isWindowVisible !== false) generateDailyMixes(false); }, 3000);
     }
     const wave = Array.isArray(myWaveCurrentTracks) ? myWaveCurrentTracks : [];
     if (!wave.length && !mixes.length && !mixesBusy) { sec.hidden = true; return; }
