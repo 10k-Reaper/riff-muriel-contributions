@@ -1,4 +1,4 @@
-## Muriel 1.3.4
+## Muriel 1.3.5
 
 **Downloads**
 - **iPhone:** [ios-latest](https://github.com/cloverscripts/riff-muriel/releases/tag/ios-latest) (`Muriel.ipa`, install with SideStore, AltStore or Sideloadly). Needs iOS 16.2 or newer
@@ -10,11 +10,18 @@
 Or get it from the website: https://cloverscripts.github.io/riff-muriel/
 
 **New**
+- **Looks and moves like Riff again:** see-through panels with your album's colours behind them, Riff's sidebar and player buttons, the Spotify-style home, and calmer motion without the glows and pink gradients. You can switch back to solid panels and My Wave in Settings.
+- **Encore** uses your theme colours and Riff's style.
+- **Smoother:** song changes, opening Now Playing and opening Settings do less work; on phones, Now Playing follows your finger when you swipe it down.
+- **Settings:** a search field at the top. On phones, a list of categories with names.
+- **Show on Discord:** your Discord profile can show what you're listening to (Settings → Integrations, computers only, off by default). Thanks to 10k-Reaper!
+
+**New in 1.3.4**
 - **Per-song sound:** in Audio → Tempo, "For this track only" keeps speed, pitch and volume for one song. "Ignore per-track settings" plays everything with the global values again, without deleting what songs saved.
 - **Speed & pitch presets:** Normal, Slowed, Daycore, Sped up, Nightcore and Practice, plus your own.
 - **Artists tab:** the artists you follow in one grid (turn it on in Settings).
 
-**Fixed**
+**Fixed in 1.3.4**
 - **SoundCloud:** share links (on.soundcloud.com, m.soundcloud.com) import again. Search no longer shows songs that SoundCloud only streams encrypted, which never played.
 - **Favorites:** the same song can't end up in favorites twice any more; existing duplicates are cleaned up.
 - **Home rows:** the mouse wheel scrolls the artists and playlists rows instead of the whole page.
