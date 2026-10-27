@@ -11914,7 +11914,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (cat === 'appearance' || !cat) cat = 'interface';
     document.querySelectorAll('#view-settings .settings-section').forEach(s => s.classList.toggle('cat-hidden', s.dataset.cat !== cat));
     document.querySelectorAll('#settings-nav .settings-nav-btn').forEach(b => b.classList.toggle('active', b.dataset.cat === cat));
-    const pane = document.querySelector('#view-settings .settings-pane'); if (pane) pane.scrollTop = 0;
+    // after the frame's style work, so it doesn't force a second layout of the whole settings page
+    const pane = document.querySelector('#view-settings .settings-pane'); if (pane) requestAnimationFrame(() => { if (pane.scrollTop) pane.scrollTop = 0; });
     try { localStorage.setItem('muriel_settings_cat', cat); } catch (e) {}
     if (cat === 'custom-themes' && typeof renderThemeCards === 'function') renderThemeCards();
     if (cat === 'plugins' && typeof reloadPluginsList === 'function') reloadPluginsList();

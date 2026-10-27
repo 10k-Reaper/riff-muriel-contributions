@@ -47,14 +47,19 @@
     const lyrics = document.getElementById('lyrics-container');
     startY = (lyrics && lyrics.contains(e.target) && lyrics.scrollTop > 0) ? null : t.clientY;
   }, { passive: true });
+  // one transform write per frame, and no CSS transition while the finger drags (it lagged behind)
+  let dragY = 0, dragRaf = 0;
   panel.addEventListener('touchmove', (e) => {
     if (startY === null) return;
-    const dy = e.touches[0].clientY - startY;
-    if (dy > 0) panel.style.transform = `translateY(${dy}px)`;
+    dragY = Math.max(0, e.touches[0].clientY - startY);
+    if (dragY > 0 && !panel.classList.contains('is-dragging')) panel.classList.add('is-dragging');
+    if (!dragRaf) dragRaf = requestAnimationFrame(() => { dragRaf = 0; if (startY !== null) panel.style.transform = dragY > 0 ? `translateY(${dragY}px)` : ''; });
   }, { passive: true });
   panel.addEventListener('touchend', (e) => {
     if (startY === null) return;
     const dy = e.changedTouches[0].clientY - startY;
+    if (dragRaf) { cancelAnimationFrame(dragRaf); dragRaf = 0; }
+    panel.classList.remove('is-dragging');
     panel.style.transform = '';
     startY = null;
     if (dy > 110) closeSheet();

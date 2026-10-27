@@ -288,11 +288,13 @@ html.is-mobile .slider-ticks i.major:not(:first-child):not(:last-child) > span {
 /* ---------- Now Playing sheet: a solid screen of its own (no Home bleeding through) ---------- */
 html.is-mobile #right-panel {
   background:
-    radial-gradient(130% 55% at 50% 0%, color-mix(in srgb, var(--np-c1) 40%, transparent), transparent 72%),
+    linear-gradient(180deg, color-mix(in srgb, var(--np-c1) 38%, transparent) 0%, color-mix(in srgb, var(--np-c2) 16%, transparent) 50%, transparent 82%),
     var(--md-sys-color-surface-container-low-solid, #1A1B1E) !important;
   -webkit-backdrop-filter: none !important; backdrop-filter: none !important; border: none !important;
   padding-bottom: calc(var(--safe-bottom) + 236px) !important;
 }
+/* the finger moves the sheet directly: no 320ms transition chasing it (the drawer's transition is !important) */
+html.is-mobile #right-panel.is-dragging { transition: none !important; }
 /* nothing behind the sheet needs to draw while it covers the screen */
 html.is-mobile body.np-open .main-content,
 html.is-mobile body.np-open .sidebar { visibility: hidden !important; }
