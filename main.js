@@ -76,6 +76,23 @@ if (process.env.MURIEL_DEBUG === '1') {
   });
 }
 
+// MURIEL_METRICS=1: one JSON line per interval with each Chromium process's CPU and memory, for measuring
+if (process.env.MURIEL_METRICS === '1') {
+  app.whenReady().then(() => {
+    const every = Math.max(1000, parseInt(process.env.MURIEL_METRICS_MS || '5000', 10) || 5000);
+    setInterval(() => {
+      const procs = app.getAppMetrics().map((m) => ({
+        pid: m.pid,
+        type: m.type + (m.serviceName ? ':' + m.serviceName : ''),
+        cpu: Math.round(m.cpu.percentCPUUsage * 10) / 10,
+        ws: m.memory.workingSetSize || 0, // KB
+        priv: m.memory.privateBytes || 0, // KB, Windows only
+      }));
+      console.log('[metrics] ' + JSON.stringify({ t: Date.now(), procs }));
+    }, every).unref();
+  });
+}
+
 if (process.argv.includes('lyrics') || process.argv.includes('--lyrics')) {
   const cliPath = path.join(__dirname, 'cli.js');
   const child = spawn(process.execPath, [cliPath, 'lyrics'], { stdio: 'inherit', env: Object.assign({}, process.env, { ELECTRON_RUN_AS_NODE: '1' }) });
