@@ -112,7 +112,8 @@ input, textarea {
 }
 
 html {
-  background: var(--md-sys-color-background);
+  /* the page under the see-through UI (Riff's window is black); a WebView or browser would show white */
+  background: var(--md-sys-color-background-solid, #000);
   transition: background-color var(--transition-emphasized), color var(--transition-emphasized);
 }
 
@@ -611,14 +612,15 @@ body.is-window-resizing .platform-switch-container {
   position: absolute;
   width: 48px;
   height: 48px;
-  background: var(--md-sys-color-primary-container);
-  border-radius: 24px;
+  background: var(--md-sys-color-primary);
+  border-radius: 999px;
   z-index: 0;
   left: 50%;
   margin-left: -24px;
   top: 0;
   pointer-events: none;
-  transition: opacity 0.2s ease;
+  will-change: transform, height;
+  transition: opacity 240ms cubic-bezier(0.2, 0, 0, 1);
 }
 
 .nav-active-indicator.is-hidden {
@@ -646,19 +648,20 @@ body.is-window-resizing .platform-switch-container {
   justify-content: center;
   color: var(--md-sys-color-on-surface-variant);
   position: relative;
-  transition: background-color var(--transition-hover-out), color var(--transition-hover-out);
+  transition: background-color 200ms cubic-bezier(0.2, 0, 0, 1), color 200ms cubic-bezier(0.2, 0, 0, 1);
 }
 
-.nav-item:hover .nav-indicator {
-  background: var(--md-sys-color-surface-container-high);
+.nav-item:hover:not(.active) .nav-indicator {
+  background: color-mix(in srgb, var(--md-sys-color-on-surface) 8%, transparent);
   color: var(--md-sys-color-on-surface);
-  transition: background-color var(--transition-hover), color var(--transition-hover);
 }
 
 .nav-item.active .nav-indicator {
   background: transparent !important;
-  color: var(--md-sys-color-on-primary-container);
+  color: var(--md-sys-color-on-primary);
 }
+
+.sidebar-nav .nav-item.active .nav-badge, .nav-badge[hidden] { display: none; }
 
 .nav-badge {
   position: absolute;
@@ -2484,6 +2487,26 @@ body.m3-cover-on .artwork-wrapper {
   color: var(--md-sys-color-primary);
   background: var(--md-sys-color-surface-container-highest);
 }
+/* Riff's player controls: tonal shuffle/repeat capsules and round prev/next */
+.control-btn { transition: background 0.18s ease, color 0.18s ease, transform 0.12s ease; }
+html:not(.is-mobile) body:not(.mini) .playback-controls { gap: 4px; }
+html:not(.is-mobile) body:not(.mini) :is(#btn-shuffle, #btn-repeat) {
+  width: 32px; height: 48px; padding: 0; min-width: unset;
+  border-radius: var(--md-shape-corner-full, 9999px);
+  background: var(--md-sys-color-surface-container-high);
+  opacity: 0.85;
+}
+html:not(.is-mobile) body:not(.mini) :is(#btn-shuffle, #btn-repeat):hover { background: var(--md-sys-color-surface-container-highest); opacity: 1; }
+html:not(.is-mobile) body:not(.mini) :is(#btn-shuffle, #btn-repeat).active { background: var(--md-sys-color-surface-container-highest); color: var(--md-sys-color-primary); opacity: 1; }
+html:not(.is-mobile) body:not(.mini) :is(#btn-prev, #btn-next) {
+  width: 40px; height: 40px;
+  border-radius: var(--md-shape-corner-full);
+  background: var(--md-sys-color-surface-container-high);
+  color: var(--md-sys-color-on-surface);
+}
+html:not(.is-mobile) body:not(.mini) :is(#btn-prev, #btn-next):hover { background: var(--md-sys-color-surface-container-highest); }
+html:not(.is-mobile) body:not(.mini) #btn-prev { margin-left: 8px; }
+html:not(.is-mobile) body:not(.mini) #btn-next { margin-right: 8px; }
 /* the 1 inside the repeat icon: repeating this song */
 #btn-repeat:not(.repeat-one) .repeat-one-mark {
   display: none;
@@ -6709,8 +6732,7 @@ body:not(.highlight-buttons) .btn-pill-primary:hover { background: var(--md-sys-
 .stack-first, .stack-mid, .stack-last, .stack-only { transition: border-radius 0.25s cubic-bezier(0.2, 0, 0, 1); }
 .settings-nav-btn.stack-first, .settings-nav-btn.stack-mid, .settings-nav-btn.stack-last, .settings-nav-btn.stack-only { --stack-big: 20px; }
 .audio-tab.stack-first, .audio-tab.stack-mid, .audio-tab.stack-last, .audio-tab.stack-only { --stack-big: 20px; --stack-small: 4px; --stack-mid: 4px; }
-.sidebar-nav .nav-item { border-radius: var(--stack-mid); }
-.nav-active-indicator { border-radius: 24px; }
+.sidebar-nav .nav-item { width: 48px; height: 48px; border-radius: 50%; margin: 0 auto; }
 
 .panel-resize-edge {
   position: absolute;
@@ -8120,8 +8142,6 @@ body.perf .art-in { animation: none; }
 @property --np-c1 { syntax: '<color>'; inherits: true; initial-value: transparent; }
 @property --np-c2 { syntax: '<color>'; inherits: true; initial-value: transparent; }
 
-/* Rail: slimmer */
-.sidebar { width: 64px !important; border-radius: 22px !important; padding: 12px 0 !important; gap: 12px !important; }
 
 /* Drawer: overlays the content instead of taking a column */
 .app-layout { position: relative; }
@@ -8135,14 +8155,12 @@ body.perf .art-in { animation: none; }
   gap: 16px !important;
   z-index: 60;
   overflow: hidden !important;
-  background:
-    radial-gradient(130% 65% at 50% 0%, color-mix(in srgb, var(--np-c1) 42%, transparent), transparent 72%),
-    radial-gradient(90% 55% at 100% 100%, color-mix(in srgb, var(--np-c2) 26%, transparent), transparent 70%),
-    var(--md-sys-color-surface-container-low) !important;
-  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.45);
+  /* over the content, so it stays solid even when the UI opacity is low */
+  background: var(--md-sys-color-surface-container-solid, var(--md-sys-color-surface-container)) !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
   transform: none;
   opacity: 1;
-  transition: transform 320ms cubic-bezier(0.2, 0, 0, 1), opacity 220ms ease, visibility 0s linear 0s, --np-c1 900ms ease, --np-c2 900ms ease !important;
+  transition: transform 320ms cubic-bezier(0.2, 0, 0, 1), opacity 220ms ease, visibility 0s linear 0s !important;
 }
 #right-panel.hidden {
   transform: translateX(calc(100% + 32px)) !important;
@@ -8201,15 +8219,15 @@ body.glass:not(.perf) :is(.sidebar, .main-content, #right-panel, .playbar) {
   border: 1px solid color-mix(in srgb, var(--md-sys-color-on-surface-solid, #fff) 8%, transparent);
 }
 
-/* ---- Muriel logo: a sparkle that twinkles while music plays ---- */
+/* ---- Muriel logo: centred in the title bar like Riff's, the name only in the mini player ---- */
+body:not(.mini) .titlebar .app-logo { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); pointer-events: none; }
+body:not(.mini) .titlebar .logo-text { display: none; }
 .logo-star path { transform-box: fill-box; transform-origin: 50% 50%; }
 @keyframes sparkleMain { 0% { transform: rotate(0deg) scale(1); } 50% { transform: rotate(45deg) scale(0.78); } 100% { transform: rotate(90deg) scale(1); } }
 @keyframes sparkleBlink { 0%, 100% { transform: scale(1); opacity: 1; } 45% { transform: scale(0.25); opacity: 0.35; } 62% { transform: scale(1.15); opacity: 1; } }
 .logo-star.dancing .s1 { animation: sparkleMain 2.6s cubic-bezier(0.45, 0, 0.55, 1) infinite; }
 .logo-star.dancing .s2 { animation: sparkleBlink 1.3s ease-in-out infinite -0.4s; }
-.logo-star { width: 16px; height: 16px; fill: var(--md-sys-color-primary); flex-shrink: 0; overflow: visible; }
-body.is-playing .logo-star .s1 { animation: sparkleMain 2.6s cubic-bezier(0.45, 0, 0.55, 1) infinite; }
-body.is-playing .logo-star .s2 { animation: sparkleBlink 1.3s ease-in-out infinite -0.4s; }
+.logo-star { width: 18px; height: 18px; fill: var(--md-sys-color-primary); flex-shrink: 0; overflow: visible; }
 :is(body.perf, body.hidden-window) .logo-star path { animation: none !important; }
 @media (prefers-reduced-motion: reduce) { .logo-star path { animation: none !important; } }
 
@@ -8263,16 +8281,16 @@ body.glass.glass-lite :is(.sidebar, .main-content, #right-panel, .playbar, .sear
 .artwork-wrapper > .artwork-fallback { position: absolute; inset: 0; width: auto; height: auto; }
 
 /* ---- Muriel: "Update available" banner (update-notifier.js) ---- */
-.update-banner { position: fixed; left: 50%; top: max(64px, calc(var(--safe-area-inset-top, env(safe-area-inset-top, 0px)) + 14px)); z-index: 9000; display: flex; align-items: center; gap: 12px; width: max-content; max-width: min(560px, calc(100vw - 24px)); padding: 10px 10px 10px 16px; border-radius: 22px; background: var(--md-sys-color-surface-container-high, #2a2630); border: 1px solid rgba(255, 255, 255, 0.12); box-shadow: 0 18px 50px -12px rgba(0, 0, 0, 0.6); color: var(--md-sys-color-on-surface, #fff); opacity: 0; transform: translate(-50%, -24px); transition: transform 0.35s cubic-bezier(0.2, 0, 0, 1), opacity 0.25s ease; }
+.update-banner { position: fixed; left: 50%; top: max(64px, calc(var(--safe-area-inset-top, env(safe-area-inset-top, 0px)) + 14px)); z-index: 9000; display: flex; align-items: center; gap: 12px; width: max-content; max-width: min(560px, calc(100vw - 24px)); padding: 10px 10px 10px 16px; border-radius: 22px; background: var(--md-sys-color-surface-container-high-solid, var(--md-sys-color-surface-container-high, #2a2630)); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3); color: var(--md-sys-color-on-surface, #fff); opacity: 0; transform: translate(-50%, -24px); transition: transform 0.35s cubic-bezier(0.2, 0, 0, 1), opacity 0.25s ease; }
 .update-banner.show { opacity: 1; transform: translate(-50%, 0); }
-.update-banner-star { width: 24px; height: 24px; flex: none; fill: #FF7EC8; }
+.update-banner-star { width: 24px; height: 24px; flex: none; fill: var(--md-sys-color-primary); }
 .update-banner-text { display: flex; flex-direction: column; min-width: 0; flex: 1; }
 .update-banner-text b { font-size: calc(14px * var(--font-scale, 1)); font-weight: 700; }
 .update-banner-text span { font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .update-banner button { flex: none; height: 36px; padding: 0 16px; border-radius: 18px; border: 0; font: inherit; font-weight: 700; font-size: calc(13px * var(--font-scale, 1)); cursor: pointer; }
 .update-banner-later { background: transparent; color: var(--md-sys-color-on-surface-variant, #ccc); }
-.update-banner-go { background: linear-gradient(135deg, #FF7EC8, #FF3EA5); color: #14040c; }
-#update-status.has-update { color: #FF7EC8; }
+.update-banner-go { background: var(--md-sys-color-primary); color: var(--md-sys-color-on-primary); }
+#update-status.has-update { color: var(--md-sys-color-primary); }
 @media (prefers-reduced-motion: reduce) { .update-banner { transition: none; } }
 
 /* ---- Muriel: "On repeat" (home) and Muriel Encore (encore.js) ---- */
@@ -8282,7 +8300,7 @@ body.glass.glass-lite :is(.sidebar, .main-content, #right-panel, .playbar, .sear
 .onrepeat-chips { display: flex; gap: 6px; }
 .onrepeat-chip { height: 30px; padding: 0 12px; border-radius: 15px; border: 1px solid var(--md-sys-color-outline-variant, rgba(255,255,255,.2)); background: transparent; color: var(--md-sys-color-on-surface-variant); font: inherit; font-size: calc(12px * var(--font-scale, 1)); cursor: pointer; }
 .onrepeat-chip.active { background: var(--md-sys-color-primary); color: var(--md-sys-color-on-primary); border-color: transparent; }
-.onrepeat-encore { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 14px; border-radius: 16px; border: 0; background: linear-gradient(135deg, #FF7EC8, #FF3EA5); color: #14040c; font: inherit; font-weight: 700; font-size: calc(13px * var(--font-scale, 1)); cursor: pointer; }
+.onrepeat-encore { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 14px; border-radius: 16px; border: 0; background: var(--md-sys-color-primary); color: var(--md-sys-color-on-primary); font: inherit; font-weight: 700; font-size: calc(13px * var(--font-scale, 1)); cursor: pointer; }
 .onrepeat-encore svg { width: 14px; height: 14px; fill: currentColor; }
 .onrepeat-list { display: flex; flex-direction: column; gap: 8px; }
 .onrepeat-row { display: grid; grid-template-columns: 30px 52px minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 8px 14px 8px 6px; border-radius: 16px; border: 0; background: var(--md-sys-color-surface-container); color: inherit; font: inherit; text-align: left; cursor: pointer; transition: background-color .2s ease; }
@@ -8296,7 +8314,7 @@ body.glass.glass-lite :is(.sidebar, .main-content, #right-panel, .playbar, .sear
 .onrepeat-count { display: flex; flex-direction: column; align-items: flex-end; font-size: 18px; font-weight: 800; line-height: 1.1; }
 .onrepeat-count small { font-size: 11px; font-weight: 500; color: var(--md-sys-color-outline); }
 .onrepeat-empty { font-size: calc(13px * var(--font-scale, 1)); color: var(--md-sys-color-outline); padding: 4px 2px 8px; }
-.btn-encore svg { margin-right: 6px; color: #FF7EC8; }
+.btn-encore svg { margin-right: 6px; color: currentColor; }
 
 .encore { position: fixed; inset: 0; z-index: 9500; overflow: hidden; color: #fff; font-family: var(--font-family); opacity: 0; transition: opacity .3s ease;
   background: radial-gradient(120% 80% at 15% 0%, rgba(255, 126, 200, .32), transparent 60%), radial-gradient(100% 70% at 100% 100%, rgba(255, 62, 165, .26), transparent 60%), #08060a; }
@@ -8466,8 +8484,8 @@ body.mini .profile-switch { display: none; }
 
 /* home: "Sync your devices?" (sync.js) and "Your playlists" (app.js) */
 #section-sync-invite[hidden] { display: none !important; }
-.sync-invite { display: flex; gap: 16px; align-items: flex-start; padding: 18px 20px; border-radius: 24px; background: linear-gradient(135deg, color-mix(in srgb, var(--md-sys-color-primary) 18%, var(--md-sys-color-surface-container-solid, #1E1F22)), var(--md-sys-color-surface-container)); border: 1px solid rgba(255, 255, 255, .08); }
-.sync-invite-icon { width: 44px; height: 44px; flex: none; display: inline-flex; align-items: center; justify-content: center; border-radius: 14px; background: var(--md-sys-color-primary); color: var(--md-sys-color-on-primary); }
+.sync-invite { display: flex; gap: 16px; align-items: flex-start; padding: 16px 20px; border-radius: var(--md-shape-corner-l, 16px); background: var(--md-sys-color-surface-container); }
+.sync-invite-icon { width: 40px; height: 40px; flex: none; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; background: var(--md-sys-color-surface-container-high); color: var(--md-sys-color-on-surface); }
 .sync-invite-icon svg { width: 22px; height: 22px; }
 .sync-invite-body { display: flex; flex-direction: column; gap: 12px; flex: 1; min-width: 0; }
 .sync-invite-text { display: flex; flex-direction: column; gap: 4px; }
@@ -8483,9 +8501,6 @@ body.mini .profile-switch { display: none; }
 .home-pl-new .home-pl-cover { border: 2px dashed var(--md-sys-color-outline-variant, rgba(255, 255, 255, .2)); background: transparent; color: var(--md-sys-color-primary); box-sizing: border-box; }
 .home-pl-card b { font-size: calc(14px * var(--font-scale, 1)); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .home-pl-card span:not(.home-pl-cover) { font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline); }
-@supports not (color: color-mix(in srgb, red 50%, transparent)) {
-  .sync-invite { background: var(--md-sys-color-surface-container-high); }
-}
 .home-pl-cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
 
 /* ---- library pages (from Riff 43): Albums tab, sort menus, playlist description, explicit [E], Daily Mixes,
