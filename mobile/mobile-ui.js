@@ -195,8 +195,9 @@
     document.addEventListener('visibilitychange', tick);
   }
 
-  // phone-only settings in Storage: cache size limit and sharing the error log
-  const storageGroup = document.querySelector('.settings-section[data-cat="storage"] .m3-group');
+  // phone-only settings: the song storage limit (Storage → Offline songs) and sharing the error log (About)
+  const storageGroup = document.querySelector('.settings-section[data-cat="storage"] .m3-group[data-group="offline"]') || document.querySelector('.settings-section[data-cat="storage"] .m3-group');
+  const aboutGroup = document.querySelector('.settings-section[data-cat="about"] .m3-group');
   if (storageGroup) {
     const limits = [['1024', '1 GB'], ['2048', '2 GB'], ['5120', '5 GB'], ['10240', '10 GB']];
     const current = localStorage.getItem('muriel_cache_limit_mb') || '2048';
@@ -232,7 +233,8 @@
       const res = await window.electronAPI.shareText('Muriel error log', window.MurielLog ? window.MurielLog.text() : 'no log');
       if (res === 'copied' && window.MurielCore) window.MurielCore.toast((window.MurielI18n || { T: (x) => x, Tm: (x) => x }).Tm('Log copied to clipboard'), 'info');
     });
-    storageGroup.append(limitRow, logRow);
+    storageGroup.append(limitRow);
+    if (aboutGroup) aboutGroup.insertBefore(logRow, aboutGroup.lastElementChild); else storageGroup.append(logRow);
   }
 
   // the desktop placeholder doesn't fit beside the source buttons on a phone
@@ -241,6 +243,9 @@
 
   // iPhone: lyrics on the lock screen and in the Dynamic Island (mobile/live-activity.js)
   const trRow = document.getElementById('btn-tr-enabled') && document.getElementById('btn-tr-enabled').closest('.setting-item');
+  // the phone's own playback rows go to Tracks → Playback
+  const playbackGroup = document.querySelector('.m3-group[data-group="playback"]');
+  const addPlaybackRow = (row) => { if (playbackGroup) playbackGroup.append(row); else trRow.parentElement.insertBefore(row, trRow); };
   if (window.MurielLiveActivity && trRow) {
     const la = window.MurielLiveActivity;
     const row = document.createElement('div');
@@ -262,7 +267,7 @@
     la.available().then((ok) => {
       if (!ok) row.querySelector('.la-hint').textContent = 'Turn on Live Activities for Muriel in the iPhone Settings app first (needs iOS 16.2 or newer).';
     });
-    trRow.parentElement.insertBefore(row, trRow);
+    addPlaybackRow(row);
   }
 
   // Android: let Muriel off battery optimization so the phone doesn't stop it in the background (media-controls.js)
@@ -284,7 +289,7 @@
     // some phones send you to the battery list in Settings instead of asking
     document.addEventListener('visibilitychange', () => { if (!document.hidden) refresh(); });
     refresh();
-    trRow.parentElement.insertBefore(row, trRow);
+    addPlaybackRow(row);
   }
 
   // Android: the song in the island at the top of the screen, as an Android 16 live update (media-controls.js).
@@ -342,7 +347,7 @@
       fix.addEventListener('click', () => isl.allow().then(show));
       document.addEventListener('visibilitychange', () => { if (!document.hidden) { refresh(); isl.refresh(); } });
       show(s);
-      trRow.parentElement.insertBefore(row, trRow);
+      addPlaybackRow(row);
     });
   }
 
