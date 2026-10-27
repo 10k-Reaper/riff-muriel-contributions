@@ -1,4 +1,4 @@
-## Muriel 1.3.7
+## Muriel 1.3.8
 
 **Downloads**
 - **iPhone:** [ios-latest](https://github.com/cloverscripts/riff-muriel/releases/tag/ios-latest) (`Muriel.ipa`, install with SideStore, AltStore or Sideloadly). Needs iOS 16.2 or newer
@@ -9,10 +9,14 @@
 
 Or get it from the website: https://cloverscripts.github.io/riff-muriel/
 
-**New**
+**Fixed**
+- **"Failed, retry or skip" when Retry would have worked:** a song you click no longer inherits a failed lookup of the next-song preparation, and an expired stream link isn't reused. Muriel also quietly tries once more with a fresh lookup before asking.
+- **Player bar visualizer ("Behind bar"):** the bars sit inside the player bar again instead of in a strip over the page, as a quiet backdrop that keeps the times and buttons readable. Turn it off under Settings → Interface → Visualizer.
+
+**New in 1.3.7**
 - **Cover picker:** in a song's track art dialog, "Find covers" shows YouTube images and Apple Music album covers to choose from.
 
-**Fixed**
+**Fixed in 1.3.7**
 - **First play is faster on computers:** a song you click no longer waits behind background work, SoundCloud search no longer starts a process per search, and caching a song reuses the stream it already has. Far fewer background processes.
 - **YouTube Music on computers:** songs from YouTube Music no longer fail with "HTTP Error 403", and a song that failed once is looked up again instead of staying broken.
 - **Playlist imports pick the right songs:** the artist has to match now, not just the title; covers, karaoke, sped-up and live versions are skipped unless the original is one.
