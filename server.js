@@ -300,6 +300,30 @@ function cleanTrackId(id) {
   return (id || '').replace(/[^a-zA-Z0-9_-]/g, '_');
 }
 
+// YouTube Music tracks (platform 'ytmusic', music.youtube.com URLs) are the same videos as on youtube.com.
+// Given to yt-dlp as music.youtube.com links without our player clients they hit YouTube Music's web client,
+// whose media URLs answer "HTTP Error 403: Forbidden" on many desktops (#18). Extract every YouTube-family
+// track from a plain youtube.com watch URL with the same clients the YouTube source uses.
+const YT_PLAYER_CLIENTS = 'youtube:player_client=default,android';
+const YT_RETRY_CLIENTS = 'youtube:player_client=tv,web_safari,android_vr';
+function youtubeVideoId(trackUrl) {
+  try {
+    const u = new URL(trackUrl);
+    const host = u.hostname.replace(/^www\./, '');
+    if (host === 'youtu.be') return u.pathname.slice(1).split('/')[0] || '';
+    if (host === 'youtube.com' || host.endsWith('.youtube.com')) return u.searchParams.get('v') || '';
+  } catch (_) {}
+  return '';
+}
+function youtubeExtractTarget(trackUrl, trackId, platform) {
+  const fromUrl = trackUrl ? youtubeVideoId(trackUrl) : '';
+  const isYt = platform === 'youtube' || platform === 'ytmusic' || !!fromUrl;
+  if (!isYt) return { url: trackUrl, youtube: false };
+  const id = cleanTrackId(fromUrl || trackId);
+  if (!/^[A-Za-z0-9_-]{6,}$/.test(id)) return { url: trackUrl, youtube: platform === 'youtube' };
+  return { url: `https://www.youtube.com/watch?v=${id}`, youtube: true };
+}
+
 async function findCachedFile(trackId) {
   const cleanId = cleanTrackId(trackId);
   const extensions = ['.opus', '.webm', '.m4a', '.mp3', '.aac'];
@@ -1446,8 +1470,10 @@ async function cacheThumbnailToDisk(cleanId, thumbnailUrl) {
 // priority: 'play' when the listener is waiting for this song (phones play from the cache), otherwise
 // 'background' (caching a song that already plays, or the next one); a background download that failed
 // isn't tried again until its backoff has passed
-async function downloadTrackToDisk(trackUrl, trackId, platform, meta = {}, priority = 'background') {
+async function downloadTrackToDisk(trackUrl, trackId, platform, meta = {}, priority = 'background', clients = YT_PLAYER_CLIENTS) {
   const cleanId = cleanTrackId(trackId);
+  const target = youtubeExtractTarget(trackUrl, trackId, platform);
+  trackUrl = target.url;
   if (priority === 'background' && ytdlpQueue.backingOff(`dl:${cleanId}`)) return;
   // a prefetch may already be fetching this song: wait for it instead of reporting it missing
   if (downloadingSet.has(cleanId)) return downloadingPromises.get(cleanId);
@@ -1470,9 +1496,7 @@ async function downloadTrackToDisk(trackUrl, trackId, platform, meta = {}, prior
     '-o', outTemplate
   ];
 
-  if (platform === 'youtube') {
-    args.push('--extractor-args', 'youtube:player_client=default,android');
-  }
+  if (target.youtube) args.push('--extractor-args', clients);
 
   args.push('--', trackUrl);
 
@@ -1493,6 +1517,7 @@ async function downloadTrackToDisk(trackUrl, trackId, platform, meta = {}, prior
 
   // until it gets a slot, a skip (phones) cancels the queued download instead of a process
   let cancelled = false;
+  let forbidden = false;
   const placeholder = { kill() { cancelled = true; } };
   downloadProcs.set(cleanId, placeholder);
   const job = ytdlpQueue.run(() => new Promise((resolve, reject) => {
@@ -1528,6 +1553,7 @@ async function downloadTrackToDisk(trackUrl, trackId, platform, meta = {}, prior
         const reason = (errText.match(/ERROR:[^\n]*/g) || []).pop();
         try { logger.error('Download failure: ' + (meta.title || trackId) + ' (exit code ' + code + ')' + (reason ? ': ' + reason.slice(0, 300) : '')); } catch (_) {}
         if (found) try { await fs.promises.unlink(found); } catch (e) {}
+        forbidden = /HTTP Error 403/i.test(errText);
         // a killed (skipped) download isn't a failure of the song
         if (code !== null) return reject(new Error('download failed'));
       }
@@ -1538,7 +1564,10 @@ async function downloadTrackToDisk(trackUrl, trackId, platform, meta = {}, prior
       try { logger.error('Download spawn error: ' + (meta.title || trackId), err); } catch (_) {}
       reject(err);
     });
-  }), { key: `dl:${cleanId}`, priority }).catch(() => {}).finally(() => { downloadingSet.delete(cleanId); downloadingPromises.delete(cleanId); });
+  }), { key: `dl:${cleanId}`, priority }).catch(() => {}).finally(() => { downloadingSet.delete(cleanId); downloadingPromises.delete(cleanId); })
+    // YouTube refused the media of these clients: one more go with a different set before giving up
+    .then(() => (forbidden && target.youtube && clients !== YT_RETRY_CLIENTS
+      ? downloadTrackToDisk(trackUrl, trackId, platform, meta, priority, YT_RETRY_CLIENTS) : undefined));
   downloadingPromises.set(cleanId, job);
   return job;
 }
@@ -1566,9 +1595,8 @@ async function prefetchTrack(trackUrl, trackId, platform, meta = null, priority 
   prefetchingSet.add(cacheKey);
 
   try {
-    if (platform === 'youtube' && (!trackUrl || !trackUrl.startsWith('http')) && cleanId) {
-      trackUrl = `https://www.youtube.com/watch?v=${cleanId}`;
-    }
+    const target = youtubeExtractTarget(trackUrl, cleanId, platform);
+    trackUrl = target.url;
     if (!isSafeMediaUrl(trackUrl)) return;
     const args = [
       '--no-config',
@@ -1579,9 +1607,7 @@ async function prefetchTrack(trackUrl, trackId, platform, meta = null, priority 
       '-f',
       'bestaudio/best'
     ];
-    if (platform === 'youtube') {
-      args.push('--extractor-args', 'youtube:player_client=default,android');
-    }
+    if (target.youtube) args.push('--extractor-args', YT_PLAYER_CLIENTS);
     args.push('--', trackUrl);
 
     // the same lookup as /api/stream-info: if the song is started meanwhile, it waits for this run
@@ -2136,9 +2162,8 @@ async function handleStreamInfo(req, res, trackUrl, trackId, platform = 'youtube
   if (cacheKey) streamUrlCache.set(cacheKey, inFlightEntry);
 
   try {
-  if (platform === 'youtube' && (!trackUrl || !trackUrl.startsWith('http')) && cleanId) {
-    trackUrl = `https://www.youtube.com/watch?v=${cleanId}`;
-  }
+  const ytTarget = youtubeExtractTarget(trackUrl, cleanId, platform);
+  trackUrl = ytTarget.url;
 
   if (STREAM_VIA_CACHE) {
     // the app gave up on this song (the listener skipped on): stop downloading it, and don't start fallbacks
@@ -2180,9 +2205,7 @@ async function handleStreamInfo(req, res, trackUrl, trackId, platform = 'youtube
   if (isSafeMediaUrl(trackUrl)) {
     try {
       const args = ['--no-config', '-g', '--no-warnings', '--no-playlist', '--prefer-free-formats', '-f', 'bestaudio/best'];
-      if (platform === 'youtube') {
-        args.push('--extractor-args', 'youtube:player_client=default,android');
-      }
+      if (ytTarget.youtube) args.push('--extractor-args', YT_PLAYER_CLIENTS);
       args.push('--', trackUrl);
       const raw = await executeYtDlp(args, 18000, { key: `g:${trackUrl}`, priority: 'play', reason: 'stream' });
       const lines = raw.trim().split('\n').map(l => l.trim()).filter(l => l.startsWith('http'));
@@ -2513,6 +2536,12 @@ async function handleDownloadedTrack(req, res, name) {
   }
 }
 
+function forgetStreamUrl(streamUrl) {
+  for (const [key, entry] of streamUrlCache) {
+    if (entry && entry.data && entry.data.streamUrl === streamUrl) streamUrlCache.delete(key);
+  }
+}
+
 async function handleAudioProxy(req, res, targetUrl) {
   if (!targetUrl) {
     res.writeHead(400);
@@ -2558,6 +2587,9 @@ async function handleAudioProxy(req, res, targetUrl) {
         proxyRes.destroy();
         return;
       }
+      // a media URL YouTube now refuses must not be handed out again from the lookup cache: the next
+      // play (or a source switch) resolves the song afresh instead of reusing the dead link (#18)
+      if (proxyRes.statusCode === 403 || proxyRes.statusCode === 410) forgetStreamUrl(targetUrl);
       res.writeHead(proxyRes.statusCode, proxyRes.headers);
       proxyRes.on('error', () => { try { res.destroy(); } catch (e) {} });
       proxyRes.pipe(res);

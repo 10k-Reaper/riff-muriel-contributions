@@ -13325,32 +13325,8 @@ document.addEventListener('DOMContentLoaded', async () => {
       .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
       .replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim();
   }
-  function tokenSimilarity(a, b) {
-    const A = new Set(normalizeForMatch(a).split(' ').filter(Boolean));
-    const B = new Set(normalizeForMatch(b).split(' ').filter(Boolean));
-    if (!A.size || !B.size) return 0;
-    let hit = 0;
-    A.forEach((t) => { if (B.has(t)) hit++; });
-    return hit / Math.max(A.size, B.size);
-  }
-  // a remix, cover or sped-up upload when Spotify has the original is the wrong song (same words as server.js)
-  const VERSION_WORDS = /\b(remix|sped[ -]?up|slowed|nightcore|reverb|8d|bass[ -]?boost(ed)?|cover|flip|mashup|instrumental|karaoke|loop|bootleg)\b/i;
-  function pickBestMatch(sp, results) {
-    let best = null;
-    let bestScore = 0;
-    const wantsVersion = VERSION_WORDS.test(sp.title || '');
-    for (const r of results) {
-      if (!wantsVersion && VERSION_WORDS.test(r.title || '')) continue;
-      const text = tokenSimilarity(`${sp.title} ${sp.artist}`, `${r.title} ${r.artist}`);
-      const titleSim = tokenSimilarity(sp.title, r.title);
-      const dDiff = sp.duration && r.duration ? Math.abs(sp.duration - r.duration) : 99;
-      const durationOk = dDiff <= 3;
-      const score = text + (durationOk ? 0.6 : 0) + titleSim * 0.3;
-      const accept = (durationOk && text >= 0.2) || titleSim >= 0.6 || text >= 0.55;
-      if (accept && score > bestScore) { best = r; bestScore = score; }
-    }
-    return best;
-  }
+  // the artist has to match as well as the title, covers / live / sped-up uploads lose (#18; track-match.js)
+  const pickBestMatch = (sp, results) => window.trackMatch.pickBestMatch(sp, results);
 
   async function matchSpotifyTracks(list, onProgress) {
     const total = Array.isArray(list) ? list.length : 0;
@@ -13362,8 +13338,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     if (typeof onProgress === 'function') onProgress(0, total);
 
-    async function searchCandidates(q) {
-      const plat = state.platform || 'youtube';
+    async function searchCandidates(q, plat = state.platform || 'youtube') {
       const sRes = await fetch(`http://127.0.0.1:${state.serverPort}/api/search?q=${encodeURIComponent(q)}&platform=${plat}&limit=8`);
       const sData = await sRes.json();
       if (sData && sData.success && Array.isArray(sData.tracks)) {
@@ -13378,24 +13353,19 @@ document.addEventListener('DOMContentLoaded', async () => {
       let lastErr = null;
       let hadCandidates = false;
 
-      const q1 = `${t.artist || ''} ${t.title || ''}`.trim();
-      if (q1) {
-        try {
-          const r1 = await searchCandidates(q1);
-          hadCandidates = true;
-          matched = pickBestMatch(t, r1);
-        } catch (e) {
-          lastErr = e.message || String(e);
-        }
-      }
-
-      if (!matched && !aborted && t.title) {
-        const q2 = String(t.title).trim();
-        if (q2 && q2 !== q1) {
+      // YouTube Music's song results (artist-tagged official audio) first, then the chosen source
+      const plat = state.platform || 'youtube';
+      const platforms = plat === 'soundcloud' ? ['soundcloud'] : Array.from(new Set(['ytmusic', plat]));
+      const queries = window.trackMatch.matchQueries(t);
+      const q1 = queries[0] || '';
+      outer: for (const p of platforms) {
+        for (const q of queries) {
+          if (aborted) break outer;
           try {
-            const r2 = await searchCandidates(q2);
+            const r = await searchCandidates(q, p);
             hadCandidates = true;
-            matched = pickBestMatch(t, r2);
+            matched = pickBestMatch(t, r);
+            if (matched) break outer;
           } catch (e) {
             lastErr = e.message || String(e);
           }
