@@ -1396,7 +1396,14 @@ function spawnYtDlp(cmd, priority, reason) {
 
 function executeYtDlp(args, timeoutMs = 25000, opts = {}) {
   const priority = opts.priority || 'normal';
-  return ytdlpQueue.run(() => runYtDlpNow(args, timeoutMs, opts, priority), { key: opts.key, priority, cacheMs: opts.cacheMs });
+  const queuedAt = Date.now();
+  return ytdlpQueue.run(() => {
+    const startedAt = Date.now();
+    const run = runYtDlpNow(args, timeoutMs, opts, priority);
+    // with MURIEL_DEBUG_YTDLP: how long a run waited for its slot and how long it took (#17)
+    if (YTDLP_DEBUG) run.then(() => 0, () => 1).then((failed) => { try { logger.log('info', `yt-dlp done [${opts.reason || 'unknown'}/${priority}] waited ${startedAt - queuedAt}ms ran ${Date.now() - startedAt}ms${failed ? ' (failed)' : ''}`); } catch (_) {} });
+    return run;
+  }, { key: opts.key, priority, cacheMs: opts.cacheMs });
 }
 
 function runYtDlpNow(args, timeoutMs, opts, priority) {
@@ -1916,7 +1923,8 @@ async function handleSearch(req, res, query, platform = 'youtube', limit = 20) {
                 '--print',
                 '%(artist,artists.0,channel,uploader)s',
                 `https://www.youtube.com/watch?v=${item.id}`
-              ], 10000, { priority: 'play', reason: 'search-artist' });
+              // 'normal', not 'play': up to 20 of these per search must not hold up a song the listener clicks (#17)
+              ], 10000, { priority: 'normal', key: `artist:${item.id}`, reason: 'search-artist' });
               const lines = (out || '').split('\n').map(s => s.trim()).filter(s => s && s !== 'NA');
               if (lines.length > 0) {
                 const val = lines[0].replace(/\s*-\s*Topic$/i, '').trim();

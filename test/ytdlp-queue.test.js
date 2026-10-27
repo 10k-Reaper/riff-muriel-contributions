@@ -157,3 +157,46 @@ test('lowerPriority sets a lower priority on the process and tolerates failures'
   assert.strictEqual(lowerPriority(undefined, fakeOs), false);
   assert.strictEqual(lowerPriority(5, { setPriority: () => { throw new Error('EPERM'); }, constants: { priority: {} } }), false);
 });
+
+test('while a song to play is looked up, nothing else starts (#17)', async () => {
+  const q = createTaskQueue({ limit: 2, backgroundLimit: 1 });
+  const started = [];
+  const d = {};
+  const mk = (name, priority) => q.run(() => { started.push(name); d[name] = deferred(); return d[name].promise; }, { priority });
+  mk('play', 'play');
+  mk('n1', 'normal'); mk('bg', 'background');
+  await tick();
+  assert.deepStrictEqual(started, ['play'], 'search/recommendation/cache runs wait while the click is resolved');
+  d.play.resolve();
+  await tick(); await tick();
+  assert.deepStrictEqual(started, ['play', 'n1', 'bg']);
+  d.n1.resolve(); d.bg.resolve();
+});
+
+test('a click overtakes the per-result lookups of a search that is still running (#17)', async () => {
+  const q = createTaskQueue({ limit: 2, backgroundLimit: 1 });
+  const started = [];
+  const d = {};
+  const mk = (name, priority) => q.run(() => { started.push(name); d[name] = deferred(); return d[name].promise; }, { priority });
+  for (let i = 0; i < 6; i++) mk('artist' + i, 'normal');
+  await tick();
+  mk('play', 'play');
+  await tick();
+  assert.deepStrictEqual(started, ['artist0', 'artist1', 'play']);
+  d.artist0.resolve(); d.artist1.resolve();
+  await tick(); await tick();
+  assert.deepStrictEqual(started, ['artist0', 'artist1', 'play'], 'the rest waits until the song has its stream');
+  d.play.resolve();
+  await tick(); await tick();
+  assert.deepStrictEqual(started.slice(3), ['artist2', 'artist3']);
+  for (let i = 2; i < 6; i++) { if (d['artist' + i]) d['artist' + i].resolve(); await tick(); await tick(); }
+});
+
+test('playExclusive: false keeps the old sharing', async () => {
+  const q = createTaskQueue({ limit: 2, backgroundLimit: 1, playExclusive: false });
+  const started = [];
+  q.run(() => { started.push('play'); return new Promise(() => {}); }, { priority: 'play' });
+  q.run(() => { started.push('n'); return new Promise(() => {}); }, { priority: 'normal' });
+  await tick();
+  assert.deepStrictEqual(started, ['play', 'n']);
+});

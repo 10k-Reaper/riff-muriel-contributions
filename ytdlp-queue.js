@@ -2,14 +2,16 @@
 // runtime (deno/node) that solves YouTube's player challenge at full CPU, so the app must never run
 // many of them at once or repeat them needlessly:
 // - at most `limit` runs at a time (background work: at most `backgroundLimit`), the rest wait in line;
-//   a song the listener pressed play on goes first and always gets a slot of its own
+//   a song the listener pressed play on goes first and always gets a slot of its own; while one is waiting
+//   or running nothing else starts, so its lookup has the CPU to itself (#17: on a 6-core PC a lookup
+//   that takes 4 s alone took far longer next to search, recommendation and caching runs)
 // - two callers asking for the same thing share one run
 // - a result can be remembered for a while (`cacheMs`)
 // - a background run that failed is not tried again until its backoff has passed (it doubles per failure)
 
 const PRIORITY = { play: 0, normal: 1, background: 2 };
 
-function createTaskQueue({ limit = 2, backgroundLimit = 1, now = () => Date.now(), backoffBaseMs = 60 * 1000, backoffMaxMs = 30 * 60 * 1000, maxEntries = 500 } = {}) {
+function createTaskQueue({ limit = 2, backgroundLimit = 1, now = () => Date.now(), backoffBaseMs = 60 * 1000, backoffMaxMs = 30 * 60 * 1000, maxEntries = 500, playExclusive = true } = {}) {
   const pending = [];
   const inflight = new Map(); // key -> job
   const cache = new Map(); // key -> { value, expires }
@@ -19,8 +21,9 @@ function createTaskQueue({ limit = 2, backgroundLimit = 1, now = () => Date.now(
 
   const trim = (map) => { while (map.size > maxEntries) map.delete(map.keys().next().value); };
 
-  function canStart(job) {
+  function canStart(job, playWaiting) {
     if (job.priority === 'play') return running.total < limit || running.play === 0;
+    if (playExclusive && (running.play > 0 || playWaiting)) return false;
     if (running.total >= limit) return false;
     return job.priority !== 'background' || running.background < backgroundLimit;
   }
@@ -29,7 +32,8 @@ function createTaskQueue({ limit = 2, backgroundLimit = 1, now = () => Date.now(
     pending.sort((a, b) => (PRIORITY[a.priority] - PRIORITY[b.priority]) || (a.seq - b.seq));
     for (let i = 0; i < pending.length;) {
       const job = pending[i];
-      if (!canStart(job)) { i++; continue; }
+      const playWaiting = pending.some((p) => p.priority === 'play');
+      if (!canStart(job, playWaiting)) { i++; continue; }
       pending.splice(i, 1);
       start(job);
     }
