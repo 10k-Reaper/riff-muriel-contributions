@@ -72,7 +72,7 @@ function createTaskQueue({ limit = 2, backgroundLimit = 1, now = () => Date.now(
     });
   }
 
-  // task: () => Promise. opts: { key, priority: 'play' | 'normal' | 'background', cacheMs }
+  // task: () => Promise. opts: { key, priority: 'play' | 'normal' | 'background', cacheMs, noRetry }
   function run(task, opts = {}) {
     const key = opts.key || null;
     const priority = PRIORITY[opts.priority] !== undefined ? opts.priority : 'normal';
@@ -84,6 +84,11 @@ function createTaskQueue({ limit = 2, backgroundLimit = 1, now = () => Date.now(
       if (same) {
         // still waiting in line: someone who needs it sooner moves it up
         if (pending.includes(same) && PRIORITY[priority] < PRIORITY[same.priority]) { same.priority = priority; pump(); }
+        // a song the listener pressed play on never inherits a failure from someone else's run (a next-song
+        // prefetch, a cache download, another caller): it gets one fresh run of its own, as Retry would
+        if (priority === 'play' && !opts.noRetry) {
+          return same.promise.catch(() => run(task, { ...opts, noRetry: true }));
+        }
         return same.promise;
       }
       if (priority === 'background' && backingOff(key)) {

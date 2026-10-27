@@ -3704,67 +3704,100 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
       }
 
-      const streamInfoUrl = `http://127.0.0.1:${state.serverPort}/api/stream-info?url=${encodeURIComponent(resolvedUrl || '')}&id=${encodeURIComponent(resolvedId || '')}&platform=${track.platform || state.platform}&title=${encodeURIComponent(track.title || '')}&artist=${encodeURIComponent(track.artist || '')}&duration=${encodeURIComponent(track.duration || 0)}&thumbnail=${encodeURIComponent(track.thumbnail || '')}`;
-      const res = await fetch(streamInfoUrl, { signal });
-      const data = await res.json();
-
-      if (currentToken !== state.loadToken) return;
-
-      if (!data || !data.success || !data.streamUrl) {
-        if (!navigator.onLine) {
-          showToast(Tm('Offline: this track is not available in local cache'));
-          throw new Error('Offline: track not cached locally');
-        }
-        throw new Error((data && data.error) || 'Failed to extract audio stream');
-      }
-
-      if (hlsInstance) {
-        hlsInstance.destroy();
-        hlsInstance = null;
-      }
-
-      el.nativeAudio.preload = 'auto';
-
-      if (data.isHls && window.Hls && Hls.isSupported()) {
-        hlsInstance = new Hls({ enableWorker: true, lowLatencyMode: true, maxBufferLength: 30, maxMaxBufferLength: 60, maxBufferSize: 30 * 1000 * 1000 });
-        hlsInstance.loadSource(data.streamUrl);
-        hlsInstance.attachMedia(el.nativeAudio);
-        hlsInstance.on(Hls.Events.MANIFEST_PARSED, () => {
-          if (currentToken === state.loadToken) {
-            playSmooth();
-          }
-        });
-        // without this a dead HLS stream just sat on the loading spinner
-        hlsInstance.on(Hls.Events.ERROR, (evt, info) => {
-          if (!info || !info.fatal || currentToken !== state.loadToken) return;
-          const hls = hlsInstance;
-          if (info.type === Hls.ErrorTypes.MEDIA_ERROR && !hls._murielRecovered) {
-            hls._murielRecovered = true;
-            try { hls.recoverMediaError(); return; } catch (e) {}
-          }
-          try { hls.destroy(); } catch (e) {}
-          if (hlsInstance === hls) hlsInstance = null;
-          state.isPlaying = false;
-          document.body.classList.remove('is-playing');
-          updatePlayPauseButton(false, false);
-          if (el.trackLoadingOverlay) el.trackLoadingOverlay.classList.add('hidden');
-          if (!skipUnplayable(currentToken, track)) showToast(Tm('Could not play this song. Try again or skip.'), 'error');
-        });
-      } else {
-        el.nativeAudio.src = data.streamUrl;
-        playSmooth();
-      }
-
+      if (!await attachStream(track, resolvedUrl, resolvedId, currentToken, signal, false)) return;
       applyAudioSettings();
     } catch (err) {
       if (err.name === 'AbortError') return;
       if (currentToken === state.loadToken) {
         console.warn('Track playback notice:', err);
+        if (retryFresh(currentToken, track)) return;
         updatePlayPauseButton(false, false);
         if (el.trackLoadingOverlay) el.trackLoadingOverlay.classList.add('hidden');
         if (!skipUnplayable(currentToken, track)) showToast(err.message || Tm('Could not load audio stream'), 'error');
       }
     }
+  }
+
+  // Looks the song up (/api/stream-info) and gives its stream to the audio element. Resolves false when
+  // another song was started meanwhile; throws when there is nothing to play.
+  async function attachStream(track, resolvedUrl, resolvedId, currentToken, signal, fresh) {
+    const streamInfoUrl = `http://127.0.0.1:${state.serverPort}/api/stream-info?url=${encodeURIComponent(resolvedUrl || '')}&id=${encodeURIComponent(resolvedId || '')}${fresh ? '&fresh=1' : ''}&platform=${track.platform || state.platform}&title=${encodeURIComponent(track.title || '')}&artist=${encodeURIComponent(track.artist || '')}&duration=${encodeURIComponent(track.duration || 0)}&thumbnail=${encodeURIComponent(track.thumbnail || '')}`;
+    const res = await fetch(streamInfoUrl, { signal });
+    const data = await res.json();
+
+    if (currentToken !== state.loadToken) return false;
+
+    if (!data || !data.success || !data.streamUrl) {
+      if (!navigator.onLine) {
+        showToast(Tm('Offline: this track is not available in local cache'));
+        throw new Error('Offline: track not cached locally');
+      }
+      throw new Error((data && data.error) || 'Failed to extract audio stream');
+    }
+
+    if (hlsInstance) {
+      hlsInstance.destroy();
+      hlsInstance = null;
+    }
+
+    el.nativeAudio.preload = 'auto';
+
+    if (data.isHls && window.Hls && Hls.isSupported()) {
+      hlsInstance = new Hls({ enableWorker: true, lowLatencyMode: true, maxBufferLength: 30, maxMaxBufferLength: 60, maxBufferSize: 30 * 1000 * 1000 });
+      hlsInstance.loadSource(data.streamUrl);
+      hlsInstance.attachMedia(el.nativeAudio);
+      hlsInstance.on(Hls.Events.MANIFEST_PARSED, () => {
+        if (currentToken === state.loadToken) {
+          playSmooth();
+        }
+      });
+      // without this a dead HLS stream just sat on the loading spinner
+      hlsInstance.on(Hls.Events.ERROR, (evt, info) => {
+        if (!info || !info.fatal || currentToken !== state.loadToken) return;
+        const hls = hlsInstance;
+        if (info.type === Hls.ErrorTypes.MEDIA_ERROR && !hls._murielRecovered) {
+          hls._murielRecovered = true;
+          try { hls.recoverMediaError(); return; } catch (e) {}
+        }
+        try { hls.destroy(); } catch (e) {}
+        if (hlsInstance === hls) hlsInstance = null;
+        state.isPlaying = false;
+        document.body.classList.remove('is-playing');
+        updatePlayPauseButton(false, false);
+        if (el.trackLoadingOverlay) el.trackLoadingOverlay.classList.add('hidden');
+        if (retryFresh(currentToken, track)) return;
+        if (!skipUnplayable(currentToken, track)) showToast(Tm('Could not play this song. Try again or skip.'), 'error');
+      });
+    } else {
+      el.nativeAudio.src = data.streamUrl;
+      playSmooth();
+    }
+    return true;
+  }
+
+  // A song that fails the first time (the lookup, the audio element on its URL, or nothing arriving) is
+  // looked up once more, afresh, before the listener is told: the first failure was usually passing (a
+  // shared lookup that failed, a remembered stream URL YouTube no longer serves) and Retry then played it.
+  let freshRetryToken = -1;
+  function retryFresh(token, track) {
+    if (token !== state.loadToken || freshRetryToken === token || !state.trackLoading || !track || track !== state.currentTrack || track.platform === 'local') return false;
+    if (!navigator.onLine) return false;
+    freshRetryToken = token;
+    console.warn('Track playback: retrying with a fresh lookup');
+    if (hlsInstance) { try { hlsInstance.destroy(); } catch (e) {} hlsInstance = null; }
+    try { el.nativeAudio.pause(); el.nativeAudio.removeAttribute('src'); el.nativeAudio.load(); } catch (e) {}
+    setTrackLoading(true);
+    if (el.trackLoadingOverlay) el.trackLoadingOverlay.classList.remove('hidden');
+    const signal = state.currentAbortController ? state.currentAbortController.signal : undefined;
+    attachStream(track, track.url, track.id, token, signal, true).then((ok) => { if (ok) applyAudioSettings(); }, (err) => {
+      if (err && err.name === 'AbortError') return;
+      if (token !== state.loadToken) return;
+      console.warn('Track playback notice:', err);
+      updatePlayPauseButton(false, false);
+      if (el.trackLoadingOverlay) el.trackLoadingOverlay.classList.add('hidden');
+      if (!skipUnplayable(token, track)) showToast((err && err.message) || Tm('Could not load audio stream'), 'error');
+    });
+    return true;
   }
 
   function flipAnimate(elements, mutateFn, duration = 380) {
@@ -6065,6 +6098,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (!state.currentTrack || (!el.nativeAudio.src && !hlsInstance)) return;
       state.isPlaying = false;
       document.body.classList.remove('is-playing');
+      if (retryFresh(state.loadToken, state.currentTrack)) return;
       updatePlayPauseButton(false, false);
       if (skipUnplayable(state.loadToken, state.currentTrack)) return;
       if (state.currentTrack.platform === 'local') showToast(Tm('File missing from library'));
@@ -19408,6 +19442,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       try { audio.pause(); audio.removeAttribute('src'); audio.load(); } catch (e) {}
       state.isPlaying = false;
       document.body.classList.remove('is-playing');
+      if (retryFresh(token, state.currentTrack)) return;
       updatePlayPauseButton(false, false);
       if (el.trackLoadingOverlay) el.trackLoadingOverlay.classList.add('hidden');
       if (!skipUnplayable(token, state.currentTrack)) showToast('This song took too long to load. Try again or skip.', 'error');

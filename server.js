@@ -2145,7 +2145,8 @@ async function alternativeUploads(cleanId, title, artist, duration) {
     .map((t) => `https://www.youtube.com/watch?v=${t.id}`);
 }
 
-async function handleStreamInfo(req, res, trackUrl, trackId, platform = 'youtube', title = '', artist = '', duration = 0, thumbnail = '') {
+// fresh: the app could not play the URL it got last time (or the lookup failed): skip the remembered URL
+async function handleStreamInfo(req, res, trackUrl, trackId, platform = 'youtube', title = '', artist = '', duration = 0, thumbnail = '', fresh = false) {
   let cleanId = cleanTrackId(trackId);
   if (!cleanId && trackUrl && trackUrl.includes('v=')) {
     cleanId = cleanTrackId(trackUrl.split('v=')[1].split('&')[0]);
@@ -2181,14 +2182,21 @@ async function handleStreamInfo(req, res, trackUrl, trackId, platform = 'youtube
   const cacheKey = (cleanId || trackUrl || `${artist}_${title}`).toLowerCase();
   if (cacheKey && (streamUrlCache.has(cacheKey) || (cleanId && streamUrlCache.has(cleanId)))) {
     const cached = streamUrlCache.get(cacheKey) || (cleanId ? streamUrlCache.get(cleanId) : null);
+    let joined = null;
     if (cached?.promise) {
       // someone else wants this song too: a skip by the first requester must not cancel the download
       cached.waiters = (cached.waiters || 0) + 1;
-      const outcome = await cached.promise;
-      res.writeHead(outcome.success ? 200 : 500, { 'Content-Type': 'application/json' });
-      return res.end(JSON.stringify(outcome));
+      joined = await cached.promise;
+      if (joined.success) {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify(joined));
+      }
+      // that lookup failed (or was cancelled): this request looks the song up itself instead of passing
+      // the failure on, the way pressing Retry would
     }
-    if (cached && (Date.now() - cached.timestamp < 1800000)) {
+    if (joined || fresh) {
+      for (const k of [cacheKey, cleanId]) if (k && streamUrlCache.get(k) && !streamUrlCache.get(k).promise) streamUrlCache.delete(k);
+    } else if (cached && (Date.now() - cached.timestamp < 1800000)) {
       res.writeHead(200, { 'Content-Type': 'application/json' });
       if (cleanId) setTimeout(() => downloadTrackToDisk(trackUrl, cleanId, platform, { ...meta, streamUrl: cached.data && cached.data.streamUrl }), 10000);
       return res.end(JSON.stringify(cached.data));
@@ -2246,7 +2254,7 @@ async function handleStreamInfo(req, res, trackUrl, trackId, platform = 'youtube
       const args = ['--no-config', '-g', '--no-warnings', '--no-playlist', '--prefer-free-formats', '-f', 'bestaudio/best'];
       if (ytTarget.youtube) args.push('--extractor-args', YT_PLAYER_CLIENTS);
       args.push('--', trackUrl);
-      const raw = await executeYtDlp(args, 18000, { key: `g:${trackUrl}`, priority: 'play', reason: 'stream' });
+      const raw = await executeYtDlp(args, 25000, { key: `g:${trackUrl}`, priority: 'play', reason: 'stream' });
       const lines = raw.trim().split('\n').map(l => l.trim()).filter(l => l.startsWith('http'));
       if (lines.length > 0) streamUrl = lines[0];
     } catch (e) {
@@ -6210,7 +6218,7 @@ const server = http.createServer(guardHandler(async (req, res) => {
     const artist = parsedUrl.query.artist || '';
     const duration = parsedUrl.query.duration || 0;
     const thumbnail = parsedUrl.query.thumbnail || '';
-    return handleStreamInfo(req, res, trackUrl, trackId, platform, title, artist, duration, thumbnail);
+    return handleStreamInfo(req, res, trackUrl, trackId, platform, title, artist, duration, thumbnail, parsedUrl.query.fresh === '1');
   }
 
   if (parsedUrl.pathname === '/api/local-track') {
