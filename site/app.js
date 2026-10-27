@@ -103,6 +103,18 @@
 
   // rolling digits: each digit is a 0-9 strip moved into place
   const odo = $('odo');
+  // the counter sits below the first screen: its digits wait at 0 and roll up once it scrolls into view
+  let odoSeen = !('IntersectionObserver' in window);
+  let odoPending = null;
+  if (!odoSeen) {
+    const seen = new IntersectionObserver((entries) => {
+      if (!entries.some((e) => e.isIntersecting)) return;
+      odoSeen = true;
+      seen.disconnect();
+      if (odoPending) { const run = odoPending; odoPending = null; setTimeout(run, 250); }
+    }, { threshold: 0.6 });
+    seen.observe(odo);
+  }
   function setOdometer(n) {
     const text = fmt(n);
     if (odo.dataset.text === text) return;
@@ -134,8 +146,9 @@
     const apply = () => [...text].forEach((ch, i) => {
       if (/\d/.test(ch) && slots[i]) slots[i].style.transform = `translateY(${-Number(ch) * 10}%)`;
     });
-    // a new row of digits starts at 0 and rolls up
-    if (fresh) requestAnimationFrame(() => requestAnimationFrame(apply)); else apply();
+    // a new row of digits starts at 0 and rolls up, once it can be seen
+    const run = () => (fresh ? requestAnimationFrame(() => requestAnimationFrame(apply)) : apply());
+    if (odoSeen) run(); else odoPending = run;
     odo.dataset.text = text;
   }
 
