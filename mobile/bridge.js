@@ -208,6 +208,8 @@ if (Capacitor.getPlatform() === 'android') {
     const drawer = document.getElementById('rail-drawer');
     if (visible(drawer)) { document.getElementById('btn-close-rail-drawer').click(); return; }
     if (document.body.classList.contains('np-open')) { document.getElementById('btn-close-right-panel').click(); return; }
+    // Settings: out of the search, then out of the open category back to the list of categories
+    if (window.MurielSettingsBack && window.MurielSettingsBack()) return;
     const home = document.getElementById('nav-discover');
     if (home && !home.classList.contains('active')) { home.click(); return; }
     App.minimizeApp();

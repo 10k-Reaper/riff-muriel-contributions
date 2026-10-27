@@ -508,7 +508,7 @@
     btn.className = 'settings-nav-btn';
     btn.dataset.cat = 'sync';
     btn.innerHTML = `${ICON}<span data-i18n>Sync</span>`;
-    nav.insertBefore(btn, nav.querySelector('[data-cat="about"]'));
+    nav.insertBefore(btn, nav.querySelector('[data-cat="storage"]') || nav.querySelector('[data-cat="about"]'));
     section = document.createElement('div');
     section.className = 'settings-section sync-section';
     section.dataset.cat = 'sync';

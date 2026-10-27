@@ -561,6 +561,14 @@
         <div class="settings-view">
           <h2 class="section-title">Settings</h2>
 
+          <div class="view-search-box settings-search-box" id="settings-search-box">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"></circle><line x1="21" y1="21" x2="16.5" y2="16.5"></line></svg>
+            <input type="search" class="view-search-input" id="settings-search" placeholder="Search settings" aria-label="Search settings" autocomplete="off" spellcheck="false">
+            <button type="button" class="search-clear-btn hidden" id="settings-search-clear" title="Clear" aria-label="Clear">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+            </button>
+          </div>
+
           <div class="settings-layout">
             <nav class="settings-nav" id="settings-nav">
               <button class="settings-nav-btn" data-cat="interface">
@@ -621,6 +629,10 @@
                 </svg>
                 <span>Advanced</span>
               </button>
+              <button class="settings-nav-btn" data-cat="plugins">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M20.5 11H19V7c0-1.1-.9-2-2-2h-4V3.5C13 2.12 11.88 1 10.5 1S8 2.12 8 3.5V5H4c-1.1 0-1.99.9-1.99 2v3.8H3.5c1.49 0 2.7 1.21 2.7 2.7s-1.21 2.7-2.7 2.7H2V20c0 1.1.9 2 2 2h3.8v-1.5c0-1.49 1.21-2.7 2.7-2.7 1.49 0 2.7 1.21 2.7 2.7V22H17c1.1 0 2-.9 2-2v-4h1.5c1.38 0 2.5-1.12 2.5-2.5S21.88 11 20.5 11z"/></svg>
+                <span>Plugins</span>
+              </button>
               <button class="settings-nav-btn" data-cat="about">
                 <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                   <circle cx="12" cy="12" r="10"/>
@@ -629,12 +641,15 @@
                 </svg>
                 <span>About</span>
               </button>
-              <button class="settings-nav-btn" data-cat="plugins">
-                <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M20.5 11H19V7c0-1.1-.9-2-2-2h-4V3.5C13 2.12 11.88 1 10.5 1S8 2.12 8 3.5V5H4c-1.1 0-1.99.9-1.99 2v3.8H3.5c1.49 0 2.7 1.21 2.7 2.7s-1.21 2.7-2.7 2.7H2V20c0 1.1.9 2 2 2h3.8v-1.5c0-1.49 1.21-2.7 2.7-2.7 1.49 0 2.7 1.21 2.7 2.7V22H17c1.1 0 2-.9 2-2v-4h1.5c1.38 0 2.5-1.12 2.5-2.5S21.88 11 20.5 11z"/></svg>
-                <span>Plugins</span>
-              </button>
             </nav>
             <div class="settings-pane">
+              <div class="settings-pane-head" id="settings-pane-head">
+                <button type="button" class="btn-icon-pill" id="btn-settings-back" title="All settings" aria-label="All settings">
+                  <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+                </button>
+                <span class="settings-pane-title" id="settings-pane-title" data-no-i18n></span>
+              </div>
+              <div class="settings-search-empty hidden" id="settings-search-empty">No settings match your search</div>
               <div class="settings-section" data-cat="interface">
                 <div class="m3-group">
             <div class="setting-item" id="setting-ui-lang-row">

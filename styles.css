@@ -6528,7 +6528,38 @@ body.mini.mini-lyrics-on #btn-mini-lyrics {
 .settings-section.cat-hidden { display: none; }
 .settings-section:not(.cat-hidden) { animation: settingsIn .2s ease; }
 @keyframes settingsIn { from { opacity: 0; transform: translateY(6px); } }
-@media (max-width: 760px) { .settings-layout { flex-direction: column; } .settings-nav { position: static; flex-direction: row; flex: none; width: 100%; overflow-x: auto; scrollbar-width: none; } .settings-nav-btn { flex: 0 0 auto; padding: 0 calc(14px * var(--font-scale, 1)); } .settings-nav-btn span { display: none; } .settings-nav-btn.active span { display: inline; } }
+/* search field above the categories; while it has text, the matching rows of every category show under their
+   category's name (app.js runSettingsSearch) */
+.settings-search-box { margin-bottom: 0; max-width: 560px; }
+.settings-search-box .view-search-input { font-size: calc(14px * var(--font-scale, 1)); height: calc(28px * var(--font-scale, 1)); }
+.settings-search-box .view-search-input::-webkit-search-cancel-button { display: none; }
+.settings-search-box .search-clear-btn.hidden { display: none !important; }
+.settings-searching .settings-pane { display: flex; flex-direction: column; gap: 24px; }
+.settings-searching .settings-pane > :not(.settings-section) { order: 100; }
+.settings-searching .settings-pane > .settings-search-empty { order: -1; }
+.settings-searching .settings-nav-btn.active { background: transparent; color: var(--md-sys-color-on-surface-variant); }
+.settings-section .ss-miss { display: none !important; }
+.settings-search-cat { font-size: calc(13px * var(--font-scale, 1)); font-weight: 500; color: var(--md-sys-color-primary); padding: 0 4px; }
+.settings-search-empty { padding: 48px 16px; text-align: center; color: var(--md-sys-color-on-surface-variant); font-size: calc(14px * var(--font-scale, 1)); }
+/* phones' back bar above an open category; wide windows have the list beside it instead */
+.settings-pane-head { display: none; align-items: center; gap: 12px; margin-bottom: 12px; }
+.settings-pane-title { font-size: calc(18px * var(--font-scale, 1)); font-weight: 500; color: var(--md-sys-color-on-surface); }
+/* phones and narrow windows: the categories as a list with their names (tap one to open it, back returns here)
+   instead of a row of unlabelled icons */
+@media (max-width: 760px) {
+  .settings-search-box { max-width: none; }
+  .settings-layout { flex-direction: column; align-items: stretch; }
+  .settings-nav { position: static; flex: none; width: 100%; max-height: none; overflow: visible; gap: 2px; }
+  .settings-nav-btn { height: calc(52px * var(--font-scale, 1)); gap: calc(16px * var(--font-scale, 1)); font-size: calc(15px * var(--font-scale, 1)); color: var(--md-sys-color-on-surface); }
+  .settings-nav-btn svg { color: var(--md-sys-color-on-surface-variant); }
+  .settings-nav-btn span { flex: 1; min-width: 0; display: flex; align-items: center; gap: 12px; overflow: hidden; white-space: nowrap; }
+  .settings-nav-btn span::after { content: ''; margin-left: auto; width: 7px; height: 7px; flex-shrink: 0; margin-right: 6px; border-top: 2px solid currentColor; border-right: 2px solid currentColor; transform: rotate(45deg); opacity: .5; }
+  .settings-nav-btn.active { background: transparent; color: var(--md-sys-color-on-surface); }
+  .settings-nav-btn.active svg { color: var(--md-sys-color-primary); }
+  #view-settings:not(.settings-at-list) .settings-nav, .settings-searching .settings-nav { display: none; }
+  .settings-at-list:not(.settings-searching) .settings-pane { display: none; }
+  #view-settings:not(.settings-at-list):not(.settings-searching) .settings-pane-head { display: flex; }
+}
 .settings-pane .settings-section[data-cat="integrations"] > .settings-section-title,
 .settings-pane .settings-section[data-cat="storage"] > .settings-section-title,
 .settings-pane .settings-section[data-cat="about"] > .settings-section-title { display: none; }
