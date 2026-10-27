@@ -88,7 +88,9 @@ if (process.env.MURIEL_METRICS === '1') {
         ws: m.memory.workingSetSize || 0, // KB
         priv: m.memory.privateBytes || 0, // KB, Windows only
       }));
-      console.log('[metrics] ' + JSON.stringify({ t: Date.now(), procs }));
+      const mu = process.memoryUsage();
+      const main = { heapMB: Math.round(mu.heapUsed / 1048576), heapTotalMB: Math.round(mu.heapTotal / 1048576), extMB: Math.round(mu.external / 1048576), rssMB: Math.round(mu.rss / 1048576) };
+      console.log('[metrics] ' + JSON.stringify({ t: Date.now(), main, procs }));
     }, every).unref();
   });
 }
