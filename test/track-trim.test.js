@@ -49,3 +49,25 @@ test('the stand-in waveform is the same for the same song', () => {
   assert.notDeepStrictEqual(Array.from(a), Array.from(T.placeholderPeaks('youtube:xyz', 84)));
   assert.ok(Array.from(a).every(v => v >= 0.12 && v <= 0.96));
 });
+
+// #22: with Crossfade on, songs were cut off X seconds before their end (playNext() ran early)
+test('crossfade fades the song out over its last seconds instead of ending it early', () => {
+  assert.strictEqual(T.endFadeSeconds(100, 200, 6, 1), 0);
+  assert.strictEqual(T.endFadeSeconds(193.9, 200, 6, 1), 0);
+  assert.strictEqual(T.endFadeSeconds(194, 200, 6, 1), 6);
+  assert.strictEqual(T.endFadeSeconds(197, 200, 6, 2), 1.5);
+  assert.strictEqual(T.endFadeSeconds(200, 200, 6, 1), 0);
+  assert.strictEqual(T.endFadeSeconds(195, 200, 0, 1), 0); // off (the default)
+  assert.strictEqual(T.endFadeSeconds(8, 10, 6, 1), 0); // too short to fade
+});
+
+test('the timeupdate handler never starts the next song itself', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const src = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+  const start = src.indexOf("el.nativeAudio.addEventListener('timeupdate'");
+  const body = src.slice(start, src.indexOf('let isDraggingScrubber', start));
+  assert.ok(start > 0 && body.includes('endFadeSeconds'));
+  assert.ok(!/playNext\(/.test(body), 'only the ended handler (or a trim end) may advance');
+  assert.match(fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8'), /id="slider-crossfade"[^>]*value="0"/);
+});

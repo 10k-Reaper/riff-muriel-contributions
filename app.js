@@ -3533,6 +3533,15 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   let crossfadeTriggered = false;
   let crossfadeFadeInPending = false;
+  // undoes the Crossfade fade-out of the playing song (a seek back, a pause, a skip, the queue ending)
+  function cancelEndFade() {
+    if (!crossfadeTriggered) return;
+    crossfadeTriggered = false;
+    if (audioEngine && audioEngine.masterGain && audioEngine.ctx) {
+      try { audioEngine.masterGain.gain.cancelScheduledValues(audioEngine.ctx.currentTime); } catch (e) {}
+      audioEngine._applyMasterVolume();
+    }
+  }
   let currentAlbumPlayRunId = 0;
 
   function pushPlayHistory(track) {
@@ -3588,7 +3597,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     state._skipRecordedFor = null;
 
     if (context !== 'album') currentAlbumPlayRunId++;
-    crossfadeTriggered = false;
+    cancelEndFade();
     state.nextTrackPrefetched = false;
     initAudioContext();
     el.nativeAudio.preload = 'auto';
@@ -6188,6 +6197,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
 
     el.nativeAudio.addEventListener('pause', () => {
+      if (!el.nativeAudio.ended) cancelEndFade();
       emitPluginEvent('pause');
       updatePlayPauseButton(false, false);
       if (state.isPlaying) {
@@ -6219,6 +6229,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (audioEngine.suspendAudioContextDebounced) audioEngine.suspendAudioContextDebounced(5000);
         if (audioEngine.setAnalyserEnabled) audioEngine.setAnalyserEnabled(false);
       }
+      // a song that faded out (Crossfade) hands over to one that fades in
+      const fadedOut = crossfadeTriggered && !state.isRepeat && !queueFinished();
+      if (!fadedOut) cancelEndFade();
       if (state.isRepeat) {
         el.nativeAudio.currentTime = 0;
         playSmooth();
@@ -6227,6 +6240,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         queueEndedToken = state.loadToken;
         saveQueueState();
       } else {
+        if (fadedOut) crossfadeFadeInPending = true;
         state._isNaturalEnding = true;
         try {
           playNext();
@@ -6270,6 +6284,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
 
     el.nativeAudio.addEventListener('seeked', () => {
+      cancelEndFade(); // timeupdate fades again from here if the seek stayed inside the last seconds
       updateMediaPositionState();
       updateDiscordPresence();
       state.forceLyricsScroll = true;
@@ -6290,18 +6305,17 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (state.isTvKaraokeOpen) syncTvkProgress(cur, dur);
       if (miniLyricsShown()) updateMiniLyricsHighlight(cur);
 
+      // Crossfade (off by default): fade the song out over its last X seconds while it keeps playing; the
+      // 'ended' handler starts the next one, which fades in. This used to skip to the next song X seconds before
+      // the end, which cut every song short by the crossfade length (#22).
       const X = parseInt(localStorage.getItem('muriel_crossfade') || '0', 10);
-      // "end of track" sleep timer: let the song end on its own so the ended handler can stop playback
-      const sleepAtEnd = !!(state.sleepTimer && state.sleepTimer.mode === 'end');
-      if (X > 0 && !crossfadeTriggered && !state.isRepeat && !sleepAtEnd && dur > X && cur >= dur - X && !queueFinished() && (!audioEngine || !audioEngine.isLiveStream(el.nativeAudio))) {
-        crossfadeTriggered = true;
-        crossfadeFadeInPending = true;
-        if (audioEngine) audioEngine.fadeOut(X / 2);
-        state._isNaturalEnding = true;
-        try {
-          playNext();
-        } finally {
-          state._isNaturalEnding = false;
+      if (X > 0 && !crossfadeTriggered && !state.isRepeat && !el.nativeAudio.paused && audioEngine && !audioEngine.isLiveStream(el.nativeAudio) && window.MurielTrim) {
+        const trim = state.currentTrack ? getTrackTrim(state.currentTrack) : null;
+        const end = window.MurielTrim.isActive(trim) ? Math.min(trim.end, dur) : dur;
+        const fade = window.MurielTrim.endFadeSeconds(cur, end, X, el.nativeAudio.playbackRate);
+        if (fade > 0) {
+          crossfadeTriggered = true;
+          audioEngine.fadeOut(fade);
         }
       }
 
@@ -19570,6 +19584,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       a.dispatchEvent(new Event('ended'));
       return true;
     }
+    if (crossfadeTriggered) crossfadeFadeInPending = true;
     state._isNaturalEnding = true;
     try { playNext(); } finally { state._isNaturalEnding = false; }
     return true;
