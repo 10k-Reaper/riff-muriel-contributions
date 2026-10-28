@@ -3717,7 +3717,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     } catch (err) {
       if (err.name === 'AbortError') return;
       if (currentToken === state.loadToken) {
-        console.warn('Track playback notice:', err);
+        logPlaybackIssue('Track playback notice', err);
         if (retryFresh(currentToken, track)) return;
         updatePlayPauseButton(false, false);
         if (el.trackLoadingOverlay) el.trackLoadingOverlay.classList.add('hidden');
@@ -3787,6 +3787,22 @@ document.addEventListener('DOMContentLoaded', async () => {
   // looked up once more, afresh, before the listener is told: the first failure was usually passing (a
   // shared lookup that failed, a remembered stream URL YouTube no longer serves) and Retry then played it.
   let freshRetryToken = -1;
+  // One line for the console and the app log: what failed, with the DOMException's name and message and
+  // the audio element's state (error code, readyState, networkState, which host it was loading from).
+  function describeMediaState(audio) {
+    if (!audio) return 'no audio element';
+    let host = '';
+    try { const s = audio.currentSrc || audio.src; host = s ? new URL(s).host : '(none)'; } catch (e) { host = '(bad url)'; }
+    const me = audio.error;
+    return `mediaError=${me ? me.code + (me.message ? ' ' + me.message : '') : 'none'} readyState=${audio.readyState} networkState=${audio.networkState} paused=${audio.paused} src=${host}${hlsInstance ? ' hls' : ''}`;
+  }
+  function logPlaybackIssue(what, err) {
+    const desc = err ? `${err.name || 'Error'}: ${err.message || String(err)}` : 'no details';
+    const line = `${what}: ${desc} | ${describeMediaState(el.nativeAudio)} | load=${state.loadToken}`;
+    console.warn(line);
+    try { if (window.__riffLogError) window.__riffLogError('WARN', line, null); } catch (e) {}
+    return line;
+  }
   function retryFresh(token, track) {
     if (token !== state.loadToken || freshRetryToken === token || !state.trackLoading || !track || track !== state.currentTrack || track.platform === 'local') return false;
     if (!navigator.onLine) return false;
@@ -3800,7 +3816,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     attachStream(track, track.url, track.id, token, signal, true).then((ok) => { if (ok) applyAudioSettings(); }, (err) => {
       if (err && err.name === 'AbortError') return;
       if (token !== state.loadToken) return;
-      console.warn('Track playback notice:', err);
+      logPlaybackIssue('Track playback notice (fresh retry)', err);
       updatePlayPauseButton(false, false);
       if (el.trackLoadingOverlay) el.trackLoadingOverlay.classList.add('hidden');
       if (!skipUnplayable(token, track)) showToast((err && err.message) || Tm('Could not load audio stream'), 'error');
@@ -5894,17 +5910,27 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     if (el.nativeAudio) {
+      const loadTok = state.loadToken;
+      const playSrc = el.nativeAudio.currentSrc || el.nativeAudio.src;
       el.nativeAudio.play().catch(e => {
-        console.warn('Play error:', e);
+        // "[object DOMException]" told nobody anything (#17): say which one, and what the element was doing
+        logPlaybackIssue('Play error', e);
+        // AbortError: our own pause() or a newer src/load() interrupted this play(), not a failure
+        if (e && e.name === 'AbortError') return;
+        // a newer song (or a newer play/pause) took over meanwhile
+        if (loadTok !== state.loadToken || curToken !== smoothFadeToken) return;
+        if ((el.nativeAudio.currentSrc || el.nativeAudio.src) !== playSrc && !hlsInstance) return;
+        // a media error also fires the element's 'error' event, which retries / tells the listener itself
+        if (el.nativeAudio.error) return;
+        if (!el.nativeAudio.paused) return;
+        // anything else (NotAllowedError, NotSupportedError without a media error): look it up afresh once
+        if (retryFresh(loadTok, state.currentTrack)) return;
         // a refused play() (no gesture yet, source gone) left the button showing pause on a silent player.
-        // AbortError just means a newer load replaced this one.
-        if (curToken === smoothFadeToken && e && e.name !== 'AbortError' && el.nativeAudio.paused) {
-          state.isPlaying = false;
-          setTrackLoading(false);
-          document.body.classList.remove('is-playing');
-          updatePlayPauseButton(false, false);
-          if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
-        }
+        state.isPlaying = false;
+        setTrackLoading(false);
+        document.body.classList.remove('is-playing');
+        updatePlayPauseButton(false, false);
+        if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
       });
     }
 
@@ -6104,6 +6130,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (el.trackLoadingOverlay) el.trackLoadingOverlay.classList.add('hidden');
       // only an error on the song that is actually loaded counts (unloading one between songs is not a failure)
       if (!state.currentTrack || (!el.nativeAudio.src && !hlsInstance)) return;
+      logPlaybackIssue('Audio element error', null);
       state.isPlaying = false;
       document.body.classList.remove('is-playing');
       if (retryFresh(state.loadToken, state.currentTrack)) return;

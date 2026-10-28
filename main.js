@@ -236,7 +236,9 @@ function runGUI() {
                                    contextIsolation: true,
                                    webSecurity: false,
                                    backgroundThrottling: true,
-                                   spellcheck: false
+                                   spellcheck: false,
+                                   // songs start from a lookup that finishes after the click's user activation is gone (#17)
+                                   autoplayPolicy: 'no-user-gesture-required'
                                    }
     });
 
