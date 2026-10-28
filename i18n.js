@@ -92,6 +92,7 @@
   let lang = normLang(read(KEY) || 'en');
   let dict = new Map(); // English (normalised) -> translation, for `lang`
   let back = new Map(); // translation -> English: text code put in already translated
+  let prevBack = new Map(); // the same for the language before a switch: its words on the page go back to English
   const asked = new Set(); // asked for this language and session; a failure takes them out again
   const queue = new Set();
   let base = ''; // the local server, once app.js knows its port
@@ -193,6 +194,7 @@
     const key = norm(text);
     if (dict.has(key)) return text;
     if (back.has(key)) return keepSpace(text, back.get(key));
+    if (prevBack.has(key) && !dict.has(prevBack.get(key))) return keepSpace(text, prevBack.get(key));
     const n = numbered(key);
     if (n && back.has(n.template) && !dict.has(n.template)) return keepSpace(text, fill(back.get(n.template), n.args));
     return text;
@@ -373,6 +375,7 @@
     try { localStorage.setItem(KEY, code); } catch (e) {}
     if (code === lang && (code === 'en' || dict.size)) return true;
     lang = code;
+    prevBack = back;
     dict = new Map(); back = new Map(); asked.clear(); queue.clear(); failUntil = 0;
     clearTimeout(flushTimer); flushTimer = null;
     setRootAttrs();
@@ -427,13 +430,14 @@
     watch(true);
   }
 
-  root.MurielI18n = Object.assign({}, core, {
-    get lang() { return lang; },
+  // the getter is defined, not copied: Object.assign would read it once and freeze the language at startup, so
+  // the language picker thought English was still on and ignored picking it again (#20)
+  root.MurielI18n = Object.defineProperty(Object.assign({}, core, {
     T, Tf, Tm, Th, text, setLang, connect, ready,
     known: (list) => { for (const k of list || []) if (typeof k === 'string') known.add(k); },
     refresh: () => refresh(false),
     // the page's own words as index.html has them (what a switch asks for), for checking what is sent
     strings: () => [...new Set(statics.filter(Boolean).map((r) => norm(r.src)).concat(staticAttrs.filter(Boolean).map((r) => norm(r.src)))
       .map((s) => { const n = numbered(s); return n ? n.template : s; }))].filter(translatable),
-  });
+  }), 'lang', { get: () => lang, enumerable: true });
 })(typeof window !== 'undefined' ? window : globalThis);

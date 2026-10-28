@@ -204,3 +204,21 @@ test('a translation keeps placeholders and is never HTML', async () => {
   // the client only uses a translation that kept its placeholders; the text goes into textContent as it is
   assert.equal(I18n.pick('{0} songs', r.json.translations[0]), 'pt:{0} SONGS');
 });
+
+test('MurielI18n.lang follows setLang (it used to stay at the startup language, so picking English again did nothing, #20)', async () => {
+  const vm = require('node:vm');
+  const store = new Map();
+  const ctx = { localStorage: { getItem: (k) => (store.has(k) ? store.get(k) : null), setItem: (k, v) => store.set(k, String(v)) },
+    document: { body: null, documentElement: { classList: { toggle() {} } } }, setTimeout, clearTimeout, console };
+  ctx.window = ctx;
+  vm.createContext(ctx);
+  vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'i18n.js'), 'utf8').replace(/typeof window !== 'undefined' \? window : globalThis/, 'window'), ctx);
+  const api = ctx.MurielI18n;
+  assert.equal(api.lang, 'en');
+  api.setLang('de');
+  assert.equal(api.lang, 'de');
+  await api.setLang('en');
+  assert.equal(api.lang, 'en');
+  assert.equal(store.get(I18n.KEY), 'en');
+  assert.equal(api.T('Settings'), 'Settings');
+});
