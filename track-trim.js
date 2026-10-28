@@ -28,6 +28,14 @@
     return null;
   }
 
+  // Crossfade setting (#22): the song fades out over its last `fade` seconds while it keeps playing up to
+  // `end` (its real end, or the trim end); the next song starts on 'ended'. Seconds the fade takes from `time`
+  // at playback `rate`, or 0 when it isn't time yet (or the song is too short / already over).
+  function endFadeSeconds(time, end, fade, rate) {
+    if (!(fade > 0) || !(end > fade * 2) || !Number.isFinite(time) || time < end - fade || time >= end) return 0;
+    return (end - time) / (rate > 0 ? rate : 1);
+  }
+
   // "1:05.3"
   function formatPreciseTime(sec) {
     if (!Number.isFinite(sec) || sec < 0) sec = 0;
@@ -73,7 +81,7 @@
     return out;
   }
 
-  const api = { normalizeTrim, isActive, trimAction, formatPreciseTime, wavePeaks, placeholderPeaks, MIN_KEEP };
+  const api = { normalizeTrim, isActive, trimAction, endFadeSeconds, formatPreciseTime, wavePeaks, placeholderPeaks, MIN_KEEP };
   if (typeof module !== 'undefined') module.exports = api;
   else window.MurielTrim = api;
 })();
