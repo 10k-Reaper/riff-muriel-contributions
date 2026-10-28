@@ -45,6 +45,8 @@
   panel.addEventListener('touchstart', (e) => {
     const t = e.touches[0];
     const lyrics = document.getElementById('lyrics-container');
+    // a finger on a seek bar or slider is seeking, not closing the sheet (#21)
+    if (e.target.closest('input[type="range"], .scrubber-track-container, [role="slider"]')) { startY = null; return; }
     startY = (lyrics && lyrics.contains(e.target) && lyrics.scrollTop > 0) ? null : t.clientY;
   }, { passive: true });
   // one transform write per frame, and no CSS transition while the finger drags (it lagged behind)

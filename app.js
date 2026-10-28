@@ -6386,9 +6386,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     return targetTime;
   }
 
+  // Pointer events (not mouse events) so a finger drag scrubs too: on Android a touch drag never fires
+  // mousemove, only the tap's synthesized mousedown/mouseup, so only tapping used to seek (#21).
+  let scrubberPointerId = null;
   if (el.scrubberTrack) {
-    el.scrubberTrack.addEventListener('mousedown', (e) => {
+    el.scrubberTrack.style.touchAction = 'none';
+    el.scrubberTrack.addEventListener('pointerdown', (e) => {
+      if (e.pointerType === 'mouse' && e.button !== 0) return;
       isDraggingScrubber = true;
+      scrubberPointerId = e.pointerId;
+      try { el.scrubberTrack.setPointerCapture(e.pointerId); } catch (_) {}
       hasDrawnPausedFrame = false;
       if (!animationFrameId) startVisualizers();
       el.scrubberTrack.classList.add('dragging');
@@ -6396,22 +6403,25 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   }
 
-  window.addEventListener('mousemove', (e) => {
-    if (!isDraggingScrubber) return;
+  window.addEventListener('pointermove', (e) => {
+    if (!isDraggingScrubber || e.pointerId !== scrubberPointerId) return;
     updateScrubberPositionFromEvent(e);
   });
 
-  window.addEventListener('mouseup', (e) => {
-    if (!isDraggingScrubber) return;
+  const endScrub = (e, commit) => {
+    if (!isDraggingScrubber || e.pointerId !== scrubberPointerId) return;
     isDraggingScrubber = false;
+    scrubberPointerId = null;
     if (el.scrubberTrack) el.scrubberTrack.classList.remove('dragging');
-    const targetTime = updateScrubberPositionFromEvent(e);
-    if (!isNaN(targetTime) && el.nativeAudio) {
+    const targetTime = commit ? updateScrubberPositionFromEvent(e) : state.scrubberDragTargetTime;
+    if (targetTime !== undefined && !isNaN(targetTime) && el.nativeAudio) {
       el.nativeAudio.currentTime = targetTime;
       updateMediaPositionState();
     }
     state.scrubberDragTargetTime = undefined;
-  });
+  };
+  window.addEventListener('pointerup', (e) => endScrub(e, true));
+  window.addEventListener('pointercancel', (e) => endScrub(e, false));
 
   function getAllPresets() {
     return [...defaultPresets, ...state.customPresets];
