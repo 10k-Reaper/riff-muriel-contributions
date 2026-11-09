@@ -6281,10 +6281,10 @@ body.intensity-zero .lyric-word.active-word { opacity: 1; color: var(--md-sys-co
 }
 .tvk-up-next-cover-wrap {
   position: relative;
-  flex: 0 0 44px;
-  width: 44px;
-  height: 44px;
-  border-radius: 11px;
+  flex: 0 0 52px;
+  width: 52px;
+  height: 52px;
+  border-radius: 13px;
   overflow: hidden;
   background: linear-gradient(135deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0.06));
   display: flex;
@@ -6374,6 +6374,11 @@ body.intensity-zero .lyric-word.active-word { opacity: 1; color: var(--md-sys-co
 .tv-karaoke.tv-idle .tvk-up-next,
 .tv-karaoke.tv-idle .tvk-up-next * {
   cursor: auto;
+}
+/* idle TV Karaoke hides the pointer everywhere: moving it brings it back (resetTvIdleTimer) */
+.tv-karaoke.tv-idle,
+.tv-karaoke.tv-idle * {
+  cursor: none !important;
 }
 
 @media (max-width: 700px) {
@@ -9121,3 +9126,52 @@ body.mini #btn-playbar-radio { display: none !important; }
 .queue-radio-label[hidden] { display: none; }
 .queue-radio-label svg { flex-shrink: 0; }
 .queue-radio-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+
+/* Album art downloads (#1-#3): a download button over the main and TV covers, and a right-click menu */
+.cover-download-overlay {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 30px;
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  cursor: pointer;
+  opacity: 0;
+  transform: translateY(-2px);
+  transition: opacity 0.18s ease, transform 0.18s ease, background 0.18s ease;
+  z-index: 3;
+}
+.cover-download-overlay svg { width: 16px; height: 16px; }
+.cover-download-overlay:hover { background: rgba(0, 0, 0, 0.78); }
+.cover-container:hover .cover-download-overlay,
+.cover-container:focus-within .cover-download-overlay,
+.tv-cover-wrap:hover .cover-download-overlay,
+.tv-cover-wrap:focus-within .cover-download-overlay,
+.cover-download-overlay:focus-visible {
+  opacity: 1;
+  transform: none;
+}
+@media (hover: none) {
+  .cover-download-overlay { opacity: 1; transform: none; }
+}
+.tv-cover-wrap {
+  position: relative;
+  display: inline-block;
+  line-height: 0;
+  border-radius: 28px;
+}
+.tv-cover-download {
+  width: 40px;
+  height: 40px;
+  top: 14px;
+  right: 14px;
+}
+.tv-cover-download svg { width: 20px; height: 20px; }
+.artwork-context-menu { min-width: 176px; }

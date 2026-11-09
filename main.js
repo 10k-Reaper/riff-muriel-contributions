@@ -408,6 +408,15 @@ function runGUI() {
         if (/^\s*<(\?xml[^>]*>\s*)?svg[\s>]/i.test(buf.toString('utf8', 0, 256))) return 'svg';
         return '';
       };
+      // a name that does not overwrite a picture already in the folder
+      const uniqueImagePath = async (dir, base, ext) => {
+        const clean = base.replace(/\.[a-z0-9]{1,5}$/i, '').trim().slice(0, 150) || 'cover art';
+        for (let i = 1; i < 1000; i++) {
+          const target = path.join(dir, i === 1 ? `${clean}.${ext}` : `${clean} (${i}).${ext}`);
+          try { await fs.promises.access(target); } catch (e) { return target; }
+        }
+        return path.join(dir, `${clean} (${Date.now()}).${ext}`);
+      };
       ipcMain.removeHandler('save-image-file');
       ipcMain.handle('save-image-file', async (event, payload) => {
         const p = payload || {};
@@ -429,9 +438,20 @@ function runGUI() {
         const raw = path.basename(String(p.defaultName || 'cover art')).replace(/[\\/:*?"<>|\u0000-\u001f]/g, '_').replace(/^\.+/, '');
         const name = `${raw.replace(/\.[a-z0-9]{1,5}$/i, '').trim().slice(0, 150) || 'cover art'}.${ext}`;
         const win = BrowserWindow.fromWebContents(event.sender) || mainWindow;
+        // Settings → Storage → Album art: once a folder is saved, pictures go straight there unless the
+        // person chose "always ask". A folder that is gone falls back to the dialog.
+        const dir = typeof p.dir === 'string' && p.dir && path.isAbsolute(p.dir) ? path.resolve(p.dir) : '';
+        if (!p.ask && dir) {
+          try {
+            await fs.promises.mkdir(dir, { recursive: true });
+            const target = await uniqueImagePath(dir, raw, ext);
+            await fs.promises.writeFile(target, buf);
+            return { success: true, path: target, dir, saved: true };
+          } catch (e) {}
+        }
         const r = await dialog.showSaveDialog(win, {
           title: 'Save cover art',
-          defaultPath: path.join(app.getPath('pictures'), name),
+          defaultPath: path.join(dir || app.getPath('pictures'), name),
           filters: [{ name: 'Image', extensions: ['jpg', 'jpeg', 'png', 'webp', 'gif', 'svg'] }],
         });
         if (r.canceled || !r.filePath) return { canceled: true };
@@ -439,10 +459,33 @@ function runGUI() {
           // someone who typed a name without an extension still gets a picture file
           const target = path.extname(r.filePath) ? r.filePath : `${r.filePath}.${ext}`;
           await fs.promises.writeFile(target, buf);
-          return { success: true, path: target };
+          return { success: true, path: target, dir: path.dirname(target) };
         } catch (e) {
           return { success: false, error: "Couldn't write the file there" };
         }
+      });
+
+      // Right-click → Copy artwork: the page hands over the picture bytes, or the file it picked
+      ipcMain.removeHandler('copy-image-file');
+      ipcMain.handle('copy-image-file', async (event, payload) => {
+        const p = payload || {};
+        let buf = null;
+        if (typeof p.base64 === 'string' && p.base64 && p.base64.length <= 16 * 1024 * 1024) {
+          try { buf = Buffer.from(p.base64, 'base64'); } catch (e) { buf = null; }
+        } else if (typeof p.fileUrl === 'string' && p.fileUrl) {
+          try {
+            const u = new URL(p.fileUrl);
+            if (u.protocol !== 'file:') return { success: false, error: 'Not a picture' };
+            buf = await fs.promises.readFile(fileURLToPath(u));
+          } catch (e) {
+            return { success: false, error: 'Not a picture' };
+          }
+        }
+        if (!buf || buf.length < 100 || buf.length > 16 * 1024 * 1024) return { success: false, error: 'Not a picture' };
+        const img = nativeImage.createFromBuffer(buf);
+        if (!img || img.isEmpty()) return { success: false, error: 'Not a picture' };
+        clipboard.writeImage(img);
+        return { success: true };
       });
 
       // playlist files and profile backups (backup.js): the page hands over the text, the person picks where it goes
@@ -672,6 +715,20 @@ function runGUI() {
         });
         pickedDownloadDir = r.canceled ? null : r.filePaths[0];
         return pickedDownloadDir;
+      });
+
+      // Settings → Storage → Album art folder (the page keeps the answer and hands it back with each save)
+      ipcMain.removeHandler('pick-cover-art-dir');
+      ipcMain.handle('pick-cover-art-dir', async (event, payload) => {
+        const start = payload && typeof payload.dir === 'string' && payload.dir && path.isAbsolute(payload.dir)
+          ? payload.dir
+          : app.getPath('pictures');
+        const r = await dialog.showOpenDialog(mainWindow, {
+          title: 'Choose album art folder',
+          defaultPath: start,
+          properties: ['openDirectory', 'createDirectory']
+        });
+        return r.canceled ? null : r.filePaths[0];
       });
 
       ipcMain.handle('set-download-dir', async (event, payload) => {

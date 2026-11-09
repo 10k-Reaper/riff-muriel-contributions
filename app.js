@@ -232,7 +232,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     'Playlists', 'Favorites', 'In playlists', 'Queue', 'History', 'Library', 'Online', 'Discover', 'View', 'Audio', 'Your stats',
     'Repeat: playlist', 'Repeat: this song', 'Start radio', 'Radio · {0}', 'Radio · {0} and {1} more', 'Sleep timer: {0} min', 'Sleep timer: end of track',
     'Up next', 'Up next position', 'Above', 'Below', 'Nothing up next.', 'Remove from queue', 'Removed from queue',
-    'Save cover art', 'Cover art saved', 'No cover art available', "Couldn't save the cover art"]);
+    'Save cover art', 'Cover art saved', 'No cover art available', "Couldn't save the cover art",
+    'Copy artwork', 'Download artwork', 'Artwork copied', "Couldn't copy the artwork",
+    'Album art folder', 'Always ask for download location each time', 'Album art downloads',
+    'Ask on the first download', 'Album art will be saved to {0}']);
 
   const toastQueue = [];
   const MAX_QUEUED_TOASTS = 10;
@@ -5148,10 +5151,14 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Appears by itself shortly before the song ends, or when the Next button is hovered/focused.
   // Hover/focus previews close after a short grace period; an automatic one stays until the track changes.
   const TVK_UP_NEXT_GRACE_MS = 600;
+  // a quick glide across the Next button must not flash the tile open (#6)
+  const TVK_UP_NEXT_OPEN_DELAY_MS = 260;
   let tvkUpNextMode = null; // null | 'manual' | 'auto'
   let tvkUpNextTrack = null;
   let tvkUpNextAutoTrackKey = '';
   let tvkUpNextGraceTimer = null;
+  let tvkUpNextOpenTimer = null;
+  let tvkUpNextPreload = null;
 
   function tvkTrackKey(track) {
     if (!track) return '';
@@ -5206,12 +5213,28 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (thumb) {
         coverWrap.classList.remove('no-cover');
         cover.style.display = '';
-        cover.src = thumb;
+        if (cover.getAttribute('src') !== thumb) cover.src = thumb;
+        if (typeof cover.decode === 'function') cover.decode().catch(() => {});
       } else {
         coverWrap.classList.add('no-cover');
         cover.removeAttribute('src');
       }
     }
+  }
+
+  // Keep the upcoming cover warm: hovering Next or reaching the 20-second mark should show its art at
+  // once instead of waiting for the network (#9).
+  function preloadTvkUpNextCover() {
+    const next = peekNextQueueTrack();
+    const thumb = next ? getTrackThumbUrl(next) : '';
+    if (!thumb) return;
+    if (tvkUpNextPreload && tvkUpNextPreload.__preloadSrc === thumb) return;
+    const img = new Image();
+    img.__preloadSrc = thumb;
+    img.decoding = 'async';
+    img.src = thumb;
+    if (typeof img.decode === 'function') img.decode().catch(() => {});
+    tvkUpNextPreload = img;
   }
 
   // Fixed-position the popover next to the TV side (above the album art or below the controls), and
@@ -5244,13 +5267,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     const pop = tvkUpNextPopover();
     if (!pop) return;
     const track = peekNextQueueTrack();
+    const persistent = !!getTvk().upNextPersistent;
     if (mode === 'auto') {
-      if (!track) return;
+      if (!track && !persistent) return;
       tvkUpNextAutoTrackKey = tvkTrackKey(state.currentTrack);
       tvkUpNextMode = 'auto';
     } else if (tvkUpNextMode !== 'auto') {
       tvkUpNextMode = 'manual';
     }
+    preloadTvkUpNextCover();
     renderTvkUpNext(track);
     pop.classList.add('open');
     pop.setAttribute('aria-hidden', 'false');
@@ -5282,6 +5307,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   function scheduleTvkUpNextHide() {
+    cancelTvkUpNextOpen();
     if (tvkUpNextMode === 'auto') return;
     cancelTvkUpNextHide();
     tvkUpNextGraceTimer = setTimeout(() => {
@@ -5295,29 +5321,53 @@ document.addEventListener('DOMContentLoaded', async () => {
     }, TVK_UP_NEXT_GRACE_MS);
   }
 
-  function openTvkUpNextManual() {
+  function cancelTvkUpNextOpen() {
+    clearTimeout(tvkUpNextOpenTimer);
+    tvkUpNextOpenTimer = null;
+  }
+
+  // hovering or focusing Next waits a moment: gliding past it should not open the tile (#6)
+  function scheduleTvkUpNextOpen() {
     cancelTvkUpNextHide();
-    showTvkUpNext('manual');
+    if (tvkUpNextMode === 'auto') return;
+    if (tvkUpNextMode === 'manual') return;
+    cancelTvkUpNextOpen();
+    tvkUpNextOpenTimer = setTimeout(() => {
+      tvkUpNextOpenTimer = null;
+      const btn = document.getElementById('btn-tvk-next');
+      const over = !!(btn && (btn.matches(':hover') || btn === document.activeElement));
+      if (!over) return;
+      showTvkUpNext('manual');
+    }, TVK_UP_NEXT_OPEN_DELAY_MS);
   }
 
   function onTvkTrackChangedForUpNext() {
     tvkUpNextAutoTrackKey = '';
+    tvkUpNextPreload = null;
+    preloadTvkUpNextCover();
     if (tvkUpNextMode === 'auto') hideTvkUpNext(true);
     else if (tvkUpNextMode === 'manual') refreshTvkUpNext();
+    // "keep Up next visible": the new track gets its tile right away, without waiting for a timeupdate
+    if (state.isTvKaraokeOpen && getTvk().upNextPersistent) showTvkUpNext('auto');
   }
 
   function maybeShowTvkUpNextAuto(cur, dur) {
-    if (!state.isTvKaraokeOpen || !state.isPlaying) return;
+    if (!state.isTvKaraokeOpen) return;
+    const persistent = !!getTvk().upNextPersistent;
+    // persistent mode keeps the tile up for the whole song (even paused); otherwise only near the end
+    if (!persistent && !state.isPlaying) return;
     if (tvkUpNextMode) return;
     if (tvkUpNextSuppressed()) return;
-    if (!(dur > 0)) return;
-    const trim = state.currentTrack ? getTrackTrim(state.currentTrack) : null;
-    const end = (window.MurielTrim && window.MurielTrim.isActive(trim)) ? Math.min(trim.end, dur) : dur;
-    const remaining = end - cur;
-    if (!(remaining > 0 && remaining <= 20)) return;
+    if (!persistent) {
+      if (!(dur > 0)) return;
+      const trim = state.currentTrack ? getTrackTrim(state.currentTrack) : null;
+      const end = (window.MurielTrim && window.MurielTrim.isActive(trim)) ? Math.min(trim.end, dur) : dur;
+      const remaining = end - cur;
+      if (!(remaining > 0 && remaining <= 20)) return;
+    }
     const key = tvkTrackKey(state.currentTrack);
     if (tvkUpNextAutoTrackKey === key) return;
-    if (!peekNextQueueTrack()) return;
+    if (!peekNextQueueTrack() && !persistent) return;
     showTvkUpNext('auto');
   }
 
@@ -5327,9 +5377,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     const removeBtn = document.getElementById('btn-tvk-up-next-remove');
 
     if (btnNext) {
-      btnNext.addEventListener('pointerenter', openTvkUpNextManual);
+      btnNext.addEventListener('pointerenter', scheduleTvkUpNextOpen);
       btnNext.addEventListener('pointerleave', scheduleTvkUpNextHide);
-      btnNext.addEventListener('focus', openTvkUpNextManual);
+      btnNext.addEventListener('focus', scheduleTvkUpNextOpen);
       btnNext.addEventListener('blur', scheduleTvkUpNextHide);
       btnNext.addEventListener('keydown', (e) => {
         if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && removeBtn && tvkUpNextMode && !removeBtn.disabled) {
@@ -5368,7 +5418,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     const reposition = () => { if (tvkUpNextMode) requestAnimationFrame(positionTvkUpNext); };
     window.addEventListener('resize', reposition);
     if (window.visualViewport) window.visualViewport.addEventListener('resize', reposition);
-    if (typeof window !== 'undefined') window.addEventListener('muriel:queue', reposition);
+    if (typeof window !== 'undefined') window.addEventListener('muriel:queue', () => {
+      reposition();
+      tvkUpNextPreload = null;
+      preloadTvkUpNextCover();
+    });
+    preloadTvkUpNextCover();
   }
 
   let tvkOutputInterval = null;
@@ -5482,6 +5537,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     syncTvkUI();
     resetTvIdleTimer();
     resizeCanvases();
+    if (getTvk().upNextPersistent && state.currentTrack) {
+      preloadTvkUpNextCover();
+      maybeShowTvkUpNextAuto(el.nativeAudio ? el.nativeAudio.currentTime : 0, el.nativeAudio ? el.nativeAudio.duration : 0);
+    }
     if (state.isPlaying) {
       if (audioEngine && audioEngine.setAnalyserEnabled) audioEngine.setAnalyserEnabled(true);
       startVisualizers();
@@ -5517,6 +5576,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (!state.isTvKaraokeOpen || !el.tvKaraoke) return;
     state.isTvKaraokeOpen = false;
     hideTvkUpNext(true);
+    cancelTvkUpNextOpen();
     tvkUpNextAutoTrackKey = '';
     clearTimeout(tvIdleTimer);
     if (tvkOutputInterval) {
@@ -5582,7 +5642,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   const btnTvkPlay = document.getElementById('btn-tvk-play');
   const btnTvkNext = document.getElementById('btn-tvk-next');
   if (btnTvkPrev) btnTvkPrev.addEventListener('click', () => playPrev());
-  if (btnTvkNext) btnTvkNext.addEventListener('click', () => playNext());
+  if (btnTvkNext) btnTvkNext.addEventListener('click', () => {
+    // the preview belonged to the song being skipped (#8): put it away before the new one starts
+    cancelTvkUpNextOpen();
+    hideTvkUpNext(true);
+    playNext();
+  });
   if (btnTvkPlay) btnTvkPlay.addEventListener('click', () => togglePlayPause());
   if (el.btnTvkFav) el.btnTvkFav.addEventListener('click', () => {
     if (state.currentTrack) toggleFavoriteTrack(state.currentTrack);
@@ -5674,7 +5739,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     gap: 16,
     anim: 'slide',
     speed: 900,
-    upNextPlacement: 'below'
+    upNextPlacement: 'below',
+    upNextPersistent: false
   };
 
   const TVK_FONTS = {
@@ -5706,7 +5772,8 @@ document.addEventListener('DOMContentLoaded', async () => {
           gap: (parsed.gap !== undefined && !isNaN(Number(parsed.gap))) ? Number(parsed.gap) : TVK_DEFAULTS.gap,
           anim: parsed.anim || TVK_DEFAULTS.anim,
           speed: Number(parsed.speed) || TVK_DEFAULTS.speed,
-          upNextPlacement: parsed.upNextPlacement === 'above' ? 'above' : 'below'
+          upNextPlacement: parsed.upNextPlacement === 'above' ? 'above' : 'below',
+          upNextPersistent: parsed.upNextPersistent === true
         };
       }
     } catch (_) {}
@@ -5867,6 +5934,17 @@ document.addEventListener('DOMContentLoaded', async () => {
       });
     }
 
+    const btnUpNextPersistent = document.getElementById('btn-tvk-upnext-persistent');
+    if (btnUpNextPersistent) {
+      btnUpNextPersistent.classList.toggle('active', !!s.upNextPersistent);
+      btnUpNextPersistent.setAttribute('aria-checked', s.upNextPersistent ? 'true' : 'false');
+    }
+    const btnUpNextPersistentSetting = document.getElementById('btn-tvk-upnext-persistent-setting');
+    if (btnUpNextPersistentSetting) {
+      btnUpNextPersistentSetting.classList.toggle('active', !!s.upNextPersistent);
+      btnUpNextPersistentSetting.setAttribute('aria-checked', s.upNextPersistent ? 'true' : 'false');
+    }
+
     if (sliderSize) sliderSize.value = s.size;
     if (sliderWeight) sliderWeight.value = s.weight;
     if (sliderGap) sliderGap.value = s.gap;
@@ -5904,6 +5982,19 @@ document.addEventListener('DOMContentLoaded', async () => {
   function initTvk() {
     applyTvk();
     syncTvkUI();
+
+    // "Keep Up next visible" (Settings → Visualizer and the TV panel share one switch)
+    const setUpNextPersistent = (on) => {
+      const current = getTvk();
+      current.upNextPersistent = !!on;
+      saveTvk(current);
+      syncTvkUI();
+      if (current.upNextPersistent) {
+        if (state.isTvKaraokeOpen) { preloadTvkUpNextCover(); showTvkUpNext('auto'); }
+      } else if (tvkUpNextMode === 'auto') {
+        hideTvkUpNext(true);
+      }
+    };
 
     const btnSettings = document.getElementById('btn-tvk-settings');
     const panel = document.getElementById('tvk-panel');
@@ -6018,7 +6109,22 @@ document.addEventListener('DOMContentLoaded', async () => {
           saveTvk(current);
           applyTvk();
           syncTvkUI();
+          if (tvkUpNextMode) requestAnimationFrame(positionTvkUpNext);
         });
+      });
+    }
+
+    const btnUpNextPersistent = document.getElementById('btn-tvk-upnext-persistent');
+    if (btnUpNextPersistent) {
+      btnUpNextPersistent.addEventListener('click', (e) => {
+        e.stopPropagation();
+        setUpNextPersistent(!getTvk().upNextPersistent);
+      });
+    }
+    const btnUpNextPersistentSetting = document.getElementById('btn-tvk-upnext-persistent-setting');
+    if (btnUpNextPersistentSetting) {
+      btnUpNextPersistentSetting.addEventListener('click', () => {
+        setUpNextPersistent(!getTvk().upNextPersistent);
       });
     }
 
@@ -6034,6 +6140,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         speed: Number(sliderSpeed && sliderSpeed.value) || 350
       };
       tvk.upNextPlacement = current.upNextPlacement === 'above' ? 'above' : 'below';
+      tvk.upNextPersistent = current.upNextPersistent === true;
       saveTvk(tvk);
       applyTvk();
       if (valSize) valSize.textContent = `${tvk.size}%`;
@@ -9443,6 +9550,46 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   let coverArtSaveBusy = false;
 
+  // Album art downloads (Settings → Storage → Album art): the folder is remembered for this profile, and the
+  // very first download asks where to put it. "Always ask" brings the dialog back every time.
+  const COVER_DIR_KEY = 'muriel_cover_dir';
+  const COVER_ASK_KEY = 'muriel_cover_always_ask';
+  const COVER_PROMPTED_KEY = 'muriel_cover_prompted';
+
+  function getCoverArtPrefs() {
+    let dir = '';
+    let alwaysAsk = false;
+    let prompted = false;
+    try {
+      dir = localStorage.getItem(COVER_DIR_KEY) || '';
+      alwaysAsk = localStorage.getItem(COVER_ASK_KEY) === 'true';
+      prompted = localStorage.getItem(COVER_PROMPTED_KEY) === 'true';
+    } catch (e) {}
+    return { dir, alwaysAsk, prompted };
+  }
+
+  function setCoverArtPrefs(patch) {
+    try {
+      if (patch && Object.prototype.hasOwnProperty.call(patch, 'dir')) {
+        if (patch.dir) localStorage.setItem(COVER_DIR_KEY, patch.dir);
+        else localStorage.removeItem(COVER_DIR_KEY);
+      }
+      if (patch && Object.prototype.hasOwnProperty.call(patch, 'alwaysAsk')) {
+        localStorage.setItem(COVER_ASK_KEY, patch.alwaysAsk ? 'true' : 'false');
+      }
+      if (patch && Object.prototype.hasOwnProperty.call(patch, 'prompted')) {
+        if (patch.prompted) localStorage.setItem(COVER_PROMPTED_KEY, 'true');
+        else localStorage.removeItem(COVER_PROMPTED_KEY);
+      }
+    } catch (e) {}
+  }
+
+  // what a save should do right now: ask because the person chose to, or because no folder is known yet
+  function coverArtSavePlan() {
+    const prefs = getCoverArtPrefs();
+    return { dir: prefs.dir, ask: prefs.alwaysAsk || !prefs.dir };
+  }
+
   async function saveTrackCoverArt(track, opts) {
     track = track || state.currentTrack;
     if (!track || coverArtSaveBusy) return;
@@ -9455,6 +9602,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     const btn = (opts && opts.button) || null;
     if (btn) btn.disabled = true;
     const defaultName = coverArtFileBase(track);
+    const plan = coverArtSavePlan();
+    const remember = (r) => {
+      if (r && r.dir) setCoverArtPrefs({ dir: r.dir, prompted: true });
+      else if (r && r.success) setCoverArtPrefs({ prompted: true });
+    };
+    const save = (payload) => api.saveImageFile(Object.assign({ defaultName, ask: plan.ask, dir: plan.dir }, payload));
     // several dead hosts must not keep the person waiting: after this, the iTunes cover or an answer
     const deadline = Date.now() + 25000;
     try {
@@ -9463,9 +9616,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (/^file:/i.test(url)) {
           // a cover picked from this device: main.js reads the file itself
           let r = null;
-          try { r = await api.saveImageFile({ fileUrl: url, defaultName }); } catch (e) { r = null; }
+          try { r = await save({ fileUrl: url }); } catch (e) { r = null; }
           if (r && r.canceled) return;
-          if (r && r.success) { showToast(Tm('Cover art saved'), 'success'); return; }
+          if (r && r.success) { remember(r); showToast(Tm('Cover art saved'), 'success'); return; }
           continue;
         }
         if (!/^https?:\/\//i.test(url)) continue;
@@ -9483,11 +9636,11 @@ document.addEventListener('DOMContentLoaded', async () => {
           const size = jpegPixelSize(data.buf);
           if (size && (size.w < 400 || size.h < 300)) continue;
         }
-        const r = await api.saveImageFile({
-          base64: coverBufferToBase64(data.buf), mime: data.mime, ext: imageExtensionForMime(data.mime), defaultName,
+        const r = await save({
+          base64: coverBufferToBase64(data.buf), mime: data.mime, ext: imageExtensionForMime(data.mime),
         });
         if (r && r.canceled) return;
-        if (r && r.success) { showToast(Tm('Cover art saved'), 'success'); return; }
+        if (r && r.success) { remember(r); showToast(Tm('Cover art saved'), 'success'); return; }
         // if writing failed, another picture would fail the same way
         showToast(Tm("Couldn't save the cover art"), 'error');
         return;
@@ -9496,11 +9649,11 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (!isPhoneApp && state.serverPort && track.title) {
         try {
           const data = await fetchCoverArtBytes(tokenUrl(`http://127.0.0.1:${state.serverPort}/api/image-proxy?artist=${encodeURIComponent(track.artist || '')}&title=${encodeURIComponent(track.title)}`));
-          const r = await api.saveImageFile({
-            base64: coverBufferToBase64(data.buf), mime: data.mime, ext: imageExtensionForMime(data.mime), defaultName,
+          const r = await save({
+            base64: coverBufferToBase64(data.buf), mime: data.mime, ext: imageExtensionForMime(data.mime),
           });
           if (r && r.canceled) return;
-          if (r && r.success) { showToast(Tm('Cover art saved'), 'success'); return; }
+          if (r && r.success) { remember(r); showToast(Tm('Cover art saved'), 'success'); return; }
         } catch (e) {}
       }
       showToast(Tm('No cover art available'), 'info');
@@ -9512,14 +9665,139 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   }
 
-  // right-clicking the playbar picture saves it too (the download menu's button is the keyboard path)
-  (function bindPlaybarCoverSave() {
-    const wrap = document.getElementById('playbar-artwork-wrapper');
-    if (!wrap) return;
-    wrap.addEventListener('contextmenu', (e) => {
-      if (!state.currentTrack) return;
+  let coverArtCopyBusy = false;
+
+  // Right-click → Copy artwork: the same best-picture walk, ending in the system clipboard rather than a file
+  async function copyTrackArtwork(track) {
+    track = track || state.currentTrack;
+    if (!track || coverArtCopyBusy) return;
+    const api = window.electronAPI;
+    if (!api || typeof api.copyImageFile !== 'function') {
+      showToast(Tm("Couldn't copy the artwork"), 'error');
+      return;
+    }
+    coverArtCopyBusy = true;
+    const deadline = Date.now() + 25000;
+    try {
+      for (const url of coverArtDownloadCandidates(track).slice(0, 8)) {
+        if (Date.now() > deadline) break;
+        if (/^file:/i.test(url)) {
+          let r = null;
+          try { r = await api.copyImageFile({ fileUrl: url }); } catch (e) { r = null; }
+          if (r && r.success) { showToast(Tm('Artwork copied'), 'success'); return; }
+          continue;
+        }
+        if (!/^https?:\/\//i.test(url)) continue;
+        let data = null;
+        try { data = await fetchCoverArtBytes(url); } catch (e) { data = null; }
+        if (!data && !isPhoneApp && state.serverPort && !url.startsWith(`http://127.0.0.1:${state.serverPort}/`)) {
+          try {
+            data = await fetchCoverArtBytes(tokenUrl(`http://127.0.0.1:${state.serverPort}/api/image-proxy?url=${encodeURIComponent(url)}&fallback=0`));
+          } catch (e) { data = null; }
+        }
+        if (!data) continue;
+        if (data.mime === 'image/jpeg' && /ytimg\.com\/vi\/[^/]+\/(maxres|sd)default\.jpg/.test(url)) {
+          const size = jpegPixelSize(data.buf);
+          if (size && (size.w < 400 || size.h < 300)) continue;
+        }
+        const r = await api.copyImageFile({ base64: coverBufferToBase64(data.buf), mime: data.mime });
+        if (r && r.success) { showToast(Tm('Artwork copied'), 'success'); return; }
+        break; // the clipboard refused this picture: another one would fail the same way
+      }
+      if (!isPhoneApp && state.serverPort && track.title) {
+        try {
+          const data = await fetchCoverArtBytes(tokenUrl(`http://127.0.0.1:${state.serverPort}/api/image-proxy?artist=${encodeURIComponent(track.artist || '')}&title=${encodeURIComponent(track.title)}`));
+          const r = await api.copyImageFile({ base64: coverBufferToBase64(data.buf), mime: data.mime });
+          if (r && r.success) { showToast(Tm('Artwork copied'), 'success'); return; }
+        } catch (e) {}
+      }
+      showToast(Tm('No cover art available'), 'info');
+    } catch (e) {
+      showToast(Tm("Couldn't copy the artwork"), 'error');
+    } finally {
+      coverArtCopyBusy = false;
+    }
+  }
+
+  let artworkMenuEl = null;
+  let artworkMenuDismiss = null;
+  let artworkMenuKeydown = null;
+  function closeArtworkMenu() {
+    if (artworkMenuDismiss) {
+      document.removeEventListener('pointerdown', artworkMenuDismiss, true);
+      artworkMenuDismiss = null;
+    }
+    if (artworkMenuKeydown) {
+      document.removeEventListener('keydown', artworkMenuKeydown, true);
+      artworkMenuKeydown = null;
+    }
+    if (artworkMenuEl) {
+      artworkMenuEl.remove();
+      artworkMenuEl = null;
+    }
+  }
+  // Right-clicking a piece of album art asks what to do with it instead of guessing
+  function openArtworkMenu(x, y, track) {
+    closeArtworkMenu();
+    if (!track) return;
+    const menu = document.createElement('div');
+    menu.className = 'track-context-menu artwork-context-menu';
+    menu.setAttribute('role', 'menu');
+    const item = (label, run) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'track-context-item';
+      b.setAttribute('role', 'menuitem');
+      b.textContent = label;
+      b.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        closeArtworkMenu();
+        run();
+      });
+      menu.appendChild(b);
+    };
+    item(Tm('Copy artwork'), () => copyTrackArtwork(track));
+    item(Tm('Download artwork'), () => saveTrackCoverArt(track));
+    document.body.appendChild(menu);
+    const rect = menu.getBoundingClientRect();
+    menu.style.left = `${Math.max(8, Math.min(x, window.innerWidth - rect.width - 8))}px`;
+    menu.style.top = `${Math.max(8, Math.min(y, window.innerHeight - rect.height - 8))}px`;
+    artworkMenuEl = menu;
+    artworkMenuDismiss = (ev) => { if (!menu.contains(ev.target)) closeArtworkMenu(); };
+    artworkMenuKeydown = (ev) => { if (ev.key === 'Escape') closeArtworkMenu(); };
+    setTimeout(() => {
+      if (artworkMenuEl !== menu) return;
+      document.addEventListener('pointerdown', artworkMenuDismiss, true);
+      document.addEventListener('keydown', artworkMenuKeydown, true);
+    }, 0);
+  }
+  function bindArtworkContextMenu(target, getTrack) {
+    const node = typeof target === 'string' ? document.getElementById(target) : target;
+    if (!node) return;
+    node.addEventListener('contextmenu', (e) => {
+      const track = getTrack ? getTrack() : state.currentTrack;
+      if (!track) return;
       e.preventDefault();
-      saveTrackCoverArt(state.currentTrack);
+      e.stopPropagation();
+      openArtworkMenu(e.clientX, e.clientY, track);
+    });
+  }
+
+  // right-clicking any of the current artwork areas offers copy or download (the track menu is for rows)
+  bindArtworkContextMenu('playbar-artwork-wrapper');
+  bindArtworkContextMenu('cover-container');
+  bindArtworkContextMenu('tv-cover');
+
+  // the download buttons drawn over the main cover and the TV cover
+  (function bindCoverArtDownloadButtons() {
+    ['btn-right-panel-download', 'btn-tv-cover-download'].forEach((id) => {
+      const btn = document.getElementById(id);
+      if (!btn) return;
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (state.currentTrack) saveTrackCoverArt(state.currentTrack, { button: btn });
+      });
     });
   })();
 
@@ -10549,6 +10827,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             updateOfflineStorageUI();
             updateMusicFolderUI();
   updateDownloadFolderUI();
+  updateCoverArtFolderUI();
   updateDownloadCaptionPath();
             checkToolsStatus(false);
           }
@@ -18882,6 +19161,54 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (btnReset) btnReset.classList.add('hidden');
   }
 
+  // Settings → Storage → Album art: the folder album art downloads go to, and whether to ask each time
+  function updateCoverArtFolderUI() {
+    const elPath = document.getElementById('cover-art-folder-path');
+    const btnReset = document.getElementById('btn-reset-cover-art-folder');
+    const btnAsk = document.getElementById('btn-cover-art-always-ask');
+    const prefs = getCoverArtPrefs();
+    if (elPath) elPath.textContent = prefs.dir || T('Ask on the first download');
+    if (btnReset) btnReset.classList.toggle('hidden', !prefs.dir);
+    if (btnAsk) {
+      btnAsk.classList.toggle('active', prefs.alwaysAsk);
+      btnAsk.setAttribute('aria-checked', prefs.alwaysAsk ? 'true' : 'false');
+    }
+  }
+
+  const btnChangeCoverArtFolder = document.getElementById('btn-change-cover-art-folder');
+  if (btnChangeCoverArtFolder) {
+    btnChangeCoverArtFolder.addEventListener('click', async () => {
+      const api = window.electronAPI;
+      if (!api || typeof api.pickCoverArtDir !== 'function') return;
+      if (btnChangeCoverArtFolder.disabled) return;
+      btnChangeCoverArtFolder.disabled = true;
+      let dir = null;
+      try { dir = await api.pickCoverArtDir(getCoverArtPrefs().dir); } catch (e) { dir = null; }
+      btnChangeCoverArtFolder.disabled = false;
+      if (!dir) return;
+      setCoverArtPrefs({ dir, prompted: true });
+      updateCoverArtFolderUI();
+      showToast(Tm('Album art will be saved to {0}', dir));
+    });
+  }
+
+  const btnResetCoverArtFolder = document.getElementById('btn-reset-cover-art-folder');
+  if (btnResetCoverArtFolder) {
+    btnResetCoverArtFolder.addEventListener('click', () => {
+      setCoverArtPrefs({ dir: '', prompted: false });
+      updateCoverArtFolderUI();
+    });
+  }
+
+  const btnCoverArtAlwaysAsk = document.getElementById('btn-cover-art-always-ask');
+  if (btnCoverArtAlwaysAsk) {
+    btnCoverArtAlwaysAsk.addEventListener('click', () => {
+      const prefs = getCoverArtPrefs();
+      setCoverArtPrefs({ alwaysAsk: !prefs.alwaysAsk });
+      updateCoverArtFolderUI();
+    });
+  }
+
   const btnChangeDownloadFolder = document.getElementById('btn-change-download-folder');
   if (btnChangeDownloadFolder) {
     btnChangeDownloadFolder.addEventListener('click', async () => {
@@ -19640,6 +19967,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   updateOfflineStorageUI();
   updateMusicFolderUI();
   updateDownloadFolderUI();
+  updateCoverArtFolderUI();
   checkToolsStatus(false);
   setLyricsEmpty(true);
   updateLyricsTranslationUI();

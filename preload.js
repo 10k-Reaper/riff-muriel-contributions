@@ -37,6 +37,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   pickDataDir: () => ipcRenderer.invoke('pick-data-dir'),
   setDataDir: (dir, move) => ipcRenderer.invoke('set-data-dir', { dir, move }),
   saveImageFile: (payload) => ipcRenderer.invoke('save-image-file', payload),
+  copyImageFile: (payload) => ipcRenderer.invoke('copy-image-file', payload),
+  pickCoverArtDir: (dir) => ipcRenderer.invoke('pick-cover-art-dir', { dir }),
   getDownloadDir: () => ipcRenderer.invoke('get-download-dir'),
   pickDownloadDir: () => ipcRenderer.invoke('pick-download-dir'),
   setDownloadDir: (dir) => ipcRenderer.invoke('set-download-dir', { dir }),

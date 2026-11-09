@@ -1039,6 +1039,15 @@
             <div class="setting-item">
               <div class="setting-item-top" style="align-items: center;">
                 <div style="display: flex; flex-direction: column; gap: 2px;">
+                  <span class="setting-name">Keep Up next visible</span>
+                  <span style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">Show the upcoming song for the whole track in TV Karaoke</span>
+                </div>
+                <button class="effect-switch-btn" id="btn-tvk-upnext-persistent-setting"><span class="thumb"></span></button>
+              </div>
+            </div>
+            <div class="setting-item">
+              <div class="setting-item-top" style="align-items: center;">
+                <div style="display: flex; flex-direction: column; gap: 2px;">
                   <span class="setting-name">Visualizer opacity</span>
                   <span style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">Adjust transparency of the TV karaoke visualizer</span>
                 </div>
@@ -1780,6 +1789,35 @@
               </div>
             </div>
                 </div>
+                <div class="settings-group-title" data-i18n>Album art</div>
+                <div class="m3-group" data-group="cover-art">
+            <div class="setting-item" id="cover-art-folder-item">
+              <div class="setting-item-top" style="align-items: center; justify-content: space-between;">
+                <div style="display: flex; align-items: center; gap: 12px; min-width: 0;">
+                  <div style="width: 32px; height: 32px; border-radius: 50%; background: var(--md-sys-color-surface-container-high); display: flex; align-items: center; justify-content: center; color: var(--md-sys-color-primary); flex-shrink: 0;">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
+                  </div>
+                  <div style="display: flex; flex-direction: column; min-width: 0;">
+                    <span class="setting-name" data-i18n>Album art folder</span>
+                    <span id="cover-art-folder-path" style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline); word-break: break-all;">Ask on the first download</span>
+                  </div>
+                </div>
+                <div style="display: flex; align-items: center; gap: 8px; flex-shrink: 0;">
+                  <button class="btn-outline-pill hidden" id="btn-reset-cover-art-folder" data-i18n style="padding: 6px 14px; font-size: calc(12px * var(--font-scale, 1));">Reset</button>
+                  <button class="btn-outline-pill" id="btn-change-cover-art-folder" data-i18n style="padding: 6px 14px; font-size: calc(12px * var(--font-scale, 1));">Choose</button>
+                </div>
+              </div>
+            </div>
+            <div class="setting-item">
+              <div class="setting-item-top" style="align-items: center; justify-content: space-between;">
+                <div style="display: flex; flex-direction: column; gap: 2px;">
+                  <span class="setting-name" data-i18n>Always ask for download location each time</span>
+                  <span style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);" data-i18n>Show the save dialog for every album art download instead of using the folder above.</span>
+                </div>
+                <button class="effect-switch-btn" id="btn-cover-art-always-ask" type="button" role="switch" aria-checked="false"><span class="thumb"></span></button>
+              </div>
+            </div>
+                </div>
                 <div class="settings-group-title" data-i18n>Backups</div>
                 <div class="m3-group" data-group="backups">
             <div class="setting-item" id="export-account-item">
@@ -2043,6 +2081,9 @@
           <div class="vinyl-overlay hidden" id="vinyl-overlay"></div>
           <button id="btn-right-panel-art" title="Change cover/banner for this track" aria-label="Change cover/banner for this track">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
+          </button>
+          <button id="btn-right-panel-download" class="cover-download-overlay" title="Download cover art" aria-label="Download cover art">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
           </button>
         </div>
         <div class="right-panel-meta">
@@ -3409,13 +3450,22 @@
           <button type="button" class="tvk-pill-btn active" data-value="below" data-i18n>Below</button>
         </div>
       </div>
+      <div class="tvk-row tvk-row-toggle">
+        <span class="tvk-label" data-i18n>Keep Up next visible</span>
+        <button type="button" class="effect-switch-btn" id="btn-tvk-upnext-persistent" role="switch" aria-checked="false"><span class="thumb"></span></button>
+      </div>
       <div class="tvk-actions">
         <button type="button" id="btn-tvk-reset">Reset</button>
       </div>
     </div>
     <div class="tv-karaoke-layout">
       <div class="tv-side">
-        <img class="tv-cover" id="tv-cover" src="" alt="">
+        <div class="tv-cover-wrap">
+          <img class="tv-cover" id="tv-cover" src="" alt="">
+          <button class="cover-download-overlay tv-cover-download" id="btn-tv-cover-download" title="Download cover art" aria-label="Download cover art">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+          </button>
+        </div>
         <div class="tv-karaoke-meta" id="tv-karaoke-meta">
           <div class="tv-karaoke-title" id="tv-karaoke-title"></div>
           <div class="tv-karaoke-artist" id="tv-karaoke-artist"></div>
@@ -3471,7 +3521,7 @@
           <div class="tvk-up-next-label" data-i18n>Up next</div>
           <div class="tvk-up-next-body" id="tvk-up-next-body">
             <div class="tvk-up-next-cover-wrap" id="tvk-up-next-cover-wrap">
-              <img class="tvk-up-next-cover" id="tvk-up-next-cover" src="" alt="" width="44" height="44">
+              <img class="tvk-up-next-cover" id="tvk-up-next-cover" src="" alt="" width="52" height="52">
               <svg class="tvk-up-next-cover-fallback" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18V5l12-2v13"></path><circle cx="6" cy="18" r="3"></circle><circle cx="18" cy="16" r="3"></circle></svg>
             </div>
             <div class="tvk-up-next-meta">
